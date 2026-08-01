@@ -6,8 +6,9 @@ Chrome-Live-Caption-like live captions for **any** Windows application. Captures
 
 - Target users: deaf/hard-of-hearing users, language learners, gamers, and anyone who wants captions for any Windows app
 - Primary outcome: real-time captions for any Windows application that plays audio
-- Current sprint: Slice 1 — Audio Capture Spike (WASAPI loopback → PCM → diagnostic meter)
-- Next milestone: Slice 2 — streaming `ISpeechToTextEngine` + local Whisper integration
+- Features: WASAPI loopback capture (no VB-CABLE), local streaming Whisper speech-to-text, optional local Argos translation, live caption overlay + control window
+- Current sprint: Slice 5 — WPF caption overlay + control window (implementation and tests complete; close-out in progress)
+- Next milestone: Slice 6 — end-to-end verification (real audio latency/accuracy measurement)
 
 ## Documentation Map
 
@@ -17,7 +18,7 @@ Chrome-Live-Caption-like live captions for **any** Windows application. Captures
 - `docs/TECH_STACK.md` - selected technologies, tools, packages, and rejected options.
 - `docs/SECURITY_PLAN.md` - threat model, privacy model, security controls.
 - `docs/DEPLOYMENT.md` - packaging, release process, operations.
-- `docs/adr/` - consequential architecture decisions (ADRs 0001-0005).
+- `docs/adr/` - consequential architecture decisions (ADRs 0001-0006).
 - `docs/implementation/ROADMAP.md` - what should be built.
 - `docs/implementation/BUILD_PLAN.md` - how the active and queued sprints will be built.
 - `docs/implementation/PROJECT_STATUS.md` - current project snapshot.
@@ -31,10 +32,15 @@ Chrome-Live-Caption-like live captions for **any** Windows application. Captures
 ```bash
 dotnet build UniversalCaptions.slnx
 dotnet test UniversalCaptions.slnx
+dotnet run --project src/UniversalCaptions.App
 dotnet run --project src/UniversalCaptions.Diagnostics
 dotnet format --verify-no-changes
+dotnet list UniversalCaptions.slnx package --vulnerable
 ```
 
 ## Current Status
 
-Slice 1 (audio capture spike) in progress. The diagnostics console captures real system audio via WASAPI loopback and renders a live meter — no VB-CABLE required.
+- Slices 1-4 **complete** (audio capture, streaming Whisper STT, Argos translation, caption service).
+- Slice 5 (WPF overlay + control window) implemented with **209/209 tests passing**; manual overlay/device verification recorded 2026-08-01. Remaining before close-out: Slice 5 close-out record + docs.
+- Translation runs locally (Argos) and is Off by default; it requires the dev Argos venv (see `docs/TECH_STACK.md`).
+- Privacy: no microphone capture, no raw audio persistence, local-first STT and translation.
