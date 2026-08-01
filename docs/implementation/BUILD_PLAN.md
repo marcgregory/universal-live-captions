@@ -182,7 +182,7 @@ Implement partial/final caption state, source-vs-translated caption selection, o
 
 ### Slice 5 — Overlay + Control Window
 
-**Status: In progress (2026-08-01)** — implementation + unit tests complete; **manual overlay/device verification completed 2026-08-01**; real-Argos wiring pending before close-out.
+**Status: Complete (close-out 2026-08-01)** — implementation + unit tests complete; **manual overlay/device verification completed 2026-08-01**; **real-Argos wiring verified end-to-end through the App 2026-08-01**.
 
 #### Goal
 
@@ -204,8 +204,8 @@ Always-on-top caption overlay and minimal control window.
 6. Compose everything in `App.xaml.cs` (DI composition root; `ShutdownMode.OnMainWindowClose`)
 7. Write `UniversalCaptions.App.Tests` — `CaptionDisplayPolicyTests` (8) + `CaptionPipelineTests` (20) + `AudioSourceLoaderTests` (4) + `TranslationGuardTests` (4), with fakes at the capture/STT boundaries
 8. Verify gates (build 0 warnings, 209/209 tests, format clean, no vulnerable packages); record results in `TEST_REPORT.md`
-9. Manual verification (completed 2026-08-01): ran `UniversalCaptions.App`, verified overlay visuals/always-on-top/click-through/resize on real system audio (real Whisper `ggml-base` → live overlay captions, lifecycle, error paths) and recorded evidence in `TEST_REPORT.md`; real-Argos wiring pending when the dev Argos venv is available
-10. Close-out: fresh-context review + docs (CHANGELOG, PROJECT_STATUS, TEST_REPORT, ROADMAP, BUILD_PLAN) + close-out record in `CHANGE_IMPACT_ANALYSIS.md` Entry 6
+9. Manual verification (completed 2026-08-01): ran `UniversalCaptions.App`, verified overlay visuals/always-on-top/click-through/resize on real system audio (real Whisper `ggml-base` → live overlay captions, lifecycle, error paths) and recorded evidence in `TEST_REPORT.md`; **real-Argos wiring verified end-to-end through the App 2026-08-01** (committed overlay lines translated to Tagalog by the App-spawned Argos child process)
+10. Close-out (completed 2026-08-01): fresh-context review + docs (CHANGELOG, PROJECT_STATUS, TEST_REPORT, ROADMAP, BUILD_PLAN) + close-out record in `CHANGE_IMPACT_ANALYSIS.md` Entry 6
 
 #### Definition of Done
 
@@ -215,9 +215,9 @@ Always-on-top caption overlay and minimal control window.
 - [x] `UniversalCaptions.App.Tests` (36 tests) with fakes at the capture/STT boundaries; total **209/209**
 - [x] Build 0 warnings/0 errors; `dotnet format --verify-no-changes` clean; no vulnerable packages
 - [x] Manual verification of the overlay + control window on real system audio (recorded in TEST_REPORT, 2026-08-01)
-- [ ] Real-Argos wiring verified when the dev Argos venv is available (translation stays Off by default otherwise)
-- [ ] Fresh-context review completed
-- [ ] Close-out docs + Entry 6 close-out record completed
+- [x] Real-Argos wiring verified end-to-end through the App (committed overlay lines translated to Tagalog, 2026-08-01)
+- [x] Fresh-context review completed
+- [x] Close-out docs + Entry 6 close-out record completed
 
 #### Slice 5 Evidence (2026-08-01)
 
@@ -228,7 +228,8 @@ Always-on-top caption overlay and minimal control window.
 - `CaptionSnapshotTests` (5) verify the immutable active-line/history snapshot (`CaptionService.GetSnapshot`), thread-safe against concurrent mutations.
 - Final gates green: `dotnet build UniversalCaptions.slnx` 0 warnings/0 errors, `dotnet test UniversalCaptions.slnx --no-build` **209/209**, `dotnet format --verify-no-changes` clean, `dotnet list package --vulnerable` no vulnerable packages (all 13 projects).
 - Manual verification **completed 2026-08-01** (recorded in `TEST_REPORT.md`, Slice 5): real system audio → Whisper `ggml-base` → live overlay captions; always-on-top/transparency; drag/resize/click-through; stop/restart; rapid Stop→close (clean ~2 s exit); model-not-found error path; source-equals-target rejection live.
-- Known caveats (honest status): real Argos wiring still runs only when the dev Argos venv is present (this machine currently has no argostranslate on system Python — translation defaults Off); this remains the only item before Slice 5 close-out.
+- **Real-Argos wiring verified end-to-end through the App 2026-08-01** (recorded in `TEST_REPORT.md`, Slice 5): recreated the dev Argos venv (`argostranslate==1.11.0` + en→tl/tl→en/ja→en/en→ja under a short 8.3 temp path per TD-011), prepended its `Scripts` dir to PATH, toggled translation ON, selected **Tagalog (tl)**, started captions, played speech via SAPI, and confirmed **committed overlay lines displayed real translated Tagalog** (`tamad aso.`, `Ang mabilis na kayumangging sorra ay tumatalon sa ibabaw ng eruplano`, `IsTranslated = True`) served by the App-spawned Argos child process (`python` venv shim → UV base python running `argos_translate_server.py`). This also exercised the `ControlWindow.ApplyTranslationSettings` guard fix (toggle stays ON + target combo enabled on a guard error). Engine-level real-Argos verification (direct + pivot pairs, offline) is in `BENCHMARK_REPORT.md` (Slice 3).
+- Slice 5 close-out **completed 2026-08-01**: fresh-context review done (findings fixed in v0.5.1), docs updated, Entry 6 close-out record finalized.
 
 ### Slice 6 — End-to-End
 

@@ -164,8 +164,9 @@ public partial class ControlWindow : Window
             string? error = TranslationGuard.Validate(_captionSourceLanguage, target);
             if (error is not null)
             {
-                TranslationToggle.IsChecked = false;
-                TargetLanguageCombo.IsEnabled = false;
+                // Keep the toggle on and the target combo enabled so the user can choose a valid
+                // target language; just surface the reason and do not apply a translation that
+                // would always fail at the backend (a language cannot be translated into itself).
                 StatusText.Text = error;
                 SetIndicator(PipelineStatusKind.Error);
                 return;

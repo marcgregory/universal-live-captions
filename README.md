@@ -41,6 +41,6 @@ dotnet list UniversalCaptions.slnx package --vulnerable
 ## Current Status
 
 - Slices 1-4 **complete** (audio capture, streaming Whisper STT, Argos translation, caption service).
-- Slice 5 (WPF overlay + control window) implemented with **209/209 tests passing**; manual overlay/device verification recorded 2026-08-01. Remaining before close-out: Slice 5 close-out record + docs.
+- Slice 5 (WPF overlay + control window) **complete** — **209/209 tests passing**; manual overlay/device verification and real-Argos wiring verified end-to-end (recorded 2026-08-01). Next: Slice 6 (end-to-end latency/accuracy).
 - Translation runs locally (Argos) and is Off by default; it requires the dev Argos venv (see `docs/TECH_STACK.md`).
 - Privacy: no microphone capture, no raw audio persistence, local-first STT and translation.

@@ -10,7 +10,7 @@ Chrome-Live-Caption-like live captions for any Windows application. Captures sys
 
 ## Current Sprint
 
-Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **in progress: implementation + unit tests complete (2026-08-01); manual overlay/device verification completed (2026-08-01); real-Argos wiring pending before close-out**. Slices 1–4 are complete; Slice 4 (Caption Service) closed out 2026-08-01.
+Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **complete (close-out 2026-08-01)**: implementation + unit tests complete; manual overlay/device verification completed; **real-Argos wiring verified end-to-end through the App (committed overlay lines translated to Tagalog)**. Slices 1–5 are complete; Slice 4 (Caption Service) closed out 2026-08-01.
 
 ## Current Implementation Summary
 
@@ -120,10 +120,10 @@ Do not mark a release Ready unless release criteria, quality gates, and blocking
 
 ## Known Gaps
 
-- Slice 5 (WPF overlay + control window) is implemented with unit tests complete (2026-08-01); **manual overlay/device verification completed 2026-08-01 (recorded in TEST_REPORT.md); real-Argos wiring is pending** — Slice 5 is not yet closed out.
+- Slice 5 (WPF overlay + control window) is **complete (close-out 2026-08-01)**: unit tests complete, manual overlay/device verification completed, and **real-Argos wiring verified end-to-end through the App (committed overlay lines translated to Tagalog)**.
 - Slice 5 open question (change-impact Q1) is **resolved**: active caption = verbatim latest partial (`CaptionState.ActiveLine`); finals = bounded history; translated text replaces source only when completed (PRD FR-5/FR-14).
 - Argos `tl`-as-source unsupported (stanza SBD) and `ja→tl` requires a pivot via `en` (~1050 ms/call); MVP pairs use `tl` as a target only (ADR-0006).
-- Argos dev venv lives outside the repo (`MAX_PATH` limit on in-repo venv) — re-creatable, see `docs/TECH_STACK.md`; this machine has no argostranslate on system Python, so translation defaults Off.
+- Argos dev venv lives outside the repo (`MAX_PATH` limit on in-repo venv) — re-creatable under a short 8.3 path (TD-011; current dev venv at `C:\Users\TOGODB~1\AppData\Local\Temp\argosv`, argostranslate 1.11.0); this machine has no argostranslate on system Python, so translation defaults Off unless the venv `Scripts` dir is prepended to PATH.
 - Resampler quality not yet benchmarked against speech (TD-001).
 - Device-change notifications not yet wired (TD-002).
 
@@ -133,4 +133,4 @@ See `docs/implementation/TECHNICAL_DEBT.md`. TD-001 resampler benchmark, TD-002 
 
 ## Next Priority
 
-Slice 5 implementation + unit tests are complete (2026-08-01); the Q1 display policy is resolved (verbatim latest partial as the active line; finals as history; translated text replaces source only when completed); **manual overlay/device verification is complete and recorded in TEST_REPORT.md**. Complete Slice 5 close-out: verify real-Argos wiring when the dev Argos venv is available; run a fresh-context review of the App code; then finalize the Slice 5 close-out record in `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 6 and mark Slice 5 Completed. See `docs/implementation/BUILD_PLAN.md`.
+Slice 5 is **complete (close-out 2026-08-01)**: implementation + unit tests complete; Q1 display policy resolved (verbatim latest partial as the active line; finals as history; translated text replaces source only when completed); manual overlay/device verification complete and recorded in TEST_REPORT.md; **real-Argos wiring verified end-to-end through the App (committed overlay lines translated to Tagalog)**; fresh-context review completed; Entry 6 close-out record finalized. Next: Slice 6 — end-to-end latency/accuracy on real audio. See `docs/implementation/BUILD_PLAN.md`.

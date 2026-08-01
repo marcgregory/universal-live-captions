@@ -17,6 +17,25 @@ Last updated: 2026-08-01
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.2 - 2026-08-01
+
+### Added
+
+- **Slice 5 close-out (2026-08-01): real-Argos wiring verified end-to-end through the App.** Recreated the dev Argos venv (`argostranslate==1.11.0` + en→tl, tl→en, ja→en, en→ja packages) under a short 8.3 temp path (`C:\Users\TOGODB~1\AppData\Local\Temp\argosv`) per TD-011, prepended its `Scripts` dir to PATH, and verified the live App: toggled translation ON, selected **Tagalog (tl)**, started captions, played speech via SAPI, and **committed overlay lines displayed real translated Tagalog** (`tamad aso.`, `Ang mabilis na kayumangging sorra ay tumatalon sa ibabaw ng eruplano`, `IsTranslated = True`) served by the App-spawned Argos child process (`python` venv shim → UV base python running `argos_translate_server.py`). Evidence recorded in `docs/reports/TEST_REPORT.md` (Slice 5).
+- `ControlWindow.ApplyTranslationSettings` guard-path fix (exercised by the live run): on a guard rejection (e.g. `en`→`en`), the translation toggle now **stays ON** and the target combo **stays enabled** so the user can select a valid target; the rejection is surfaced in the status line only.
+
+### Changed
+
+- Slice 5 marked **complete** in `TEST_REPORT.md`, `PROJECT_STATUS.md`, `ROADMAP.md`, `BUILD_PLAN.md`, and `CHANGE_IMPACT_ANALYSIS.md` Entry 6. Test count remains **209/209 passing**, build 0 warnings/0 errors.
+
+### Fixed
+
+- None
+
+### Removed
+
+- None
+
 ## v0.5.1 - 2026-08-01
 
 ### Added
@@ -32,7 +51,7 @@ All notable project changes should be documented here. Keep this file versioned 
 
 ### Changed
 
-- Test count from 190/190 → **209/209 passing** (66 Audio + 45 Captions + 41 Speech + 21 Translation + 36 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. Slice 5 remaining before close-out: real-Argos wiring (dev Argos venv unavailable on this machine).
+- Test count from 190/190 → **209/209 passing** (66 Audio + 45 Captions + 41 Speech + 21 Translation + 36 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. Real-Argos wiring was pending at this release and was closed out in v0.5.2.
 
 ### Fixed
 
@@ -46,7 +65,7 @@ All notable project changes should be documented here. Keep this file versioned 
 
 ### Added
 
-- Slice 5 — WPF overlay + control window (`UniversalCaptions.App`; **in progress** — implementation + unit tests complete; manual overlay/device + real-Argos verification pending)
+- Slice 5 — WPF overlay + control window (`UniversalCaptions.App`; **complete in v0.5.2**) — implementation + unit tests in this release
 - `src/UniversalCaptions.App` (new WPF project, `net8.0-windows`, `UseWPF`, `app.manifest` with PerMonitorV2 DPI, `Microsoft.Extensions.DependencyInjection` 8.0.0) — the DI composition root wiring capture → processor → STT → caption service → overlay:
   - `Overlay/IOverlayService.cs` — overlay state contract (visibility, position, opacity [0.2, 1.0], font size [10, 96], click-through, `Show`/`Hide`/`ShowAt`)
   - `Overlay/CaptionDisplayModel.cs` + `CaptionDisplayPolicy` — Q1 display-policy resolution: the active caption is rendered verbatim from the latest partial (`CaptionState.ActiveLine`); committed finals render as bounded history (newest first); translated text replaces the source on a committed line only when `CaptionTranslationStatus.Completed`, otherwise the source is preserved (PRD FR-5/FR-14)
