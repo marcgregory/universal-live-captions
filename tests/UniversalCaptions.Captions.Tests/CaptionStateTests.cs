@@ -1,0 +1,198 @@
+using UniversalCaptions.Core.Captions;
+
+namespace UniversalCaptions.Captions.Tests;
+
+/// <summary>
+/// Verifies <see cref="CaptionState"/> ordering, bounded history, active-line lifecycle, translation
+/// configuration, and session lifecycle in isolation from the caption service.
+/// </summary>
+public sealed class CaptionStateTests
+{
+    private static CaptionLine Final(long sequence, string text = "hello") =>
+        new(text, "en", sequence, DateTime.UtcNow, CaptionLineState.Final, committedAtUtc: DateTime.UtcNow);
+
+    private static CaptionLine Active(long sequence, string text = "hel") =>
+        new(text, "en", sequence, DateTime.UtcNow, CaptionLineState.Active);
+
+    [Fact]
+    public void AddFinalLine_KeepsHistoryOrderedBySequence()
+    {
+        var state = new CaptionState(10);
+        state.AddFinalLine(Final(5));
+        state.AddFinalLine(Final(2));
+        state.AddFinalLine(Final(8));
+
+        Assert.Equal(new long[] { 2, 5, 8 }, state.History.Select(line => line.Sequence));
+    }
+
+    [Fact]
+    public void AddFinalLine_DuplicateSequence_ReplacesExistingLine()
+    {
+        var state = new CaptionState(10);
+        state.AddFinalLine(Final(3, "old"));
+        state.AddFinalLine(Final(3, "new"));
+
+        var line = Assert.Single(state.History);
+        Assert.Equal("new", line.Text);
+    }
+
+    [Fact]
+    public void AddFinalLine_BoundedHistory_DropsOldest()
+    {
+        var state = new CaptionState(2);
+        state.AddFinalLine(Final(1, "one"));
+        state.AddFinalLine(Final(2, "two"));
+        state.AddFinalLine(Final(3, "three"));
+
+        Assert.Equal(new long[] { 2, 3 }, state.History.Select(line => line.Sequence));
+    }
+
+    [Fact]
+    public void AddFinalLine_HistoryCapacityZero_RetainsNothing()
+    {
+        var state = new CaptionState(0);
+        state.AddFinalLine(Final(1));
+
+        Assert.Empty(state.History);
+    }
+
+    [Fact]
+    public void AddFinalLine_ActiveLine_Throws()
+    {
+        var state = new CaptionState(10);
+        Assert.Throws<ArgumentException>(() => state.AddFinalLine(Active(1)));
+    }
+
+    [Fact]
+    public void UpdateActiveLine_ReplacesActiveLine()
+    {
+        var state = new CaptionState(10);
+        state.UpdateActiveLine(Active(1, "hel"));
+        state.UpdateActiveLine(Active(1, "hello"));
+
+        Assert.Equal("hello", state.ActiveLine?.Text);
+        Assert.Empty(state.History);
+    }
+
+    [Fact]
+    public void UpdateActiveLine_FinalLine_Throws()
+    {
+        var state = new CaptionState(10);
+        Assert.Throws<ArgumentException>(() => state.UpdateActiveLine(Final(1)));
+    }
+
+    [Fact]
+    public void ClearActiveLine_RemovesActiveLine()
+    {
+        var state = new CaptionState(10);
+        state.UpdateActiveLine(Active(1));
+
+        state.ClearActiveLine();
+
+        Assert.Null(state.ActiveLine);
+    }
+
+    [Fact]
+    public void ReplaceFinalLine_AppliesTranslation_AndReturnsTrue()
+    {
+        var state = new CaptionState(10);
+        var line = Final(3, "hello");
+        state.AddFinalLine(line);
+
+        var translated = line.WithTranslation("kumusta", "tl");
+        Assert.True(state.ReplaceFinalLine(line, translated));
+
+        var result = Assert.Single(state.History);
+        Assert.Equal("kumusta", result.TranslatedText);
+        Assert.Equal("hello", result.Text);
+    }
+
+    [Fact]
+    public void ReplaceFinalLine_DifferentInstanceAtSameSequence_ReturnsFalse()
+    {
+        var state = new CaptionState(10);
+        state.AddFinalLine(Final(3, "hello"));
+
+        // A re-delivered final with the same sequence is a different instance, so a stale
+        // translation started for the earlier line must not overwrite it.
+        Assert.False(state.ReplaceFinalLine(Final(3, "hello"), Final(3, "hello").WithTranslation("x", "tl")));
+
+        var line = Assert.Single(state.History);
+        Assert.Equal("hello", line.Text);
+        Assert.Null(line.TranslatedText);
+    }
+
+    [Fact]
+    public void ReplaceFinalLine_MissingSequence_ReturnsFalse_AndChangesNothing()
+    {
+        var state = new CaptionState(10);
+        state.AddFinalLine(Final(3, "hello"));
+
+        Assert.False(state.ReplaceFinalLine(Final(7), Final(7).WithTranslation("x", "tl")));
+
+        var line = Assert.Single(state.History);
+        Assert.Equal("hello", line.Text);
+        Assert.Null(line.TranslatedText);
+    }
+
+    [Fact]
+    public void SetTranslation_EnabledSetsTarget_DisabledClearsTarget()
+    {
+        var state = new CaptionState(10);
+        state.SetTranslation(true, "tl");
+
+        Assert.True(state.TranslationEnabled);
+        Assert.Equal("tl", state.TargetLanguage);
+
+        state.SetTranslation(false, null);
+
+        Assert.False(state.TranslationEnabled);
+        Assert.Null(state.TargetLanguage);
+    }
+
+    [Fact]
+    public void SetTranslation_EnabledWithoutTarget_Throws()
+    {
+        var state = new CaptionState(10);
+        Assert.Throws<ArgumentException>(() => state.SetTranslation(true, null));
+    }
+
+    [Fact]
+    public void BeginEndSession_TogglesSessionLifecycle()
+    {
+        var state = new CaptionState(10);
+        Assert.False(state.IsSessionActive);
+
+        state.BeginSession();
+        Assert.True(state.IsSessionActive);
+        state.UpdateActiveLine(Active(1));
+
+        state.EndSession();
+        Assert.False(state.IsSessionActive);
+        Assert.Null(state.ActiveLine);
+    }
+
+    [Fact]
+    public void Reset_ClearsEverything()
+    {
+        var state = new CaptionState(10);
+        state.BeginSession();
+        state.UpdateActiveLine(Active(1));
+        state.AddFinalLine(Final(2));
+        state.SetTranslation(true, "tl");
+
+        state.Reset();
+
+        Assert.Null(state.ActiveLine);
+        Assert.Empty(state.History);
+        Assert.False(state.TranslationEnabled);
+        Assert.Null(state.TargetLanguage);
+        Assert.False(state.IsSessionActive);
+    }
+
+    [Fact]
+    public void Constructor_NegativeCapacity_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CaptionState(-1));
+    }
+}

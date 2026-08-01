@@ -1,0 +1,152 @@
+<Window x:Class="UniversalCaptions.App.Controls.ControlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Universal Live Captions"
+        Width="400"
+        Height="448"
+        MinWidth="360"
+        MinHeight="420"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="18,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="120" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Grid.ColumnSpan="2"
+                   Text="Universal Live Captions"
+                   FontSize="17"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,10" />
+
+        <TextBlock Grid.Row="1"
+                   Text="Audio source"
+                   VerticalAlignment="Center" />
+        <ComboBox x:Name="AudioSourceCombo"
+                  Grid.Row="1"
+                  Grid.Column="1"
+                  Margin="10,4" />
+
+        <TextBlock Grid.Row="2"
+                   Text="Language"
+                   VerticalAlignment="Center" />
+        <ComboBox x:Name="LanguageCombo"
+                  Grid.Row="2"
+                  Grid.Column="1"
+                  Margin="10,4" />
+
+        <TextBlock Grid.Row="3"
+                   Text="Translation"
+                   VerticalAlignment="Center" />
+        <CheckBox x:Name="TranslationToggle"
+                  Grid.Row="3"
+                  Grid.Column="1"
+                  Margin="10,4"
+                  Content="Translate to"
+                  Checked="OnTranslationToggled"
+                  Unchecked="OnTranslationToggled" />
+
+        <TextBlock Grid.Row="4"
+                   Text="Target language"
+                   VerticalAlignment="Center" />
+        <ComboBox x:Name="TargetLanguageCombo"
+                  Grid.Row="4"
+                  Grid.Column="1"
+                  Margin="10,4"
+                  IsEnabled="False"
+                  SelectionChanged="OnTargetLanguageChanged" />
+
+        <StackPanel Grid.Row="5"
+                    Grid.ColumnSpan="2"
+                    Orientation="Horizontal"
+                    Margin="0,8,0,0">
+            <TextBlock x:Name="CaptureIndicator"
+                       Text="●"
+                       FontSize="13"
+                       Foreground="#888888"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="StatusText"
+                       Margin="8,0,0,0"
+                       Text="Ready"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="6"
+                   Grid.Column="0"
+                   Text="Latency"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="LatencyText"
+                   Grid.Row="6"
+                   Grid.Column="1"
+                   Margin="10,2"
+                   Text="—"
+                   VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="7"
+                   Grid.Column="0"
+                   Text="Overlay opacity"
+                   VerticalAlignment="Center" />
+        <Slider x:Name="OpacitySlider"
+                Grid.Row="7"
+                Grid.Column="1"
+                Margin="10,4"
+                Minimum="0.2"
+                Maximum="1"
+                ValueChanged="OnOpacityChanged" />
+
+        <TextBlock Grid.Row="8"
+                   Grid.Column="0"
+                   Text="Overlay font"
+                   VerticalAlignment="Center" />
+        <Slider x:Name="FontSizeSlider"
+                Grid.Row="8"
+                Grid.Column="1"
+                Margin="10,4"
+                Minimum="10"
+                Maximum="96"
+                ValueChanged="OnFontSizeChanged" />
+
+        <TextBlock Grid.Row="9"
+                   Text="Click-through"
+                   VerticalAlignment="Center" />
+        <CheckBox x:Name="ClickThroughToggle"
+                  Grid.Row="9"
+                  Grid.Column="1"
+                  Margin="10,4"
+                  Content="Let clicks pass to other apps"
+                  Checked="OnClickThroughToggled"
+                  Unchecked="OnClickThroughToggled" />
+
+        <StackPanel Grid.Row="10"
+                    Grid.ColumnSpan="2"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom">
+            <Button x:Name="StartButton"
+                    Content="Start Captions"
+                    Padding="14,6"
+                    Margin="0,10,0,0"
+                    Click="OnStartClicked" />
+            <Button x:Name="StopButton"
+                    Content="Stop"
+                    Padding="14,6"
+                    Margin="8,0,0,0"
+                    IsEnabled="False"
+                    Click="OnStopClicked" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,18 @@
+# ADR Index
+
+Use ADRs only for consequential decisions that materially affect architecture, cost, security, operations, data ownership, or delivery speed.
+
+## Decisions
+
+| ADR | Status | Decision | Date |
+| --- | --- | --- | --- |
+| ADR-0001 | Approved | Native stack: .NET 8 + C# + WPF + NAudio | 2026-07-31 |
+| ADR-0002 | Approved | WASAPI loopback capture, no VB-CABLE, Windows 10 target | 2026-07-31 |
+| ADR-0003 | Approved | Streaming `ISpeechToTextEngine` abstraction; local Whisper as first engine | 2026-07-31 |
+| ADR-0004 | Approved | WPF always-on-top caption overlay + separate control window | 2026-07-31 |
+| ADR-0005 | Approved | Testing strategy: xUnit with fakes at hardware boundaries | 2026-07-31 |
+| ADR-0006 | Approved | `ITranslationEngine` abstraction; Argos Translate as first engine (local process) | 2026-07-31 |
+
+## Rule
+
+Add or update an ADR when the team chooses a durable technical direction or rejects a plausible alternative for a reason future maintainers need to understand.
