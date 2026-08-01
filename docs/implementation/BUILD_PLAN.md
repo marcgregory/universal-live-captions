@@ -182,7 +182,7 @@ Implement partial/final caption state, source-vs-translated caption selection, o
 
 ### Slice 5 — Overlay + Control Window
 
-**Status: In progress (2026-08-01)** — implementation + unit tests complete; manual overlay/device + real-Argos verification pending before close-out.
+**Status: In progress (2026-08-01)** — implementation + unit tests complete; **manual overlay/device verification completed 2026-08-01**; real-Argos wiring pending before close-out.
 
 #### Goal
 
@@ -202,9 +202,9 @@ Always-on-top caption overlay and minimal control window.
 4. Implement `CaptionPipeline` (wiring capture → processor → STT → `CaptionService` via `Func` factories; idempotent `Start`/`Stop`/`Dispose`; `StatusChanged`/`LatencyUpdated` events; error handling stops a running session but defers teardown during startup) + `PipelineStatus`
 5. Implement `ControlWindow` (audio source/language, translation on/off + target, status/latency, overlay sliders, click-through toggle, Start/Stop)
 6. Compose everything in `App.xaml.cs` (DI composition root; `ShutdownMode.OnMainWindowClose`)
-7. Write `UniversalCaptions.App.Tests` — `CaptionDisplayPolicyTests` (8) + `CaptionPipelineTests` (14 with fakes at the capture/STT boundaries)
-8. Verify gates (build 0 warnings, 190/190 tests, format clean, no vulnerable packages); record results in `TEST_REPORT.md`
-9. Manual verification (pending): run `dotnet run --project src/UniversalCaptions.App`, verify overlay visuals/always-on-top/click-through/resize on real system audio and record evidence; real-Argos wiring when the dev Argos venv is available
+7. Write `UniversalCaptions.App.Tests` — `CaptionDisplayPolicyTests` (8) + `CaptionPipelineTests` (20) + `AudioSourceLoaderTests` (4) + `TranslationGuardTests` (4), with fakes at the capture/STT boundaries
+8. Verify gates (build 0 warnings, 209/209 tests, format clean, no vulnerable packages); record results in `TEST_REPORT.md`
+9. Manual verification (completed 2026-08-01): ran `UniversalCaptions.App`, verified overlay visuals/always-on-top/click-through/resize on real system audio (real Whisper `ggml-base` → live overlay captions, lifecycle, error paths) and recorded evidence in `TEST_REPORT.md`; real-Argos wiring pending when the dev Argos venv is available
 10. Close-out: fresh-context review + docs (CHANGELOG, PROJECT_STATUS, TEST_REPORT, ROADMAP, BUILD_PLAN) + close-out record in `CHANGE_IMPACT_ANALYSIS.md` Entry 6
 
 #### Definition of Done
@@ -212,9 +212,9 @@ Always-on-top caption overlay and minimal control window.
 - [x] `IOverlayService` + overlay/control windows + DI composition root in `UniversalCaptions.App`
 - [x] Overlay renders `CaptionState` (active + history) with the resolved Q1 display policy
 - [x] Pipeline wiring + status/latency surfaced in the control window; UI marshals events to the dispatcher
-- [x] `UniversalCaptions.App.Tests` (22 tests) with fakes at the capture/STT boundaries; total **190/190**
+- [x] `UniversalCaptions.App.Tests` (36 tests) with fakes at the capture/STT boundaries; total **209/209**
 - [x] Build 0 warnings/0 errors; `dotnet format --verify-no-changes` clean; no vulnerable packages
-- [ ] Manual verification of the overlay + control window on real system audio (recorded in TEST_REPORT)
+- [x] Manual verification of the overlay + control window on real system audio (recorded in TEST_REPORT, 2026-08-01)
 - [ ] Real-Argos wiring verified when the dev Argos venv is available (translation stays Off by default otherwise)
 - [ ] Fresh-context review completed
 - [ ] Close-out docs + Entry 6 close-out record completed
@@ -223,9 +223,12 @@ Always-on-top caption overlay and minimal control window.
 
 - `UniversalCaptions.App` (net8.0-windows, UseWPF) is the DI composition root: `ArgosTranslationEngine` → `CaptionService` ("en", target "en", history 50) → `AudioProcessor` (16 kHz mono) → capture/STT factories (`WasapiLoopbackCaptureSource` default or by device; `WhisperSpeechToTextEngine` with `UC_STT_MODEL_PATH` env override, default `artifacts/models/ggml-base.bin`) → `CaptionPipeline` → `CaptionOverlayWindow` + `ControlWindow`.
 - `CaptionDisplayPolicyTests` (8) verify the resolved Q1 policy: active line = latest partial; committed finals newest-first; translated text replaces source only when `Completed`; source preserved when off/pending/failed.
-- `CaptionPipelineTests` (14) verify wiring against `FakeAudioCapture`/`FakeSpeechToTextEngine`/passthrough processor: audio → processor → STT flow, format conversion, partial/final flow into `CaptionService`, latency, capture/recognition/capture-factory errors, stop/dispose, and chunks-after-stop ignored.
-- Final gates green: `dotnet build UniversalCaptions.slnx` 0 warnings/0 errors, `dotnet test UniversalCaptions.slnx --no-build` **190/190**, `dotnet format --verify-no-changes` clean, `dotnet list package --vulnerable` no vulnerable packages (all 13 projects).
-- Known caveats (honest status): WPF visuals and real-device capture are **not yet manually verified** (ADR-0004); real Argos wiring runs only when the dev Argos venv is present (this machine currently has no argostranslate on system Python — translation defaults Off); these remain before Slice 5 close-out.
+- `CaptionPipelineTests` (20) verify wiring against `FakeAudioCapture`/`FakeSpeechToTextEngine`/passthrough processor: audio → processor → STT flow, format conversion, partial/final flow into `CaptionService`, latency, capture/recognition/capture-factory errors, teardown ordering (Stop returns before teardown completes; Dispose waits), fail-on-start teardown paths, stop/dispose, and chunks-after-stop ignored.
+- `AudioSourceLoaderTests` (4) + `TranslationGuardTests` (4) verify device enumeration (preferred default, failure-surfacing) and source-equals-target rejection.
+- `CaptionSnapshotTests` (5) verify the immutable active-line/history snapshot (`CaptionService.GetSnapshot`), thread-safe against concurrent mutations.
+- Final gates green: `dotnet build UniversalCaptions.slnx` 0 warnings/0 errors, `dotnet test UniversalCaptions.slnx --no-build` **209/209**, `dotnet format --verify-no-changes` clean, `dotnet list package --vulnerable` no vulnerable packages (all 13 projects).
+- Manual verification **completed 2026-08-01** (recorded in `TEST_REPORT.md`, Slice 5): real system audio → Whisper `ggml-base` → live overlay captions; always-on-top/transparency; drag/resize/click-through; stop/restart; rapid Stop→close (clean ~2 s exit); model-not-found error path; source-equals-target rejection live.
+- Known caveats (honest status): real Argos wiring still runs only when the dev Argos venv is present (this machine currently has no argostranslate on system Python — translation defaults Off); this remains the only item before Slice 5 close-out.
 
 ### Slice 6 — End-to-End
 

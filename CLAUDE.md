@@ -10,7 +10,7 @@ Chrome-Live-Caption-like live captions for any Windows application. Captures sys
 
 ## Current Sprint
 
-Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **in progress: implementation + unit tests complete (2026-08-01); manual overlay/device + real-Argos verification pending before close-out**. Slices 1–4 are complete; Slice 4 (Caption Service) closed out 2026-08-01.
+Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **in progress: implementation + unit tests complete (2026-08-01); manual overlay/device verification completed (2026-08-01); real-Argos wiring pending before close-out**. Slices 1–4 are complete; Slice 4 (Caption Service) closed out 2026-08-01.
 
 ## Current Implementation Summary
 
@@ -19,10 +19,10 @@ Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICapti
 - `UniversalCaptions.Speech`: `WhisperSpeechToTextEngine` (local Whisper.net), `StreamingTranscriptCommitter` (stability-based finals).
 - `UniversalCaptions.Translation`: `ArgosTranslationEngine` (local Argos child process, line-protocol JSON over stdin/stdout), `ArgosTranslationEngineOptions`, bundled `argos_translate_server.py`.
 - `UniversalCaptions.Captions`: `CaptionService` — partials replace the active line, finals commit to a bounded sequence-ordered history, optional background translation (failure preserves the source caption), cancellation, state events.
-- `UniversalCaptions.App`: WPF DI composition root (Slice 5) — `IOverlayService` (visibility/position/opacity/font size/click-through), `CaptionOverlayWindow` (borderless/transparent/always-on-top; renders `CaptionState`), `CaptionPipeline` (capture → processor → STT → caption service via `Func` factories; `StatusChanged`/`LatencyUpdated`), `ControlWindow` (audio source/language, translation on/off + target, status/latency, overlay sliders, Start/Stop), `App.xaml.cs` (DI registration). Q1 display policy resolved: active line = verbatim latest partial; finals = bounded history; translated text replaces source only when completed.
+- `UniversalCaptions.App`: WPF DI composition root (Slice 5) — `IOverlayService` (visibility/position/opacity/font size/click-through), `CaptionOverlayWindow` (borderless/transparent/always-on-top; renders `CaptionState`), `CaptionPipeline` (capture → processor → STT → caption service via `Func` factories; `StatusChanged`/`LatencyUpdated`), `ControlWindow` (audio source/language, translation on/off + target, status/latency, overlay sliders, Start/Stop), `AudioSourceLoader` (device enumeration), `TranslationGuard` (source-equals-target rejection), `App.xaml.cs` (DI registration). Q1 display policy resolved: active line = verbatim latest partial; finals = bounded history; translated text replaces source only when completed.
 - `UniversalCaptions.Diagnostics`: console app listing output devices and rendering a live audio meter.
 - `UniversalCaptions.Benchmarks`: STT model benchmark (`stt`) + translation benchmark (`translate`).
-- Tests (190 total, all passing): `UniversalCaptions.Audio.Tests` (66), `UniversalCaptions.Speech.Tests` (41), `UniversalCaptions.Translation.Tests` (21), `UniversalCaptions.Captions.Tests` (40), `UniversalCaptions.App.Tests` (22) — see `docs/reports/TEST_REPORT.md`.
+- Tests (209 total, all passing): `UniversalCaptions.Audio.Tests` (66), `UniversalCaptions.Speech.Tests` (41), `UniversalCaptions.Translation.Tests` (21), `UniversalCaptions.Captions.Tests` (45), `UniversalCaptions.App.Tests` (36) — see `docs/reports/TEST_REPORT.md`.
 - Docs: bootstrap governance + MVP docs + ADRs 0001–0006 in `docs/`.
 
 ## Architecture Summary
@@ -120,7 +120,7 @@ Do not mark a release Ready unless release criteria, quality gates, and blocking
 
 ## Known Gaps
 
-- Slice 5 (WPF overlay + control window) is implemented with unit tests complete (2026-08-01); **manual overlay/device verification and real-Argos wiring are pending** — Slice 5 is not yet closed out.
+- Slice 5 (WPF overlay + control window) is implemented with unit tests complete (2026-08-01); **manual overlay/device verification completed 2026-08-01 (recorded in TEST_REPORT.md); real-Argos wiring is pending** — Slice 5 is not yet closed out.
 - Slice 5 open question (change-impact Q1) is **resolved**: active caption = verbatim latest partial (`CaptionState.ActiveLine`); finals = bounded history; translated text replaces source only when completed (PRD FR-5/FR-14).
 - Argos `tl`-as-source unsupported (stanza SBD) and `ja→tl` requires a pivot via `en` (~1050 ms/call); MVP pairs use `tl` as a target only (ADR-0006).
 - Argos dev venv lives outside the repo (`MAX_PATH` limit on in-repo venv) — re-creatable, see `docs/TECH_STACK.md`; this machine has no argostranslate on system Python, so translation defaults Off.
@@ -133,4 +133,4 @@ See `docs/implementation/TECHNICAL_DEBT.md`. TD-001 resampler benchmark, TD-002 
 
 ## Next Priority
 
-Slice 5 implementation + unit tests are complete (2026-08-01); the Q1 display policy is resolved (verbatim latest partial as the active line; finals as history; translated text replaces source only when completed). Complete Slice 5 close-out: run `dotnet run --project src/UniversalCaptions.App` and record manual overlay/device verification (always-on-top, transparency, click-through, resize, real Whisper→overlay captions) in `docs/reports/TEST_REPORT.md`; verify real-Argos wiring when the dev Argos venv is available; run a fresh-context review of the App code; then finalize the Slice 5 close-out record in `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 6 and mark Slice 5 Completed. See `docs/implementation/BUILD_PLAN.md`.
+Slice 5 implementation + unit tests are complete (2026-08-01); the Q1 display policy is resolved (verbatim latest partial as the active line; finals as history; translated text replaces source only when completed); **manual overlay/device verification is complete and recorded in TEST_REPORT.md**. Complete Slice 5 close-out: verify real-Argos wiring when the dev Argos venv is available; run a fresh-context review of the App code; then finalize the Slice 5 close-out record in `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 6 and mark Slice 5 Completed. See `docs/implementation/BUILD_PLAN.md`.

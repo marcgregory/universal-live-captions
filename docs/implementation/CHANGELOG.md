@@ -17,6 +17,31 @@ Last updated: 2026-08-01
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.1 - 2026-08-01
+
+### Added
+
+- Slice 5 fix round (fresh-context review of `UniversalCaptions.App`), closing out M1–M4 + Low-7/8/9:
+  - `Controls/AudioSourceLoader.cs` — device enumeration wrapped with a preferred-default and failure-surfacing (`AudioSourceLoaderTests` 4)
+  - `Controls/TranslationGuard.cs` — source-equals-target rejection (case-insensitive) with a user-readable status message (`TranslationGuardTests` 4)
+  - `Core/Captions/CaptionSnapshot.cs` + `CaptionService.GetSnapshot` — immutable snapshot of active line + history (`CaptionSnapshotTests` 5); thread-safe reads concurrent with mutations
+  - `Pipeline/CaptionPipeline.cs` — teardown ordering (`Stop` returns before component teardown completes; `Dispose` waits), fail-on-start teardown paths, audio-processing-exception surfacing (`CaptionPipelineTests` 20)
+  - `ControlWindow.xaml.cs` / `Overlay/CaptionOverlayWindow.xaml.cs` / `App.xaml.cs` — wiring and UI updates for the above
+- **Manual overlay/device verification completed 2026-08-01** (recorded in `docs/reports/TEST_REPORT.md`): real system audio → Whisper `ggml-base` → live overlay captions; always-on-top/transparency; drag/resize/click-through; stop/restart; rapid Stop→close (clean ~2 s exit); model-not-found error path; source-equals-target rejection live.
+- GitHub repository published: `git@github.com:marcgregory/universal-live-captions.git` (branch `main`; `master` removed).
+
+### Changed
+
+- Test count from 190/190 → **209/209 passing** (66 Audio + 45 Captions + 41 Speech + 21 Translation + 36 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. Slice 5 remaining before close-out: real-Argos wiring (dev Argos venv unavailable on this machine).
+
+### Fixed
+
+- Slice 5 review findings (2026-08-01): `CaptionPipeline.Start()` not synchronized with `Stop`/`Dispose` at the reusable-class level (real race, not reachable through the current UI's button gating — overlaps deferred Low-6/TD-014; logged as M-1, deferred by decision); orphaned teardown-task overwrite acceptable (L-1); teardown exceptions swallowed by design (L-2); non-COM enumeration exceptions not caught (L-3); translation source-language decoupling pre-existing (L-4). No Critical/High findings; no Slice 5 blockers.
+
+### Removed
+
+- None
+
 ## v0.5.0 - 2026-08-01
 
 ### Added
