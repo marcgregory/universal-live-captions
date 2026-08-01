@@ -115,6 +115,60 @@ public sealed class StreamingTranscriptCommitterTests
     }
 
     [Fact]
+    public void OverlappingWindow_StripsCommittedTailFromPartial()
+    {
+        var committer = new StreamingTranscriptCommitter(stabilityWindow: 2);
+        committer.Update([Seg("Today we're going ", 0, 2)], Base);
+        committer.Update([Seg("Today we're going ", 0, 2)], Base);
+        Assert.Equal("Today we're going ", committer.CommittedText);
+
+        // The next window re-decodes the tail of the committed text (sliding-window overlap) rather
+        // than the strict committed prefix: the overlap must not be re-emitted (TD-006/007).
+        var result = committer.Update([Seg("going to discuss ", 0, 2)], Base);
+
+        Assert.Equal(string.Empty, result.FinalText);
+        Assert.Equal("to discuss ", result.PartialText);
+    }
+
+    [Fact]
+    public void OverlappingWindow_CommitsOnlyTheNonOverlappingPart()
+    {
+        var committer = new StreamingTranscriptCommitter(stabilityWindow: 2);
+        committer.Update([Seg("Today we're going ", 0, 2)], Base);
+        committer.Update([Seg("Today we're going ", 0, 2)], Base);
+        committer.Update([Seg("going to discuss ", 0, 2)], Base);
+
+        var result = committer.Update([Seg("going to discuss ", 0, 2)], Base);
+
+        Assert.Equal("to discuss ", result.FinalText);
+        Assert.Equal("Today we're going to discuss ", committer.CommittedText);
+    }
+
+    [Fact]
+    public void NoOverlap_WhenWindowDoesNotReemitCommittedTail()
+    {
+        var committer = new StreamingTranscriptCommitter(stabilityWindow: 2);
+        committer.Update([Seg("first sentence ", 0, 2)], Base);
+        committer.Update([Seg("first sentence ", 0, 2)], Base);
+
+        var result = committer.Update([Seg("second utterance ", 0, 2)], Base);
+
+        Assert.Equal("second utterance ", result.PartialText);
+    }
+
+    [Fact]
+    public void ShortCoincidentalOverlap_IsNotStripped()
+    {
+        var committer = new StreamingTranscriptCommitter(stabilityWindow: 2);
+        committer.Update([Seg("We saw the ", 0, 2)], Base);
+        committer.Update([Seg("We saw the ", 0, 2)], Base);
+
+        var result = committer.Update([Seg("the end is near ", 0, 2)], Base);
+
+        Assert.Equal("the end is near ", result.PartialText);
+    }
+
+    [Fact]
     public void EmptyWindow_ResetsStabilityUntilHypothesisReturns()
     {
         var committer = new StreamingTranscriptCommitter(stabilityWindow: 2);

@@ -17,6 +17,78 @@ Last updated: 2026-08-01
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.8 - 2026-08-01
+
+### Fixed
+
+- **Overlay caption display — chronological order + no bottom clipping (2026-08-01).** `CaptionDisplayPolicy.ToDisplayModel` was reversing the committed history (`newest first`), so the newest caption sat at the *top*; it now renders the snapshot's history in natural order — oldest at the top, newest at the bottom (the highlighted/current caption is a separate `ActiveLine`, rendered in its own overlay row below the history). The overlay's hard height caps (window `MaxHeight="420"` and `HistoryList MaxHeight="120"` in `CaptionOverlayWindow.xaml`) were removed so the auto-sized pill grows to fit every rendered line: with caps present, WPF clipped the bottom of the history list, cutting off the newest committed caption (or the current line) once content exceeded the cap — capacity-based eviction of the oldest line remains the only bound. No transforms, z-index, absolute positioning, or scroll containers were involved; the height caps were the sole clipping mechanism.
+- **Tests:** `CaptionDisplayPolicyTests` updated to the chronological contract and extended with deterministic cases — first caption alone, multiple captions in order, newest at the bottom, capacity eviction removing the oldest from the top, and partial→final append preserving order with no duplicate history entry. App tests now 50 (49 → 50), solution total **253/253 passing** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. Baseline defaults unchanged (`ggml-base`, `StabilityWindow` 2).
+
+## v0.5.7 - 2026-08-01
+
+### Changed
+
+- **Slice 6 closed out (2026-08-01).** All MVP slices (0–6) are now complete. Phases 1a (E2E latency metric + tests, 238/238), 1b (OFAT sweep + shortlist in `BENCHMARK_REPORT.md`), and 1c (App-level SAPI E2E validation in `TEST_REPORT.md` — baseline + shortlist × 3 runs each through the real App, every run publishing real translated Tagalog) are complete; the validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). A fresh-context review of the Phase 1a E2E metric code (CaptionLine translation timestamps, injectable clock, `EndToEndLatencyUpdated` partial/final samples, ControlWindow E2E row) was completed clean — no findings. Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) remains **deferred per user** as a future reassessment pass over the baseline defaults, not a prerequisite for the current release.
+
+## v0.5.6 - 2026-08-01
+
+### Changed
+
+- **App default promoted to the validated Slice 6 baseline `base / 8 s / 1 s / st2`.** The authoritative `WhisperEngineOptions.StabilityWindow` default is **3 → 2**, and the App (`App.xaml.cs` `UC_STT_STABILITY` fallback) and the benchmark (`Program.cs` `--stability` fallback) both follow it — one authoritative configuration shared by App + benchmark, so future measurements are comparable against the real application configuration. Model default **`ggml-base` unchanged** (ADR-0003); window/interval defaults unchanged (8 s / 1 s).
+- Rationale: Phase 1c App-level SAPI E2E validation (real WASAPI loopback → Whisper → Argos en→tl → WPF overlay, 3 runs per config) confirmed the OFAT shortlist — `st2` cuts first-final latency ~2 s with no full-file accuracy change, commits faster (base 16 vs 10 finals) with identical model accuracy, and keeps the conservative base model that already meets the accuracy target. Evidence in `docs/reports/TEST_REPORT.md` (Slice 6 Phase 1c) + `docs/reports/BENCHMARK_REPORT.md`.
+- **Status label:** validated baseline for the current release. Real-application validation (YouTube/Chrome, VLC, Zoom) is **deferred per user**; defaults may be revisited after Phase 2.
+
+## v0.5.5 - 2026-08-01
+
+### Added
+
+- **Slice 6 Phase 1a — end-to-end latency metric (change-impact Entry 8).** `CaptionLine` gains optional translation start/completion timestamps (`TranslationStartedAtUtc`, `TranslationCompletedAtUtc`, XML-doc'd; propagated through `WithPendingTranslation`/`WithTranslation`/`WithTranslationFailure`). `CaptionService` accepts an injectable clock (`utcNow`) and stamps the start at request dispatch and the completion **only when the result is actually applied** — stale/superseded/disabled-mid-flight results produce no timestamps and no update. `CaptionPipeline` raises a new `EndToEndLatencyUpdated` event (`EndToEndLatencySample` with `Partial`/`Final` kind) whenever a translated caption is published to subscribers: end-to-end latency = originating audio capture time (`CapturedAtUtc`) → translated caption published; translation latency = request start → published. `LatencyUpdated` (STT-final only) semantics are unchanged. The Control window shows a live "E2E latency" row (`partial: … ms · final: … ms`).
+- **Slice 6 Phase 1b — benchmark parameterization + OFAT sweep.** `src/UniversalCaptions.Benchmarks` STT mode now accepts `--window <s>`, `--interval <s>`, `--stability <n>`, `--feed <realtime|fast>`, `--sample <name-substr>` (repeatable), and `--csv <path>` (RFC-4180 quoting incl. transcripts). The streamed pass records **streamed-finals WER** (concatenated committed finals vs reference) and streamed CPU. `--feed fast` is ingest-only (a whole clip arriving faster than realtime yields a single decode pass, so streaming finals require `realtime` pacing).
+- **App benchmark overrides** (defaults unchanged): `UC_STT_WINDOW`, `UC_STT_INTERVAL`, `UC_STT_STABILITY` environment variables let the real App run a shortlisted configuration for Phase 1c validation without changing defaults.
+- **OFAT sweep results recorded** in `docs/reports/BENCHMARK_REPORT.md` (Slice 6 section): base + tiny × jfk + OSR, sweeping window {6,8,10} s, interval {0.5,1,2} s, stability {2,3,5}. Findings: `StabilityWindow` dominates first-final latency (3→2 cuts ~2.1–2.4 s; 5 commits nothing on an 11 s clip); window/interval are secondary; streamed-finals WER is a commit-rate proxy, not accuracy (tiny commits more because it decodes faster, but full-file WER still favors base 4.9% vs 16% on OSR); streaming re-decodes the growing window every interval so streamed CPU ≈ 5× a single full-file pass. **Shortlist:** base/8 s/1 s/st2 (accuracy-first), tiny/8 s/1 s/st2 (latency-first), base/8 s/1 s/st3 (current default control). No App defaults changed.
+- **Slice 6 Phase 1c — App-level SAPI E2E validation (evidence in `docs/reports/TEST_REPORT.md`).** Baseline + shortlist configs × 3 runs each through the real App (Release exe, WASAPI loopback → Whisper → Argos en→tl → overlay), driven by a UIA harness (SAPI-paced fixed English corpus; translation ON + target `tl`; the Phase 1a E2E latency row polled at 100 ms + 12 s settle). Every run published real translated Tagalog (0 misses). Results: **tiny/8/1/st2** is the latency winner end-to-end (E2E final median 16.25 s incl. Argos cold start; warm last-final 7.45 s; STT 3.61 s; 18 translated finals), **base/8/1/st2** ≈ baseline on E2E final but commits faster (16 vs 10 finals; STT 4.18 vs 6.49 s) with identical model accuracy, **base/8/1/st3** (control) is the conservative default. E2E final medians are inflated by the per-session Argos cold start (~14 s) on the first translated line; warm last-final E2E isolates steady state. **No App defaults changed** — any default change is a Must-Ask after Phase 2 (deferred per user). Raw series + per-run aggregates in `artifacts/reports/e2e/*.csv` (git-ignored).
+
+### Changed
+
+- Test count **224/224 → 238/238 passing** (66 Audio + **69** Captions + 41 Speech + 21 Translation + **41** App): new `CaptionLineTests` (6, timestamp propagation), `CaptionService` timestamp stamping tests (5: final/partial success, failure start-only, stale-result no-timestamps, disabled-mid-flight no-timestamps), and `CaptionPipeline` E2E tests (3: partial sample, final sample, no-sample for untranslated/failed). Build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean.
+
+### Fixed
+
+- Benchmark CSV writer now quotes fields containing commas (streamed/full transcripts), so columns parse correctly.
+
+### Removed
+
+- None
+
+## v0.5.4 - 2026-08-01
+
+### Changed
+
+- **Entry 7 close-out (manual verification completed 2026-08-01):** the redesigned overlay (auto-sized pill, `TL` badge, chevron, hide button) and live active-line translation were verified end-to-end through the App against real WASAPI loopback audio + the real local Argos child process (target `tl`). SAPI-paced English speech was transcribed by Whisper `ggml-base` and **live-translated into Tagalog on the in-progress overlay line while the speaker was still talking, before commit** (observed pairs incl. "world"→`Daigdig`, "This is"→`Ito ay`, "translation"→`Pagsasalin`, "test"→`pagsubok`, and the full "The quick brown fox jumps over the lazy dog. Thank you for listening to the translation test."→`Ang mabilis na brown fox ay lumukso sa ibabaw ng tamad na aso. Salamat sa inyong pakikinig sa pagsubok sa pagsasalin.`); the `TL` badge stayed visible throughout. Overlay controls verified via UIA: chevron expands the committed history (all lines `IsTranslated = True`, pill 235→109 px on collapse), close hides the overlay, ControlWindow "Show Captions" re-shows it, and speech while hidden still produced a fresh live-translated active line ("The meeting starts at nine o'clock"→`Nagsisimula ang pulong sa alas - 9.`). Full timed sample timeline + evidence in `TEST_REPORT.md` (Slice 5 refinement note). `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 7 marked Completed; `PROJECT_STATUS.md` updated.
+- Test count remains **224/224 passing** (66 Audio + 58 Captions + 41 Speech + 21 Translation + 38 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean.
+
+## v0.5.3 - 2026-08-01
+
+### Added
+
+- **Live active-line translation** (supersedes the "active line = verbatim source only" half of the Entry 6 Q1 resolution): the in-progress caption line is now translated in the target language as the speaker is still talking, so the overlay reads in the target language before the utterance commits. `CaptionService` uses a **single in-flight slot** (`MaybeStartActiveLineTranslation` → `RunActiveLineTranslationAsync` → `ApplyActiveLineTranslation`): at most one active-line translation runs at a time (the Argos backend serializes requests and is torn down on cancellation), the slot self-replenishes to translate a newer partial that arrived meanwhile, and results are stale-guarded by line-instance identity via the new `CaptionState.ReplaceActiveLine`. A result whose request started before translation was disabled is discarded, never applied; a result for a superseded partial is discarded.
+- **Chrome-style overlay redesign**: `CaptionOverlayWindow` is now an auto-sized translucent pill (`SizeToContent="WidthAndHeight"`, rounded dark chrome, white caption text) with a target-language badge (e.g. `TL` when translation is on), an expand/collapse chevron that reveals/ hides the committed history, and a close button that hides the overlay (re-shown via the control window). The font-size slider now scales history text too (inherited attached property; local template `FontSize` removed).
+- **ControlWindow "Show Captions" button** — re-shows a closed/hidden overlay; **Start Captions** also re-shows it.
+- Tests: `CaptionState.ReplaceActiveLine` (4), `CaptionService` live active-line translation (9: translate-on-partial, off-makes-no-request, failure-preserves-source, single-slot serialization + self-replenish, stale-result discard, discard-on-commit, disabled-mid-flight discard, updated event, enable-mid-session translates current partial), `CaptionDisplayPolicy` language badge (2).
+
+### Changed
+
+- Test count from 209/209 → **224/224 passing** (66 Audio + 58 Captions + 41 Speech + 21 Translation + 38 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean.
+- `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 7 added; display-policy documentation updated (active line = latest partial, live-translated when translation is on).
+
+### Fixed
+
+- Fresh-context review findings (2026-08-01): the overlay font-size slider was not scaling history text (local `FontSize` in the `ItemsControl` template overrode the inherited attached property) — removed the local value; a translation that completes after translation was disabled mid-flight is now discarded rather than applied.
+
+### Removed
+
+- None
+
 ## v0.5.2 - 2026-08-01
 
 ### Added

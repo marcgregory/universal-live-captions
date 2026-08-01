@@ -6,6 +6,7 @@ using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Capture;
 using UniversalCaptions.Core.Processing;
 using UniversalCaptions.Core.Speech;
+using UniversalCaptions.Core.Translation;
 
 namespace UniversalCaptions.App.Tests;
 
@@ -55,15 +56,18 @@ public class CaptionPipelineTests
             Received.Add(chunk);
         }
 
-        public void EmitPartial(string text, long sequence = 1)
-            => PartialTranscriptAvailable?.Invoke(
-                this, new PartialTranscript(text, DateTime.UtcNow, DateTime.UtcNow, sequence));
-
-        public void EmitFinal(string text, long sequence = 1, TimeSpan? latency = null)
+        public void EmitPartial(string text, long sequence = 1, DateTime? captured = null, DateTime? emitted = null)
         {
-            DateTime captured = DateTime.UtcNow;
-            DateTime emitted = captured + (latency ?? TimeSpan.FromMilliseconds(400));
-            FinalTranscriptAvailable?.Invoke(this, new FinalTranscript(text, captured, emitted, sequence));
+            DateTime capturedAt = captured ?? DateTime.UtcNow;
+            PartialTranscriptAvailable?.Invoke(
+                this, new PartialTranscript(text, capturedAt, emitted ?? capturedAt, sequence));
+        }
+
+        public void EmitFinal(string text, long sequence = 1, TimeSpan? latency = null, DateTime? captured = null, DateTime? emitted = null)
+        {
+            DateTime capturedAt = captured ?? DateTime.UtcNow;
+            DateTime emittedAt = emitted ?? capturedAt + (latency ?? TimeSpan.FromMilliseconds(400));
+            FinalTranscriptAvailable?.Invoke(this, new FinalTranscript(text, capturedAt, emittedAt, sequence));
         }
 
         public void Fail(SpeechRecognitionError error) => RecognitionFailed?.Invoke(this, error);
@@ -143,6 +147,42 @@ public class CaptionPipelineTests
         public void Process(AudioChunk chunk) { }
     }
 #pragma warning restore CS0067
+
+    /// <summary>A deterministic clock the test advances, so end-to-end latency samples are exact.</summary>
+    private sealed class MutableClock
+    {
+        public DateTime Now { get; set; } = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public DateTime UtcNow() => Now;
+    }
+
+    /// <summary>A translation engine completed manually by the test, so end-to-end timing is deterministic.</summary>
+    private sealed class GatedTranslationEngine : ITranslationEngine
+    {
+        private readonly List<TaskCompletionSource<TranslationResult>> _completions = [];
+
+        public int RequestCount => _completions.Count;
+
+        public Task<TranslationResult> TranslateAsync(
+            string text, string? sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default)
+        {
+            var completion = new TaskCompletionSource<TranslationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _completions.Add(completion);
+            return completion.Task;
+        }
+
+        public void CompleteLatest(string translatedText, string targetLanguage) =>
+            _completions[^1].TrySetResult(new TranslationResult(translatedText, "en", targetLanguage, 0, DateTime.UtcNow, DateTime.UtcNow));
+    }
+
+    /// <summary>A translation engine that fails every request, like a missing Argos backend.</summary>
+    private sealed class FailingTranslationEngine : ITranslationEngine
+    {
+        public Task<TranslationResult> TranslateAsync(
+            string text, string? sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default) =>
+            Task.FromException<TranslationResult>(
+                new TranslationException(TranslationErrorKind.EngineUnavailable, "python missing"));
+    }
 
     private sealed class Harness : IDisposable
     {
@@ -495,5 +535,91 @@ public class CaptionPipelineTests
         h.Capture.Emit(Chunk(h.Capture.Format, 5));
 
         Assert.Empty(h.SpeechToText.Received);
+    }
+
+    [Fact]
+    public async Task Translated_partial_raises_partial_end_to_end_latency_sample()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var stt = new FakeSpeechToTextEngine();
+        var captions = new CaptionService(new CaptionServiceOptions("en", "tl", 20), engine, clock.UtcNow);
+        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
+        var samples = new List<EndToEndLatencySample>();
+        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
+
+        pipeline.Start(null, null);
+        captions.SetTranslationEnabled(true, "tl");
+
+        DateTime captured = clock.Now;
+        stt.EmitPartial("hel", 1, captured, captured);
+
+        clock.Now = clock.Now.AddMilliseconds(500);
+        engine.CompleteLatest("kumusta", "tl");
+        await captions.FlushAsync();
+
+        var sample = Assert.Single(samples);
+        Assert.Equal(EndToEndLatencyKind.Partial, sample.Kind);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), sample.EndToEndLatency);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), sample.TranslationLatency);
+    }
+
+    [Fact]
+    public async Task Translated_final_raises_final_end_to_end_latency_sample()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var stt = new FakeSpeechToTextEngine();
+        var captions = new CaptionService(new CaptionServiceOptions("en", "tl", 20), engine, clock.UtcNow);
+        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
+        var samples = new List<EndToEndLatencySample>();
+        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
+
+        pipeline.Start(null, null);
+        captions.SetTranslationEnabled(true, "tl");
+
+        DateTime captured = clock.Now;
+        stt.EmitFinal("hello world", 1, captured: captured, emitted: captured.AddMilliseconds(400));
+
+        clock.Now = clock.Now.AddSeconds(1);
+        engine.CompleteLatest("magandang mundo", "tl");
+        await captions.FlushAsync();
+
+        var sample = Assert.Single(samples);
+        Assert.Equal(EndToEndLatencyKind.Final, sample.Kind);
+        Assert.Equal(TimeSpan.FromSeconds(1), sample.EndToEndLatency);
+        Assert.Equal(TimeSpan.FromSeconds(1), sample.TranslationLatency);
+    }
+
+    [Fact]
+    public async Task Untranslated_or_failed_lines_do_not_raise_end_to_end_samples()
+    {
+        var stt = new FakeSpeechToTextEngine();
+        var captions = new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20));
+        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
+        var samples = new List<EndToEndLatencySample>();
+        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
+
+        pipeline.Start(null, null);
+        stt.EmitPartial("hello", 1);
+        stt.EmitFinal("hello world", 2);
+        await captions.FlushAsync();
+
+        Assert.Empty(samples);
+
+        var failingCaptions = new CaptionService(
+            new CaptionServiceOptions("en", "tl", 20), new FailingTranslationEngine());
+        var failingStt = new FakeSpeechToTextEngine();
+        using var failingPipeline = new CaptionPipeline(
+            _ => new FakeAudioCapture(), new PassthroughProcessor(), _ => failingStt, failingCaptions);
+        var failingSamples = new List<EndToEndLatencySample>();
+        failingPipeline.EndToEndLatencyUpdated += (_, s) => failingSamples.Add(s);
+
+        failingPipeline.Start(null, null);
+        failingCaptions.SetTranslationEnabled(true, "tl");
+        failingStt.EmitFinal("hello world", 3);
+        await failingCaptions.FlushAsync();
+
+        Assert.Empty(failingSamples);
     }
 }

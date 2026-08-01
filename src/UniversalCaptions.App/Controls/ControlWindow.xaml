@@ -3,12 +3,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Universal Live Captions"
         Width="400"
-        Height="448"
+        Height="490"
         MinWidth="360"
-        MinHeight="420"
-        WindowStartupLocation="CenterScreen">
+        MinHeight="460"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI">
     <Grid Margin="18,14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -88,7 +91,7 @@
 
         <TextBlock Grid.Row="6"
                    Grid.Column="0"
-                   Text="Latency"
+                   Text="STT latency"
                    VerticalAlignment="Center" />
         <TextBlock x:Name="LatencyText"
                    Grid.Row="6"
@@ -99,52 +102,70 @@
 
         <TextBlock Grid.Row="7"
                    Grid.Column="0"
+                   Text="E2E latency"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="EndToEndLatencyText"
+                   Grid.Row="7"
+                   Grid.Column="1"
+                   Margin="10,2"
+                   Text="—"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="8"
+                   Grid.Column="0"
                    Text="Overlay opacity"
                    VerticalAlignment="Center" />
         <Slider x:Name="OpacitySlider"
-                Grid.Row="7"
+                Grid.Row="8"
                 Grid.Column="1"
                 Margin="10,4"
                 Minimum="0.2"
                 Maximum="1"
                 ValueChanged="OnOpacityChanged" />
 
-        <TextBlock Grid.Row="8"
+        <TextBlock Grid.Row="9"
                    Grid.Column="0"
                    Text="Overlay font"
                    VerticalAlignment="Center" />
         <Slider x:Name="FontSizeSlider"
-                Grid.Row="8"
+                Grid.Row="9"
                 Grid.Column="1"
                 Margin="10,4"
                 Minimum="10"
                 Maximum="96"
                 ValueChanged="OnFontSizeChanged" />
 
-        <TextBlock Grid.Row="9"
+        <TextBlock Grid.Row="10"
                    Text="Click-through"
                    VerticalAlignment="Center" />
         <CheckBox x:Name="ClickThroughToggle"
-                  Grid.Row="9"
+                  Grid.Row="10"
                   Grid.Column="1"
                   Margin="10,4"
                   Content="Let clicks pass to other apps"
                   Checked="OnClickThroughToggled"
                   Unchecked="OnClickThroughToggled" />
 
-        <StackPanel Grid.Row="10"
+        <StackPanel Grid.Row="11"
                     Grid.ColumnSpan="2"
+                    Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom">
+            <Button x:Name="ShowCaptionsButton"
+                    Content="Show Captions"
+                    Padding="14,6"
+                    Margin="0,10,8,0"
+                    Click="OnShowCaptionsClicked" />
             <Button x:Name="StartButton"
                     Content="Start Captions"
                     Padding="14,6"
-                    Margin="0,10,0,0"
+                    Margin="0,10,8,0"
                     Click="OnStartClicked" />
             <Button x:Name="StopButton"
                     Content="Stop"
                     Padding="14,6"
-                    Margin="8,0,0,0"
+                    Margin="0,10,0,0"
                     IsEnabled="False"
                     Click="OnStopClicked" />
         </StackPanel>

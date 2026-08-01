@@ -32,8 +32,10 @@ public sealed class WhisperEngineOptions
     /// <summary>
     /// How many consecutive decode passes must confirm identical text before it is committed as a
     /// final transcript. Must be at least 2 (smaller values would force every hypothesis to final).
+    /// Default is 2 — the validated Slice 6 baseline (OFAT sweep + App-level SAPI E2E, Phase 1c):
+    /// cuts first-final latency ~2 s vs the previous 3 with no full-file accuracy change.
     /// </summary>
-    public int StabilityWindow { get; init; } = 3;
+    public int StabilityWindow { get; init; } = 2;
 
     /// <summary>
     /// When set, whisper.cpp is asked to cap each segment to this many characters, producing finer

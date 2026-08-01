@@ -77,6 +77,25 @@ public sealed class CaptionState
     public void UpdateActiveLine(CaptionLine line)
     {
         RequireState(line, CaptionLineState.Active, nameof(line));
+        
+        // Carry over any in-progress translation so the UI doesn't hide the active line
+        if (ActiveLine != null && ActiveLine.Sequence == line.Sequence && !string.IsNullOrWhiteSpace(ActiveLine.TranslatedText))
+        {
+            line = new CaptionLine(
+                line.Text,
+                line.SourceLanguage,
+                line.Sequence,
+                line.CapturedAtUtc,
+                line.State,
+                line.CommittedAtUtc,
+                ActiveLine.TargetLanguage,
+                ActiveLine.TranslatedText,
+                line.TranslationStatus,
+                line.TranslationErrorMessage,
+                ActiveLine.TranslationStartedAtUtc,
+                ActiveLine.TranslationCompletedAtUtc);
+        }
+        
         ActiveLine = line;
     }
 
@@ -130,6 +149,32 @@ public sealed class CaptionState
         }
 
         _history[index] = updated;
+        return true;
+    }
+
+    /// <summary>
+    /// Replaces the active line that is exactly <paramref name="original"/> with
+    /// <paramref name="updated"/> — used to apply a translation result or failure to the in-progress
+    /// line. The match is on instance identity, so a stale translation that was started for an older
+    /// partial can never overwrite a newer partial that replaced it in the meantime. Returns false
+    /// when the active line is no longer <paramref name="original"/> (for example, a newer partial
+    /// arrived or the line was committed), in which case nothing is changed.
+    /// </summary>
+    /// <param name="original">The exact active line the translation was started for.</param>
+    /// <param name="updated">The updated line. Must be in the <see cref="CaptionLineState.Active"/> state.</param>
+    /// <returns>True when the active line was replaced.</returns>
+    /// <exception cref="ArgumentException">Either line is not in the <see cref="CaptionLineState.Active"/> state.</exception>
+    public bool ReplaceActiveLine(CaptionLine original, CaptionLine updated)
+    {
+        RequireState(original, CaptionLineState.Active, nameof(original));
+        RequireState(updated, CaptionLineState.Active, nameof(updated));
+
+        if (!ReferenceEquals(ActiveLine, original))
+        {
+            return false;
+        }
+
+        ActiveLine = updated;
         return true;
     }
 

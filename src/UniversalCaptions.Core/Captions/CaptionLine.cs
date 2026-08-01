@@ -56,6 +56,8 @@ public sealed class CaptionLine
     /// <param name="translatedText">The translated text, when available.</param>
     /// <param name="translationStatus">The translation state of the line.</param>
     /// <param name="translationErrorMessage">A message describing a translation failure, when failed.</param>
+    /// <param name="translationStartedAtUtc">The time the translation request started (UTC), when translation was attempted.</param>
+    /// <param name="translationCompletedAtUtc">The time the translated line was applied/published (UTC), when translation completed.</param>
     public CaptionLine(
         string text,
         string sourceLanguage,
@@ -66,7 +68,9 @@ public sealed class CaptionLine
         string? targetLanguage = null,
         string? translatedText = null,
         CaptionTranslationStatus translationStatus = CaptionTranslationStatus.NotRequested,
-        string? translationErrorMessage = null)
+        string? translationErrorMessage = null,
+        DateTime? translationStartedAtUtc = null,
+        DateTime? translationCompletedAtUtc = null)
     {
         Text = text;
         SourceLanguage = sourceLanguage;
@@ -78,6 +82,8 @@ public sealed class CaptionLine
         TranslatedText = translatedText;
         TranslationStatus = translationStatus;
         TranslationErrorMessage = translationErrorMessage;
+        TranslationStartedAtUtc = translationStartedAtUtc;
+        TranslationCompletedAtUtc = translationCompletedAtUtc;
     }
 
     /// <summary>The source-language caption text.</summary>
@@ -98,6 +104,19 @@ public sealed class CaptionLine
     /// <summary>Time the line was committed (UTC); null while the line is active.</summary>
     public DateTime? CommittedAtUtc { get; }
 
+    /// <summary>
+    /// Time the translation request for this line started (UTC); null until a translation is attempted.
+    /// Set on both completed and failed lines; used for translation-latency measurement.
+    /// </summary>
+    public DateTime? TranslationStartedAtUtc { get; }
+
+    /// <summary>
+    /// Time the translated line was applied and published to subscribers (UTC); set only when a
+    /// translation completed successfully. Together with <see cref="CapturedAtUtc"/> it measures the
+    /// end-to-end latency from audio capture to the translated caption being available to the UI.
+    /// </summary>
+    public DateTime? TranslationCompletedAtUtc { get; }
+
     /// <summary>Whether the line is active (in-progress) or final (committed).</summary>
     public CaptionLineState State { get; }
 
@@ -112,26 +131,32 @@ public sealed class CaptionLine
 
     /// <summary>
     /// Returns a copy of this line with a completed translation applied. The source text is
-    /// preserved.
+    /// preserved. When <paramref name="translationCompletedAtUtc"/> is set, the line is published to
+    /// subscribers with it so end-to-end latency (audio → translated caption) can be measured.
     /// </summary>
-    public CaptionLine WithTranslation(string translatedText, string targetLanguage) => new(
+    public CaptionLine WithTranslation(
+        string translatedText,
+        string targetLanguage,
+        DateTime? translationStartedAtUtc = null,
+        DateTime? translationCompletedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
-        targetLanguage, translatedText, CaptionTranslationStatus.Completed, null);
+        targetLanguage, translatedText, CaptionTranslationStatus.Completed, null,
+        translationStartedAtUtc, translationCompletedAtUtc);
 
     /// <summary>
     /// Returns a copy of this line marked as pending translation. The source text is preserved.
     /// </summary>
-    public CaptionLine WithPendingTranslation(string targetLanguage) => new(
+    public CaptionLine WithPendingTranslation(string targetLanguage, DateTime? translationStartedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
-        targetLanguage, null, CaptionTranslationStatus.Pending, null);
+        targetLanguage, null, CaptionTranslationStatus.Pending, null, translationStartedAtUtc, null);
 
     /// <summary>
     /// Returns a copy of this line marked as a translation failure. The source text is preserved.
     /// </summary>
     /// <param name="errorMessage">A message describing why translation failed.</param>
-    public CaptionLine WithTranslationFailure(string errorMessage) => new(
+    public CaptionLine WithTranslationFailure(string errorMessage, DateTime? translationStartedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
-        TargetLanguage, null, CaptionTranslationStatus.Failed, errorMessage);
+        TargetLanguage, null, CaptionTranslationStatus.Failed, errorMessage, translationStartedAtUtc, null);
 
     /// <inheritdoc />
     public override string ToString() => $"{State}[{Sequence}] {Text}";

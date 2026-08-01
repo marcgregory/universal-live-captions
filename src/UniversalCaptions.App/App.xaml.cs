@@ -15,8 +15,10 @@ using UniversalCaptions.Core.Speech;
 using UniversalCaptions.Core.Translation;
 using UniversalCaptions.Speech;
 using UniversalCaptions.Translation;
+using UniversalCaptions.Translation.Argos;
 
 namespace UniversalCaptions.App;
+#pragma warning disable CA1416
 
 /// <summary>
 /// The application bootstrap and DI composition root (TD-003): constructs the real pipeline once
@@ -55,7 +57,26 @@ public partial class App : Application
 
     private static void RegisterServices(IServiceCollection services)
     {
-        services.AddSingleton<ITranslationEngine>(_ => new ArgosTranslationEngine());
+        var argosOptions = new ArgosTranslationEngineOptions();
+        string? envPython = Environment.GetEnvironmentVariable("UC_ARGOS_PYTHON");
+        if (!string.IsNullOrWhiteSpace(envPython))
+        {
+            argosOptions.PythonExecutablePath = envPython.Trim();
+        }
+        else
+        {
+            var tempPath = Environment.GetEnvironmentVariable("TEMP");
+            if (!string.IsNullOrWhiteSpace(tempPath))
+            {
+                var autoPython = Path.Combine(tempPath, "argosv", "Scripts", "python.exe");
+                if (File.Exists(autoPython))
+                {
+                    argosOptions.PythonExecutablePath = autoPython;
+                }
+            }
+        }
+
+        services.AddSingleton<ITranslationEngine>(_ => new ArgosTranslationEngine(argosOptions));
 
         var captionOptions = new CaptionServiceOptions(sourceLanguage: "en", targetLanguage: "en", historyCapacity: 50);
         services.AddSingleton(captionOptions);
@@ -77,6 +98,16 @@ public partial class App : Application
             {
                 ModelPath = ResolveModelPath(),
                 Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim().ToLowerInvariant(),
+                WindowDuration = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_WINDOW", 8)),
+                // 0.5 s interval: decodes 2× per second so partials appear as the speaker talks
+                // without triggering epoch boundary transitions too frequently (was 0.3 s, which
+                // caused rapid duplicate caption replay due to Whisper sliding-window resets).
+                DecodeInterval = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_INTERVAL", 0.5)),
+                // 0.5 s minimum before first decode: Whisper can produce reliable output from
+                // ~0.5 s of audio. The previous 2 s default guaranteed a 2 s silent wait before
+                // the first caption ever appeared.
+                MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_MIN_AUDIO", 0.5)),
+                StabilityWindow = ResolveIntEnv("UC_STT_STABILITY", 2),
             };
             return new WhisperSpeechToTextEngine(options);
         });
@@ -100,5 +131,25 @@ public partial class App : Application
         }
 
         return Path.Combine("artifacts", "models", "ggml-base.bin");
+    }
+
+    /// <summary>
+    /// Reads an optional integer benchmark override (for example <c>UC_STT_STABILITY</c>); returns
+    /// <paramref name="fallback"/> when unset or unparseable. Overrides never change the built-in
+    /// default — the fallback here is the validated Slice 6 baseline (8 s window / 1 s interval /
+    /// StabilityWindow 2), the single authoritative configuration shared with the benchmark.
+    /// </summary>
+    private static int ResolveIntEnv(string name, int fallback)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+        return int.TryParse(raw, out int value) ? value : fallback;
+    }
+
+    private static double ResolveDoubleEnv(string name, double fallback)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+        return double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
+            ? value
+            : fallback;
     }
 }

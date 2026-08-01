@@ -233,12 +233,18 @@ Always-on-top caption overlay and minimal control window.
 
 ### Slice 6 — End-to-End
 
+#### Status
+
+**Complete (close-out 2026-08-01)** — change-impact Entry 8. Phased: Phase 1a E2E latency metric + tests → Phase 1b OFAT baseline sweep (window/decode-interval/StabilityWindow) → Phase 1c App-level SAPI E2E runs → shortlist → Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom). **Phase 1a complete (2026-08-01): E2E latency metric + tests (238/238). Phase 1b complete (2026-08-01): OFAT sweep run; shortlist = base 8 s/1 s/st2, tiny 8 s/1 s/st2, base 8 s/1 s/st3 control (see `docs/reports/BENCHMARK_REPORT.md`). Phase 1c complete (2026-08-01): App-level SAPI E2E validation at baseline + shortlist × 3 runs each through the real App (loopback → Whisper → Argos en→tl → overlay) — every run published real translated Tagalog; latency winner tiny/8/1/st2 (E2E final median 16.25 s incl. Argos cold start; warm last-final 7.45 s; STT 3.61 s), accuracy-preserving base/8/1/st2 (faster commits, same accuracy), control base/8/1/st3 (evidence in `docs/reports/TEST_REPORT.md`). The validated baseline base/8/1/st2 was promoted to the App default: `StabilityWindow` 3→2 (WhisperEngineOptions + App + benchmark, one authoritative config); model default `ggml-base` unchanged. Fresh-context review of the Phase 1a E2E metric code completed clean. Phase 2 real-app validation is deferred per user — a future reassessment pass over the baseline defaults, not a prerequisite for Slice 6 completion.**
+
 #### Goal
 
-Verify the full pipeline on real audio and measure latency/accuracy.
+Verify the full pipeline on real audio and measure latency/accuracy. Baseline the latency knobs (window size, decode interval, `StabilityWindow`) before tuning. Latency is the primary metric; accuracy/stability are hard constraints.
 
 #### Scope
 
-- YouTube/Chrome verification
-- VLC or Zoom verification
-- Latency measurement; Whisper model benchmark and Argos pair benchmark; record findings and set default model/pair
+- **Phase 1a — E2E latency metric.** Add `EndToEndLatencyUpdated` (capture→STT→translation→translated caption available to the UI) as a separate metric from `LatencyUpdated` (unchanged: STT-final latency). Carry the originating audio timestamp through `CaptionLine` (`CapturedAtUtc` already present; add translation start/completion timestamps). Distinguish **E2E partial** (audio → translated active line) and **E2E final** (audio → translated committed line). Testable with a fake clock + deterministic fakes. Full gates.
+- **Phase 1b — OFAT baseline sweep.** Parameterize the STT benchmark over `WindowDuration`, `DecodeInterval`, `StabilityWindow`; 3 values per knob centered on defaults (window {6,8,10}s, interval {0.5,1,2}s, stability {2,3,5}); models {base, tiny}; samples {jfk, OSR}. Metrics per run: first-partial latency, stable/final latency, streamed-finals WER, decode factor, CPU/RAM. Emit a table + CSV. Then shortlist 2–3 configs.
+- **Phase 1c — App-level E2E runs.** Repeatable SAPI scripted corpus through the real App (loopback → Whisper → Argos en→tl → overlay): record E2E partial/final latency + translation latency at baseline + shortlisted configs, plus translation correctness (char-similarity).
+- **Phase 2 — Real-application validation (manual).** YouTube/Chrome, VLC, Zoom (continuous + conversational turn-taking). Validate the selected config survives real-world audio; do not tune per app.
+- Latency measurement; Whisper model + Argos pair benchmark; record findings and propose default model/pair to the user (Must-Ask).

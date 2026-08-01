@@ -14,6 +14,162 @@ Last updated: 2026-08-01
 
 ---
 
+## Entry 8 — Slice 6: End-to-End Latency/Accuracy Baseline (E2E metric + OFAT sweep)
+
+Date: 2026-08-01
+
+### 1. Change Summary
+
+```text
+Change Title: Slice 6 — measure end-to-end caption latency/accuracy on real audio and baseline the latency knobs (window size, decode interval, StabilityWindow)
+Change Type:        Feature / Measurement infrastructure
+Requirement Source: BUILD_PLAN.md Slice 6; PRD NFR-2 (perceived latency < 1 s, "must be measured, not assumed"); BENCHMARK_REPORT.md open follow-up #1; user direction 2026-08-01 (baseline-first: add the E2E metric before any parameter sweep; OFAT 3-values-per-knob baseline, then shortlist, then real-app validation)
+Priority:           High
+Estimated Effort:   Medium-Large (E2E metric + tests, then sweep harness + real runs)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Core.Captions` — `CaptionLine` gains `TranslationStartedAtUtc` / `TranslationCompletedAtUtc` (additive); the originating `CapturedAtUtc` already flows onto every line.
+- `UniversalCaptions.Captions` — `CaptionService` stamps translation start/completion timestamps in both translation paths (active-line live translation and committed-line translation); an injectable clock (`Func<DateTime>? utcNow`) makes the metric deterministic in tests.
+- `UniversalCaptions.App` — `CaptionPipeline` raises a new `EndToEndLatencyUpdated` event (separate from the unchanged `LatencyUpdated`, which remains STT-final latency) with partial/final samples; `ControlWindow` surfaces it.
+- `UniversalCaptions.Benchmarks` — STT command parameterized (`--window`, `--interval`, `--stability`, `--model`, feed mode), streamed-finals WER, CPU/RAM during streaming, CSV/table output for an OFAT matrix.
+- Tests — `CaptionServiceTests`, `CaptionPipelineTests`, `CaptionStateTests` (timestamp propagation).
+
+### 3. Affected APIs
+
+- New: `CaptionLine.TranslationStartedAtUtc`, `CaptionLine.TranslationCompletedAtUtc` (optional ctor params + `With*` overloads); `CaptionService` optional `utcNow` ctor param; `CaptionPipeline.EndToEndLatencyUpdated`; `EndToEndLatencySample`.
+- **API changes required:** Additive (optional params/new members — no existing call sites broken). `LatencyUpdated` semantics unchanged (STT-final latency).
+
+### 4. Database Changes
+
+Not applicable — no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — no: reuses the existing WASAPI loopback source; no microphone capture; no new audio handling.
+- [x] Audio/transcript handling change — no: the metric adds in-memory timestamps only; no persistence, no new external communication.
+- [ ] New external communication — none at runtime.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only measurement; benchmark uses local Whisper + local Argos).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `CaptionLine` timestamp propagation (With* methods preserve/carry timestamps); `CaptionService` stamping (normal STT→translation→publication sets start/completion; cancellation and stale results produce no timestamps/no event; translation disabled → none; a newer partial replacing an older translation stamps only the applied line; originating timestamp propagation gives E2E = completed − captured); `CaptionPipeline` `EndToEndLatencyUpdated` (partial sample for an active translated line, final sample for a committed translated line, no sample for untranslated/failed/stale, translation-latency component). Uses a fake clock + deterministic fakes.
+- [x] Integration tests — none automated; real Whisper → Argos → overlay E2E remains manual (recorded).
+- [ ] Manual/device verification — SAPI E2E App runs at baseline + shortlisted configs; Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) is a manual acceptance pass (requires the user to play content). Recorded when done (see TEST_REPORT).
+
+### 7. Documentation Updates Required
+
+- [x] `docs/reports/BENCHMARK_REPORT.md` — new Slice 6 section: methodology, OFAT baseline matrix, streamed-finals WER, CPU/RAM, shortlist.
+- [x] `docs/reports/TEST_REPORT.md` — E2E metric unit tests + manual SAPI/real-app runs.
+- [x] `docs/implementation/BUILD_PLAN.md`, `PROJECT_STATUS.md`, `CHANGELOG.md`, `CLAUDE.md` — Slice 6 In Progress + phased plan.
+- [x] ADR required: No new ADR during the baseline phase; changing the default model/pair from benchmark results is a Level-4 Must-Ask (AGENT_DECISION_POLICY). **Answered 2026-08-01**: the user approved promoting the validated `base/8/1/st2` baseline to the App default (model unchanged, so ADR-0003 stands; no new ADR).
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: none.
+- [ ] Blocking: **resolved 2026-08-01** — the validated baseline `base/8/1/st2` was promoted to the App default (user-approved Must-Ask); Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) remains deferred per user and may revisit the defaults.
+- [ ] Risks identified: (1) `CapturedAtUtc` for partials/finals is an *estimated* audio boundary (window end / committed-until) from `StreamingTranscriptCommitter`, not the exact speech frame — accepted and documented as the latency definition; (2) E2E is defined at caption *publication* (the caption event the overlay renders on) and excludes dispatcher render scheduling — documented; (3) the active-line single-slot design means superseded/stale translations are discarded by design, so E2E samples measure only applied (non-stale) translations; (4) OFAT grid compute time — mitigated with a 3-values-per-knob grid (~16–28 runs); (5) `streamFactor` is meaningless as throughput (TD-009) — the matrix reports decode factor + CPU as the headroom signal.
+- [x] Mitigation plan: deterministic fake-clock/engine tests for the metric; OFAT + shortlist methodology; methodology recorded before results so numbers are reproducible; full gates after every code change.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | E2E latency = originating audio timestamp (`CaptionLine.CapturedAtUtc`) → translated caption publication (`CaptionLineUpdated` for a translated line). | Metric would measure the wrong span and make configs incomparable. | User direction ("time from the audio frame containing the speech to the moment the translated caption is published to the UI"); existing `CapturedAtUtc`. |
+| 2 | OFAT grid centered on current defaults: window {6, 8, 10} s, decode interval {0.5, 1, 2} s, StabilityWindow {2, 3, 5}; models {base (default), tiny}; samples {jfk (clean/canonical), OSR (conversational/pseudo-reference)}. | Baseline would not span the operating range of each knob. | User direction (3 values per parameter, centered on the default); existing harness references. |
+| 3 | Streamed-finals WER uses the full-file canonical/pseudo references already in the harness. | Accuracy numbers would not be apples-to-apples. | Existing `WER` computation (Program.cs:330–360). |
+| 4 | "Same scripted speech corpus for every run": deterministic WAV samples for the engine sweep (WER-capable); the repeatable SAPI scripted corpus for App-level E2E runs. | Runs would not be reproducible. | User direction; Entry 7 SAPI technique. |
+| 5 | Translation accuracy = Argos char-similarity (existing benchmark metric), reported per shortlisted config in the E2E App runs. | Translation quality would be unmeasured in the sweep. | BENCHMARK_REPORT.md Slice 3 quality metric. |
+| 6 | Latency is the primary optimization metric; accuracy/stability are hard constraints (a more accurate caption arriving seconds late is not better). | Wrong configuration might be chosen. | User direction 2026-08-01. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) requires the user to play content on the desktop. | User | Deferred — scheduled after the baseline shortlist. |
+| 2 | Changing the default model/pair from the baseline results is a Must-Ask. | User | **Answered 2026-08-01** — user approved promoting the validated baseline **`base/8/1/st2`** to the App default (model `ggml-base` kept; `StabilityWindow` 3→2, one authoritative config shared with the benchmark), labeled "validated baseline for the current release" with defaults revisited after Phase 2. No new ADR (no model/pair change). |
+
+**Status: Completed (close-out 2026-08-01).** Phase 1a (E2E latency metric + tests, 238/238), Phase 1b (OFAT sweep + shortlist in `BENCHMARK_REPORT.md`), and Phase 1c (App-level SAPI E2E validation in `TEST_REPORT.md` — baseline + shortlist × 3 runs each through the real App, every run publishing real translated Tagalog) are complete. The validated Slice 6 baseline **`base/8/1/st2` was promoted to the App default** (`StabilityWindow` 3→2 via `WhisperEngineOptions` + `App.xaml.cs` + benchmark `Program.cs`; model default `ggml-base` unchanged). Phase 2 (real-app validation) remains deferred per user; defaults may be revisited after it.
+
+---
+
+## Entry 7 — Live Active-Line Translation + Chrome-Style Overlay Redesign
+
+Date: 2026-08-01
+
+### 1. Change Summary
+
+```text
+Change Title: Live-translate the in-progress caption line; redesign the overlay as a Chrome-style pill
+Change Type:        Feature / UI refinement
+Requirement Source: User request ("translated agad bilang text"; Chrome-style auto-sized overlay with white text, chevron, close); supersedes the "active line = verbatim latest partial only" half of the Entry 6 Q1 resolution
+Priority:           High
+Estimated Effort:   Medium
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Core` — `CaptionState.ReplaceActiveLine(original, updated)` (instance-identity-guarded replacement of the active line).
+- `UniversalCaptions.Captions` — `CaptionService`: live translation of the active line via a single in-flight slot (`MaybeStartActiveLineTranslation`, `RunActiveLineTranslationAsync`, `ApplyActiveLineTranslation`); `ProcessPartial` kicks it; the slot self-replenishes when a newer partial arrived; results are discarded when translation is disabled mid-flight or superseded by a newer partial; active-line tasks join `_inFlight` so `FlushAsync`/teardown drain them.
+- `UniversalCaptions.App` — `CaptionDisplayModel` (+`TranslationEnabled`/`TargetLanguage`/`LanguageBadge`); `CaptionOverlayWindow` redesigned (auto-sized `SizeToContent`, translucent pill, white text, language badge, expand/collapse chevron, close button that hides); `ControlWindow` adds a "Show Captions" button and Start re-shows the overlay.
+- Tests — `CaptionStateTests`, `CaptionServiceTests`, `CaptionDisplayPolicyTests` (14 new tests; total 224).
+
+### 3. Affected APIs
+
+- New: `CaptionState.ReplaceActiveLine`; `CaptionDisplayModel` gains `TranslationEnabled`/`TargetLanguage`/`LanguageBadge`.
+- **API changes required:** Additive (new Core method; record extended with optional params — no existing call sites broken).
+
+### 4. Database Changes
+
+Not applicable — no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — no: reuses the existing WASAPI loopback source; no microphone capture.
+- [x] Audio/transcript handling change — no: text for live translation is sent to the same local Argos process already used for committed lines; nothing leaves the machine; no persistence.
+- [ ] New external communication — none at runtime.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; existing translation path; the close button only hides the overlay — capture/translation are unaffected).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `CaptionState.ReplaceActiveLine` (apply, instance-mismatch, after-clear, state validation); `CaptionService` live translation (translate-on-partial, off-makes-no-request, failure-preserves-source, single-slot serialization + self-replenish, stale-result discard, discard-on-commit, disabled-mid-flight discard, event raised, enable-mid-session translates current partial); `CaptionDisplayPolicy` language badge (enabled/disabled).
+- [x] Integration tests — none automated; real Whisper → Argos → overlay wiring remains manual.
+- [x] Manual/device verification — completed 2026-08-01 with real system audio + real Argos (en→tl) through the App: live active-line translation (English partial → Tagalog in the in-progress line before commit), `TL` badge, chevron expand/collapse of the committed history, close hides overlay, "Show Captions" re-shows, pipeline keeps translating while hidden. Recorded with a timed sample timeline in `TEST_REPORT.md`.
+
+### 7. Documentation Updates Required
+
+- [x] `CHANGELOG.md`, `PROJECT_STATUS.md`, `TEST_REPORT.md`, `CLAUDE.md` — behavior + test-count updates (224/224).
+- [x] This entry records the refined Q1 display policy: the active line is the latest partial, **live-translated** into the target language as soon as its translation completes (no longer verbatim-source-only).
+- [ ] ADR required: No new ADR — the overlay remains ADR-0004 (`IOverlayService` unchanged in surface).
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: none.
+- [ ] Blocking: Slice 6 (end-to-end latency/accuracy) now measures the live-translated active line too.
+- [ ] Risks identified: (1) Argos cannot be cancelled per partial (process is killed on cancellation) — mitigated with a single in-flight slot that self-replenishes, plus instance-identity stale-guarding; (2) under continuous speech with ~1 s Argos calls, most per-partial results may be stale-discarded (translated active line appears mostly during slow/hesitant speech) — by design; (3) mid-flight disable does not force-cancel (Argos constraint) — the completed result is discarded, never applied; (4) `SizeToContent` + positioning is resolved at `Loaded` after first layout; (5) the font-size slider now scales history text via inherited attached property (local template `FontSize` removed).
+- [x] Mitigation plan: deterministic fake-engine tests (slot, stale-discard, disable-discard); fresh-context review (findings: font-slider history scaling fixed; disable-discard guard added; double-start race is benign-by-identity and documented).
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | Live-translating the active line is the requested UX: the overlay reads in the target language while the speaker is still talking, not only after commit. | Overlay would show source text mid-utterance, missing the requested behavior. | User request. |
+| 2 | One active-line translation at a time is acceptable (Argos serializes; no per-partial cancellation). | Concurrent per-partial requests would kill the Argos child or queue unboundedly. | Argos process constraint (TD-013). |
+| 3 | A result whose request started before translation was disabled is discarded, not applied. | A completed translation would briefly appear in a language the user turned off. | User note ("let stale ones finish and don't apply the stale result"). |
+
+### 10. Open Questions
+
+None.
+
+### 11. Close-Out Record
+
+- **Status: Completed (close-out 2026-08-01).** Implementation + unit tests complete: `ReplaceActiveLine`, live active-line translation slot, display-model badge, Chrome-style overlay, ControlWindow "Show Captions" button; **224/224 tests pass** (66 Audio + 58 Captions + 41 Speech + 21 Translation + 38 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. Fresh-context review completed (correctness/races/tests/architecture verified sound; font-slider history scaling + disable-discard guard fixed; double-start race benign-by-identity documented). **Manual verification completed 2026-08-01** (recorded in `TEST_REPORT.md`): with the App running against real WASAPI loopback audio and the real local Argos child process (dev venv per TD-011, target `tl`), SAPI-spoken English was transcribed by Whisper and **live-translated into Tagalog in the in-progress overlay line while the speaker was still talking, before commit** — e.g. "world"→`Daigdig`, "This is"→`Ito ay`, "translation"→`Pagsasalin`, "test"→`pagsubok`, and the full sentence "The quick brown fox jumps over the lazy dog. Thank you for listening to the translation test."→`Ang mabilis na brown fox ay lumukso sa ibabaw ng tamad na aso. Salamat sa inyong pakikinig sa pagsubok sa pagsasalin.` A 300 ms UIA poll timeline shows the English partial being replaced by Tagalog on the active line before the caption committed; the `TL` badge stayed visible throughout. Overlay controls verified via UIA: chevron expands the committed history (8 committed lines, all `IsTranslated = True`) and collapses it (pill height 235→109 px); the close button hides the overlay (window leaves the UIA tree); ControlWindow "Show Captions" re-shows it; and speech while hidden still produced a fresh live-translated active line ("The meeting starts at nine o'clock"→`Nagsisimula ang pulong sa alas - 9.`). **Entry 7 closed out.**
+
+---
+
 ## Entry 2 — Slice 2: Speech-to-Text Spike (`ISpeechToTextEngine` + Fake + Whisper)
 
 Date: 2026-07-31

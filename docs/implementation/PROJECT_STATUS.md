@@ -21,6 +21,8 @@ This document is a snapshot. It is not a changelog.
 
 Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **complete (close-out 2026-08-01)**: implementation + unit tests complete; manual overlay/device verification **completed 2026-08-01** (real capture → Whisper → overlay, interaction, lifecycle, error paths); **real-Argos wiring verified end-to-end through the App 2026-08-01** (committed overlay lines translated to Tagalog via a real local Argos child process).
 
+**Post-close-out refinement (2026-08-01):** live **active-line translation** + **Chrome-style overlay redesign** landed on top of Slice 5 (change-impact Entry 7): the in-progress caption line is now translated in the target language while the speaker is still talking (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded); the overlay is an auto-sized translucent pill with white text, a target-language badge, expand/collapse chevron, and a hide button; the control window adds "Show Captions". Implementation + unit tests **complete (224/224)**; **manual verification with real audio + real Argos completed 2026-08-01** — Tagalog appears on the in-progress overlay line before commit, `TL` badge, chevron expand/collapse, close-hide, "Show Captions" re-show, and pipeline-continues-while-hidden all verified (evidence in `TEST_REPORT.md`). **Entry 7 closed out 2026-08-01.**
+
 ## Current Progress
 
 Slice 1 (Audio Capture Spike), Slice 2 (STT Spike), Slice 3 (Translation Spike), and **Slice 4 (Caption Service) are complete and verified.** Slice 4 close-out approved 2026-08-01: `ICaptionService`, `CaptionLine`, `CaptionState`, and `CaptionServiceOptions` in `UniversalCaptions.Core.Captions` (contracts in Core so `UniversalCaptions.Captions` depends only on Core, per the ADR-0003/0006 precedent); `src/UniversalCaptions.Captions` implements `CaptionService`: partials replace the active line, finals commit to a bounded sequence-ordered history, optional background translation (failure preserves the source caption; stale results matched by line identity are dropped), cancellation of in-flight translations on stop/reset/dispose, and events raised outside the serialization gate with snapshot `History`. Verified with deterministic `StubTranslationEngine`/`GatedTranslationEngine` fakes — 40 tests, build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. Fresh-context review completed; findings fixed (snapshot history reads, deferred CTS disposal, atomic translation-start token, stale-translation identity guard, event-raising moved out of the translation catch, target normalization).
@@ -29,9 +31,29 @@ Slice 1 (Audio Capture Spike), Slice 2 (STT Spike), Slice 3 (Translation Spike),
 
 The `ITranslationEngine` contract (with `TranslationResult`, `TranslationErrorKind`, `TranslationException`) lives in `UniversalCaptions.Core.Translation`; it is verified with a deterministic `FakeTranslationEngine` (8 tests); `ArgosTranslationEngine` (child Python process over a newline-delimited JSON line protocol, bundled `argos_translate_server.py`) is verified with a fake process seam (13 tests, incl. restart-after-fatal-error) and against real Argos 1.11.0 end-to-end (direct pairs `en→tl`, `ja→en`, `en→ja`; pivoting `ja→tl` via `en`). The translation benchmark is recorded (load/first latency, steady-state distinct-text latency, identical-input cache, throughput, Argos working set, finals-stream ordering, char-similarity quality). Fresh-context review completed; findings fixed (stale-process recovery, unwrapped exceptions, Python crash path, options validation, `ArgumentList`, UTF-8 pinning) with remaining items in TD-013–TD-015.
 
+## Slice 6 Baseline Defaults (validated 2026-08-01)
+
+```text
+Model:            ggml-base (unchanged, ADR-0003)
+WindowDuration:   8 s (unchanged)
+DecodeInterval:   1 s (unchanged)
+StabilityWindow:  3 → 2 (promoted)
+
+Evidence:         OFAT sweep (Phase 1b) + App-level SAPI E2E validation (Phase 1c:
+                  real WASAPI loopback → Whisper → Argos en→tl → WPF overlay,
+                  baseline + shortlist × 3 runs each, every run publishing real
+                  translated Tagalog) — docs/reports/BENCHMARK_REPORT.md +
+                  docs/reports/TEST_REPORT.md
+
+Status:           Validated baseline for the current release (one authoritative
+                  configuration shared by App + benchmark). Real-application
+                  validation (YouTube/Chrome, VLC, Zoom) is deferred per user;
+                  defaults may be revisited after Phase 2.
+```
+
 ## Current Focus
 
-Slice 5 is **complete (close-out 2026-08-01)** — all Definition-of-Done items satisfied: implementation, 209/209 tests, manual overlay/device verification, and the real-Argos wiring verified end-to-end through the App (committed overlay lines translated to Tagalog). Next: Slice 6 — end-to-end latency/accuracy tuning on real audio (window size, decode interval, `StabilityWindow`) per the roadmap.
+Slice 6 is **complete (close-out 2026-08-01)** — all Definition-of-Done items satisfied: Phase 1a (E2E latency metric + tests, **238/238**), Phase 1b (OFAT sweep + shortlist in `BENCHMARK_REPORT.md`), and Phase 1c (App-level SAPI E2E validation in `TEST_REPORT.md` — baseline + shortlist × 3 runs each through the real App, loopback → Whisper → Argos en→tl → overlay, every run publishing real translated Tagalog). **The validated baseline `base/8/1/st2` was promoted to the App default** (`StabilityWindow` 3→2 via `WhisperEngineOptions` + App + benchmark, one authoritative config; model default `ggml-base` unchanged per ADR-0003 — see the Slice 6 Baseline Defaults block above). Fresh-context review of the Phase 1a E2E metric code completed clean (2026-08-01). Latency winner `tiny/8/1/st2` (E2E final median 16.25 s incl. Argos cold start; warm last-final 7.45 s; STT 3.61 s; 18 translated finals). **All MVP slices (0–6) are complete.** Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) is **deferred per user** — a future reassessment pass over the baseline defaults, not a prerequisite.
 
 ## Architecture Status
 
@@ -47,8 +69,8 @@ None.
 
 ## Next Milestone
 
-Slice 5 close-out is **complete** (real-Argos wiring verified end-to-end through the App 2026-08-01; evidence recorded in `docs/reports/TEST_REPORT.md`). Next: Slice 6 — end-to-end latency/accuracy on real audio. See `docs/implementation/BUILD_PLAN.md`.
+**Slice 6 is complete (close-out 2026-08-01)** — Phases 1a (E2E metric + tests), 1b (OFAT sweep + shortlist), and 1c (App-level SAPI E2E validation) all complete; the validated baseline **`base/8/1/st2` was promoted to the App default** (`StabilityWindow` 3→2, model `ggml-base` unchanged — one authoritative config). **All MVP slices (0–6) are complete.** Next work is from the roadmap Future list; Phase 2 real-app validation (YouTube/VLC/Zoom) is a deferred reassessment pass per user. See `docs/implementation/BUILD_PLAN.md` and `docs/implementation/ROADMAP.md`.
 
 ## Last Build
 
-2026-08-01 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed 209/209 (66 Audio + 45 Captions + 41 Speech + 21 Translation + 36 App). `dotnet format --verify-no-changes` clean. `dotnet list package --vulnerable` — no vulnerable packages (all 13 projects).
+2026-08-01 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed 253/253 (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). `dotnet format --verify-no-changes` clean. `dotnet list package --vulnerable` — no vulnerable packages (all 13 projects). Overlay caption display fix closed 2026-08-01 (chronological history, newest at bottom; height caps removed so the newest/current caption is never clipped — see CHANGELOG v0.5.8 and TEST_REPORT).

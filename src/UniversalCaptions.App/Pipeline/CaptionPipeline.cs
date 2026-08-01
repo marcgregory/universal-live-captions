@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using UniversalCaptions.Core.Audio;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Capture;
@@ -54,6 +55,7 @@ public sealed class CaptionPipeline : IDisposable
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _speechToTextFactory = speechToTextFactory ?? throw new ArgumentNullException(nameof(speechToTextFactory));
         _captions = captions ?? throw new ArgumentNullException(nameof(captions));
+        _captions.CaptionLineUpdated += OnCaptionLineUpdated;
     }
 
     /// <summary>Raised when the pipeline state changes (capturing, stopped, or error).</summary>
@@ -61,6 +63,14 @@ public sealed class CaptionPipeline : IDisposable
 
     /// <summary>Raised for each committed final transcript with its capture-to-emit latency.</summary>
     public event EventHandler<TimeSpan>? LatencyUpdated;
+
+    /// <summary>
+    /// Raised when a translated caption (active line or committed line) is published to subscribers —
+    /// the moment the translated text is available for the overlay. Carries the end-to-end latency
+    /// from the originating audio capture time and the translation latency separately. Distinct from
+    /// <see cref="LatencyUpdated"/>, which measures STT-final production only.
+    /// </summary>
+    public event EventHandler<EndToEndLatencySample>? EndToEndLatencyUpdated;
 
     /// <summary>True while a capture session is running.</summary>
     public bool IsRunning => _capture?.IsCapturing == true;
@@ -123,6 +133,7 @@ public sealed class CaptionPipeline : IDisposable
 
         if (_capture.IsCapturing)
         {
+            UniversalCaptions.Core.Diagnostics.DiagnosticTracer.StartSession();
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
         }
     }
@@ -197,6 +208,7 @@ public sealed class CaptionPipeline : IDisposable
             teardown = _teardownTask;
         }
 
+        _captions.CaptionLineUpdated -= OnCaptionLineUpdated;
         teardown?.GetAwaiter().GetResult();
     }
 
@@ -285,8 +297,11 @@ public sealed class CaptionPipeline : IDisposable
     {
         try
         {
+            UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(1, "First non-silent audio chunk reaches capture pipeline");
+
             if (_processor.TryProcess(chunk, out AudioChunk? processed) && processed is not null)
             {
+                UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(2, "First audio chunk dispatched to Whisper");
                 _speechToText?.Process(processed);
             }
         }
@@ -305,13 +320,38 @@ public sealed class CaptionPipeline : IDisposable
 
     private void OnPartialTranscript(object? sender, PartialTranscript transcript)
     {
+        UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(3, "First Whisper Partial result");
         _captions.ProcessPartial(transcript);
     }
 
     private void OnFinalTranscript(object? sender, FinalTranscript transcript)
     {
+        UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(4, "First Whisper Final result");
         _captions.ProcessFinal(transcript);
         LatencyUpdated?.Invoke(this, transcript.Latency);
+    }
+
+    /// <summary>
+    /// Computes end-to-end latency when a translated caption is published. Only lines whose translation
+    /// completed successfully produce a sample (failed and untranslated lines have no translated caption
+    /// to show); stale/cancelled results never reach this handler because the caption service discards
+    /// them before raising <c>CaptionLineUpdated</c>.
+    /// </summary>
+    private void OnCaptionLineUpdated(object? sender, CaptionLine line)
+    {
+        if (line.TranslatedText is null || line.TranslationCompletedAtUtc is not DateTime completed)
+        {
+            return;
+        }
+
+        UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(6, "First translation result");
+
+        DateTime started = line.TranslationStartedAtUtc ?? completed;
+        var kind = line.State == CaptionLineState.Active ? EndToEndLatencyKind.Partial : EndToEndLatencyKind.Final;
+        EndToEndLatencyUpdated?.Invoke(this, new EndToEndLatencySample(
+            kind,
+            completed - line.CapturedAtUtc,
+            completed - started));
     }
 
     private void OnRecognitionFailed(object? sender, SpeechRecognitionError error)

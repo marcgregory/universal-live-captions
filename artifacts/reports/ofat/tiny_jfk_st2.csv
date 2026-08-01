@@ -1,0 +1,2 @@
+model,window_s,interval_s,stability,feed,size_bytes,ram_mb,model_load_ms,decode_ms,decode_factor,first_partial_s,first_final_s,partials,finals,stream_wall_s,stream_factor,decode_cpu_s,stream_cpu_s,avg_partial_lat_ms,avg_final_lat_ms,wer,stream_wer,transcript,streamed_transcript
+ggml-tiny.bin,8,1,2,Realtime,77691713,84.9,231,1172,0.11,2.784,3.782,9,4,11.47,1.04,6.77,56.77,750,2459,0.0000,0.4091," And so my fellow Americans ask not what your country can do for you, ask what you can do for your country.", And so my fellow Americans ask not what your country can do for

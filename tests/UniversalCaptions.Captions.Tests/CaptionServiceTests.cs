@@ -22,8 +22,20 @@ public sealed class CaptionServiceTests
         ITranslationEngine? engine = null,
         string sourceLanguage = "en",
         string? targetLanguage = "tl",
-        int historyCapacity = 50) =>
-        new(new CaptionServiceOptions(sourceLanguage, targetLanguage, historyCapacity), engine);
+        int historyCapacity = 50,
+        Func<DateTime>? utcNow = null) =>
+        new(new CaptionServiceOptions(sourceLanguage, targetLanguage, historyCapacity), engine, utcNow);
+
+    /// <summary>
+    /// A deterministic clock whose value the test advances, so translation start/completion stamps
+    /// (which measure end-to-end latency) can be asserted exactly.
+    /// </summary>
+    private sealed class MutableClock
+    {
+        public DateTime Now { get; set; } = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public DateTime UtcNow() => Now;
+    }
 
     [Fact]
     public void ProcessPartial_UpdatesActiveLine_AndRaisesEvents()
@@ -359,6 +371,364 @@ public sealed class CaptionServiceTests
     }
 
     [Fact]
+    public async Task ProcessPartial_WithTranslationEnabled_TranslatesActiveLine()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Equal("hello!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+        Assert.Equal("tl", line.TargetLanguage);
+        Assert.Equal("tl", Assert.Single(engine.Requests).Target);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_WithTranslationEnabled_DoesNotPublishSourcePartial()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        var activeLineStatuses = new List<CaptionTranslationStatus>();
+        service.ActiveLineChanged += (_, line) => activeLineStatuses.Add(line.TranslationStatus);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        // ActiveLineChanged must never surface the raw-English partial when translation is on:
+        // the event is suppressed entirely until the translation completes. The overlay must
+        // never flash the source language.
+        Assert.Empty(activeLineStatuses);
+
+        // The state itself carries the completed translation.
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Equal("hello!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationDisabled_StillPublishesSourcePartial()
+    {
+        var service = CreateService(engine: null);
+        var published = new List<string?>();
+        service.ActiveLineChanged += (_, line) => published.Add(line.Text);
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+
+        Assert.Contains(published, text => text == "hello");
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationDisabled_MakesNoActiveLineRequest()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        Assert.Empty(engine.Requests);
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+        Assert.Null(line.TranslatedText);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_ActiveLineTranslationFailure_PreservesSource()
+    {
+        var engine = StubTranslationEngine.Failure(TranslationErrorKind.EngineUnavailable, "python missing");
+        var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Null(line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Failed, line.TranslationStatus);
+        Assert.Contains("python missing", line.TranslationErrorMessage);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_SingleSlot_NewerPartialTranslatedAfterSlotCompletes()
+    {
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hel"));
+        service.ProcessPartial(Partial(2, "hello"));
+
+        // The first request is still in flight, so the newer partial is not translated yet.
+        Assert.Equal(1, engine.RequestCount);
+
+        engine.Complete(0, "hel!", "tl");
+        await WaitForAsync(() => engine.RequestCount == 2);
+        engine.CompleteLatest("hello!", "tl");
+        await service.FlushAsync();
+
+        Assert.Equal(2, engine.RequestCount);
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Equal("hello!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_StaleActiveLineResult_IsDiscarded()
+    {
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        var updated = new List<string?>();
+        service.CaptionLineUpdated += (_, line) => updated.Add(line.TranslatedText);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hel"));
+        service.ProcessPartial(Partial(2, "hello"));
+
+        // The stale result for the older partial is discarded and never surfaced; only the newer
+        // partial's own translation is applied.
+        engine.Complete(0, "hel!", "tl");
+        await WaitForAsync(() => engine.RequestCount == 2);
+        engine.CompleteLatest("hello!", "tl");
+        await service.FlushAsync();
+
+        Assert.Equal(new string?[] { "hello!" }, updated);
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Equal("hello!", line.TranslatedText);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationCompleted_ActiveLineClearedOnCommit_StaleDiscarded()
+    {
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        service.ProcessFinal(Final(2, "hello world"));
+
+        // The active-line translation (request 0) completes after the line was committed, so its
+        // result is stale and must be discarded; the committed line's own translation still applies.
+        engine.Complete(0, "kumusta!", "tl");
+        engine.Complete(1, "magandang mundo", "tl");
+        await service.FlushAsync();
+
+        Assert.Null(service.State.ActiveLine);
+        var final = Assert.Single(service.State.History);
+        Assert.Equal("hello world", final.Text);
+        Assert.Equal("magandang mundo", final.TranslatedText);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationDisabledWhileInFlight_DiscardsResult()
+    {
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        service.SetTranslationEnabled(false);
+
+        engine.CompleteLatest("kumusta", "tl");
+        await service.FlushAsync();
+
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello", line.Text);
+        Assert.Null(line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task SetTranslationEnabled_WithActiveLinePresent_TranslatesIt()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        Assert.Empty(engine.Requests);
+
+        service.SetTranslationEnabled(true);
+        await service.FlushAsync();
+
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("hello!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_ActiveLineTranslationCompletion_RaisesUpdatedEvent()
+    {
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        var updated = new List<CaptionTranslationStatus>();
+        service.CaptionLineUpdated += (_, line) => updated.Add(line.TranslationStatus);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        engine.CompleteLatest("kumusta", "tl");
+        await service.FlushAsync();
+
+        Assert.Equal(CaptionTranslationStatus.Completed, Assert.Single(updated));
+    }
+
+    [Fact]
+    public async Task ProcessFinal_TranslationSuccess_StampsTranslationTimestamps()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine, utcNow: clock.UtcNow);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessFinal(Final(2, "hello"));
+        clock.Now = clock.Now.AddMilliseconds(500);
+        engine.CompleteLatest("kumusta", "tl");
+        await service.FlushAsync();
+
+        var line = Assert.Single(service.State.History);
+        Assert.Equal("kumusta", line.TranslatedText);
+        Assert.NotNull(line.TranslationStartedAtUtc);
+        Assert.NotNull(line.TranslationCompletedAtUtc);
+        Assert.Equal(clock.Now.AddMilliseconds(-500), line.TranslationStartedAtUtc);
+        Assert.Equal(clock.Now, line.TranslationCompletedAtUtc);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), line.TranslationCompletedAtUtc!.Value - line.TranslationStartedAtUtc!.Value);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationSuccess_StampsLiveTranslationTimestamps()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine, utcNow: clock.UtcNow);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        clock.Now = clock.Now.AddMilliseconds(300);
+        engine.CompleteLatest("kumusta", "tl");
+        await service.FlushAsync();
+
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("kumusta", line.TranslatedText);
+        Assert.NotNull(line.TranslationStartedAtUtc);
+        Assert.NotNull(line.TranslationCompletedAtUtc);
+        Assert.Equal(clock.Now.AddMilliseconds(-300), line.TranslationStartedAtUtc);
+        Assert.Equal(clock.Now, line.TranslationCompletedAtUtc);
+    }
+
+    [Fact]
+    public async Task ProcessFinal_TranslationFailure_StampsStartButNotCompletion()
+    {
+        var clock = new MutableClock();
+        var engine = StubTranslationEngine.Failure(TranslationErrorKind.EngineUnavailable, "python missing");
+        var service = CreateService(engine, utcNow: clock.UtcNow);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessFinal(Final(2, "hello"));
+        clock.Now = clock.Now.AddMilliseconds(250);
+        await service.FlushAsync();
+
+        var line = Assert.Single(service.State.History);
+        Assert.Equal(CaptionTranslationStatus.Failed, line.TranslationStatus);
+        Assert.Equal(clock.Now.AddMilliseconds(-250), line.TranslationStartedAtUtc);
+        Assert.Null(line.TranslationCompletedAtUtc);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_StaleResult_ProducesNoTimestampsOrUpdate()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine, utcNow: clock.UtcNow);
+        var updated = new List<string?>();
+        service.CaptionLineUpdated += (_, line) => updated.Add(line.TranslatedText);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hel"));
+        service.ProcessPartial(Partial(2, "hello"));
+
+        clock.Now = clock.Now.AddMilliseconds(400);
+        engine.Complete(0, "hel!", "tl");
+        await WaitForAsync(() => engine.RequestCount == 2);
+
+        // The stale result (the older partial, superseded before its translation completed) is
+        // discarded: no update is surfaced and the current active line carries no timestamps yet.
+        Assert.Empty(updated);
+        var current = service.State.ActiveLine;
+        Assert.NotNull(current);
+        Assert.Equal("hello", current.Text);
+        Assert.Null(current.TranslationStartedAtUtc);
+        Assert.Null(current.TranslationCompletedAtUtc);
+
+        engine.CompleteLatest("hello!", "tl");
+        await service.FlushAsync();
+
+        Assert.Equal(new string?[] { "hello!" }, updated);
+        var final = service.State.ActiveLine;
+        Assert.NotNull(final);
+        Assert.Equal("hello!", final.TranslatedText);
+        Assert.NotNull(final.TranslationStartedAtUtc);
+        Assert.NotNull(final.TranslationCompletedAtUtc);
+    }
+
+    [Fact]
+    public async Task ProcessPartial_TranslationDisabledMidFlight_ProducesNoTimestampsOrUpdate()
+    {
+        var clock = new MutableClock();
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine, utcNow: clock.UtcNow);
+        var updated = new List<string?>();
+        service.CaptionLineUpdated += (_, line) => updated.Add(line.TranslatedText);
+        service.Start();
+        service.SetTranslationEnabled(true);
+
+        service.ProcessPartial(Partial(1, "hello"));
+        service.SetTranslationEnabled(false);
+
+        clock.Now = clock.Now.AddMilliseconds(200);
+        engine.CompleteLatest("kumusta", "tl");
+        await service.FlushAsync();
+
+        Assert.Empty(updated);
+        var line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Null(line.TranslatedText);
+        Assert.Null(line.TranslationStartedAtUtc);
+        Assert.Null(line.TranslationCompletedAtUtc);
+    }
+
+    [Fact]
     public void Constructor_NullOptions_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new CaptionService(null!));
@@ -368,5 +738,23 @@ public sealed class CaptionServiceTests
     public void Options_NullSourceLanguage_Throws()
     {
         Assert.Throws<ArgumentException>(() => new CaptionServiceOptions(null!));
+    }
+
+    /// <summary>
+    /// Awaits a condition that flips asynchronously (a gated engine's self-replenished follow-up
+    /// request). Bounded so a regression fails instead of hanging the suite.
+    /// </summary>
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                Assert.Fail("Condition was not reached within the timeout.");
+            }
+
+            await Task.Delay(5);
+        }
     }
 }

@@ -96,8 +96,9 @@ Model selection is configurable (`WhisperEngineOptions.ModelPath`) and not coupl
 
 ## Open Follow-Ups
 
-1. Slice 6 end-to-end: latency/CPU tuning of window size, decode interval, and `StabilityWindow` against real WASAPI loopback audio; confirm base sustains realtime on real device input.
+1. ~~Slice 6 end-to-end: latency/CPU tuning of window size, decode interval, and `StabilityWindow` against real WASAPI loopback audio~~ — the offline parameter sweep is done in [Slice 6 below](#slice-6--streaming-latencycpu-ofat-sweep) (2026-08-01); real WASAPI loopback + SAPI validation is Slice 6 Phase 1c/2 (App-level E2E, deferred per user).
 2. Optional: benchmark `WithSplitOnWord` / `WithMaxSegmentLength` (currently opt-in, default off) for finer caption boundaries.
+3. Streamed finals occasionally re-emit overlapping text across epoch boundaries (see S4); tracked as TD-006/TD-007.
 
 ---
 
@@ -177,3 +178,100 @@ At ~56–310 ms per call, `ArgosTranslationEngine` is far below the per-final ca
 1. Warm-start the engine during Slice 4 startup to avoid the 12.8–13.9 s cold `en→tl` first-call cost in live captions.
 2. If `tl`-as-source or `ja→tl` becomes an MVP requirement, source-side SBD and a direct `ja→tl` model are needed (TD-010).
 3. Quality measurement should later use human-reference BLEU, not char-similarity.
+
+---
+
+# Slice 6 — Streaming Latency/CPU OFAT Sweep
+
+Date: 2026-08-01
+
+## Purpose
+
+Close Slice 2 open follow-up #1 (offline part): establish a one-at-a-time (OFAT) baseline for the three streaming knobs — `WindowDuration`, `DecodeInterval`, `StabilityWindow` — plus the tiny-vs-base model choice, on the target hardware. The App default is **not** changed by this sweep (changing the default model/pair is a Level-4 Must-Ask).
+
+## Environment
+
+| Item | Value |
+|---|---|
+| OS | Windows 10 Pro (build 19045) |
+| CPU | 12 logical cores (threads per decode: 6) |
+| Runtime | .NET 8.0.29, whisper.cpp via Whisper.net 1.9.1 (CPU) |
+| Samples | `jfk.wav` (11.00 s, canonical reference), `OSR_us_000_0010_8k.wav` (11 s used here; pseudo-reference from ggml-small full-file decode) |
+| Models | `artifacts/models/ggml-base.bin`, `ggml-tiny.bin` |
+| Knob defaults (App) | window 8 s, interval 1 s, stability 3, commit overlap 1.5 s, min-audio-before-first-decode 2 s |
+
+## Harness
+
+`src/UniversalCaptions.Benchmarks` (STT mode) was extended with per-run knobs and CSV output:
+
+```bash
+dotnet run --project src/UniversalCaptions.Benchmarks --no-build -- \
+  --model artifacts/models/ggml-base.bin --sample jfk.wav \
+  --feed realtime --window 8 --interval 1 --stability 2 \
+  --csv artifacts/reports/ofat/base_jfk_st2.csv
+```
+
+New flags: `--window <s>`, `--interval <s>`, `--stability <n>`, `--feed <realtime|fast>`, `--sample <name-substr>` (repeatable), `--csv <path>`. The streamed pass also records **streamed-finals WER** (WER of the concatenated committed finals vs the reference) and streams CPU. Each row is a single run (streaming is timing-sensitive, so run-to-run variance of a few percent exists; see S2/S4).
+
+`--feed fast` is ingest-only: feeding a whole clip faster than realtime gives the arrival-driven loop a single decode pass, so no finals are committed (streamed WER n/a). Realtime pacing is required to measure streaming behavior and is what the sweep used.
+
+## Raw Results (single runs, threads 6)
+
+### base + jfk (11 s, full-file WER 0.0%)
+
+| Config w/i/st | strWER | first partial | first final | avg final lat | finals |
+|---|---|---|---|---|---|
+| **8 / 1 / 3** (App default) | 72.7% | 4.25 s | 8.60 s | 6279 ms | 2 |
+| 6 / 1 / 3 | 77.3% | 4.34 s | 8.55 s | 6242 ms | 2 |
+| 10 / 1 / 3 | 77.3% | 4.05 s | 8.20 s | 6237 ms | 2 |
+| 8 / 0.5 / 3 | 77.3% | 4.21 s | 8.47 s | 6424 ms | 2 |
+| 8 / 2 / 3 | 77.3% | 4.11 s | 8.29 s | 6282 ms | 2 |
+| 8 / 1 / **2** | 72.7% | 4.03 s | **6.46 s** | **3794 ms** | 2 |
+| 8 / 1 / **5** | 100% (0 finals) | 4.30 s | n/a | n/a | 0 |
+
+### Confirmations
+
+| Sample | Model | Config | full WER | strWER | first final | finals |
+|---|---|---|---|---|---|---|
+| OSR | base | 8/1/3 | 4.9% | 39.5% | 8.45 s | 5 |
+| OSR | base | 8/1/2 | 4.9% | 45.7% | 6.18 s | 9 |
+| OSR | base | 6/1/3 | 4.9% | 24.7% | 8.42 s | 5 |
+| jfk | tiny | 8/1/3 | 0.0% | 50.0% | 5.11 s | 3 |
+| jfk | tiny | 8/1/2 | 0.0% | 40.9% | **3.78 s** | 4 |
+| OSR | tiny | 8/1/3 | 16.0% | 53.1% | 5.16 s | 11 |
+
+CSV artifacts: `artifacts/reports/ofat/*.csv` (git-ignored; includes full + streamed transcripts).
+
+## Findings
+
+### S1 — StabilityWindow dominates first-final latency
+Cutting `StabilityWindow` 3 → 2 reduces first-final by **~2.1–2.4 s** (base jfk 8.60→6.46 s; base OSR 8.45→6.18 s; tiny jfk 5.11→3.78 s) and roughly halves average final latency (6279→3794 ms on base jfk), with no full-file accuracy change. Raising it to **5 never commits a final on an 11 s clip** (five consecutive identical passes are needed before the window advances) — the worst possible UX. Stability is the knob to tune for perceived latency.
+
+### S2 — Window size and decode interval are minor on short clips
+On jfk (11 s) window 6/8/10 s and interval 0.5/1/2 s move first-final by ≤0.5 s and streamed WER by ≤5 points. On OSR, window 6 s graduated more text to finals (strWER 24.7% vs 39.5% at st3): a smaller window restarts epochs sooner, committing early text faster. Variance is high (the same config measured 72.7% vs 77.3% across runs), so these deltas are not decisive — treat window/interval as secondary tuning.
+
+### S3 — tiny commits more text, but that is not accuracy
+tiny emitted more finals than base (jfk st3: 3 vs 2; OSR: 11 vs 5) because its faster decodes allow more stability passes per unit of audio, so its streamed WER *looks* better. **Full-file WER is the accuracy signal** (config-independent) and still favors base: 4.9% vs 16.0% on OSR. Do not read streamed WER as accuracy.
+
+### S4 — Streamed-finals WER is a commit-rate proxy, not accuracy
+The concatenated finals reconstruct only the committed (stable) prefix. The trailing tail of an utterance is inherently never committed — it stays partial until the speaker stops — so streamed WER vs the full reference counts tail-deletions as errors. Example: base jfk st2 committed only *"And so my fellow Americans ask"* of the 22-word reference. Additionally, across epoch boundaries the committer occasionally **re-emits overlapping text** (OSR st2 finals show *"…round bowls."* and *"…park truck. The"* twice) — the committer's non-prefix fallback re-appends rather than diffing (TD-006/007). Use streamed finals only as a coarse "how fast does text graduate to history" signal.
+
+### S5 — CPU headroom: streaming is ~5× a full-file pass
+Streaming re-decodes the growing window every interval, so streamed CPU dwarfs a single full-file decode (base jfk: ~61–65 s CPU over ~12 s wall at threads 6 ≈ **5 cores busy** during active speech; full-file decode was ~13.8 s CPU). This is the dominant background cost of live captions on this machine, not model load or translation.
+
+### S6 — Realtime margin holds
+All configs streamed at ≤1.18× realtime wall (base and tiny, threads 6) on jfk/OSR, consistent with Slice 2.
+
+## Shortlist (for Slice 6 Phase 1c real-app validation)
+
+| Rank | Config | Rationale |
+|---|---|---|
+| 1 | **base / 8 s / 1 s / st2** | Accuracy-first (full WER 0–4.9%) with first-final ~6.2–6.5 s instead of ~8.6 s at the old st3 default; **promoted to the App default (Slice 6 baseline, 2026-08-01).** |
+| 2 | **tiny / 8 s / 1 s / st2** | Latency-first (~3.8 s first final, ~2× faster per decode) for low-headroom machines; accepts 16% OSR WER. |
+| 3 | **base / 8 s / 1 s / st3** | Previous App default; conservative control for comparison. |
+
+This sweep itself changed no default. After **Phase 1c real-device confirmation** (WASAPI loopback + SAPI + Argos E2E, per the user-approved plan), the validated baseline **base/8/1/st2 was promoted to the App default on 2026-08-01** (`StabilityWindow` 3→2, model `ggml-base` unchanged — one authoritative configuration shared with the benchmark; see `PROJECT_STATUS.md` "Slice 6 Baseline Defaults"). Switching the model to tiny remains a Must-Ask if low-headroom latency becomes the priority after Phase 2.
+
+### Phase 1c confirmation (App-level SAPI E2E, completed 2026-08-01)
+
+The shortlist was validated end-to-end through the real App (loopback → Whisper → Argos en→tl → overlay, baseline + shortlist × 3 runs each); full protocol + evidence in [TEST_REPORT.md](TEST_REPORT.md) (Slice 6 Phase 1c section). Results matched the offline sweep: **tiny/8/1/st2** is the end-to-end latency winner (E2E final median 16.25 s incl. per-session Argos cold start; warm last-final 7.45 s; last STT 3.61 s; 18 translated finals), **base/8/1/st2** commits faster than the old default (16 vs 10 finals; STT 4.18 vs 6.49 s) at identical model accuracy, and **base/8/1/st3** remains a conservative control. The baseline **base/8/1/st2** is now the App default.

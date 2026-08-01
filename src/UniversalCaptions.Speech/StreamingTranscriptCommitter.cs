@@ -24,9 +24,12 @@ public readonly record struct CommitterResult(string FinalText, string PartialTe
 /// <para>
 /// Stability is measured as the longest common prefix of the last <c>stabilityWindow</c> window
 /// transcripts, so a revision anywhere in the shared region simply stops advancing the commit
-/// boundary. Text that has already been committed is never emitted again. When the audio window
-/// advances past committed audio (an epoch boundary), commit memory resets automatically.
-/// Deterministic and model-agnostic; works even when the decoder yields a single whole-window segment.
+/// boundary. Text that has already been committed is never emitted again: both a strict committed
+/// prefix and a whole-word tail overlap of the newly decoded window with the committed text are
+/// stripped, so a sliding window that re-decodes the tail of the previous window (TD-006/007) does
+/// not re-emit it. When the audio window advances past committed audio (an epoch boundary), commit
+/// memory resets automatically. Deterministic and model-agnostic; works even when the decoder
+/// yields a single whole-window segment.
 /// </para>
 /// </remarks>
 public sealed class StreamingTranscriptCommitter
@@ -123,9 +126,19 @@ public sealed class StreamingTranscriptCommitter
             return string.Empty;
         }
 
-        _committedText.Append(stable);
-        _currentEpochCommittedLength = stable.Length;
-        return stable;
+        // The stable window overlaps the committed text (sliding-window re-decode) instead of being
+        // a strict continuation: commit only the part beyond the whole-word tail overlap, joined by
+        // a single separator so the committed transcript never repeats or doubles a space.
+        int overlap = FindTailOverlap(committed, stable);
+        string remaining = stable.Substring(overlap).TrimStart();
+        if (remaining.Length > 0 && committed.Length > 0 && !char.IsWhiteSpace(committed[^1]))
+        {
+            remaining = " " + remaining;
+        }
+
+        _committedText.Append(remaining);
+        _currentEpochCommittedLength = remaining.Length;
+        return remaining;
     }
 
     private string ComputePartial(string current)
@@ -146,7 +159,59 @@ public sealed class StreamingTranscriptCommitter
             return string.Empty;
         }
 
+        int overlap = FindTailOverlap(committed, current);
+        if (overlap > 0)
+        {
+            return current.Substring(overlap).TrimStart();
+        }
+
         return current;
+    }
+
+    /// <summary>
+    /// Returns the length of the longest whole-word overlap where the tail of
+    /// <paramref name="committed"/> equals the head of <paramref name="candidate"/> — the classic
+    /// sliding-window re-emission in which a newly decoded window re-includes the tail of the text
+    /// already committed. Returns 0 when there is no reliable overlap. The overlap is backed off to a
+    /// whole-word boundary so a partially recognized word is never consumed, and overlaps shorter
+    /// than a full word are ignored as coincidental.
+    /// </summary>
+    private static int FindTailOverlap(string committed, string candidate)
+    {
+        string committedTail = committed.TrimEnd();
+        string candidateHead = candidate.TrimStart();
+        if (committedTail.Length == 0 || candidateHead.Length == 0)
+        {
+            return 0;
+        }
+
+        int max = Math.Min(committedTail.Length, candidateHead.Length);
+        for (int length = max; length > 0; length--)
+        {
+            if (!committedTail.EndsWith(candidateHead.Substring(0, length), StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Back off to a whole-word boundary so the overlap ends at the end of a complete word.
+            int end = length;
+            while (end > 0 && end < candidateHead.Length && !char.IsWhiteSpace(candidateHead[end]))
+            {
+                end--;
+            }
+
+            if (end < 4)
+            {
+                // Too short to be a reliable re-emission (a common short word shared by two
+                // consecutive utterances would otherwise be stripped).
+                continue;
+            }
+
+            // Map the overlap back to the original candidate, including any trimmed leading space.
+            return end + (candidate.Length - candidateHead.Length);
+        }
+
+        return 0;
     }
 
     private void AdvanceCommittedUntil(IReadOnlyList<TranscriptSegment> segments)

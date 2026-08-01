@@ -136,6 +136,53 @@ public sealed class CaptionStateTests
     }
 
     [Fact]
+    public void ReplaceActiveLine_AppliesTranslation_AndReturnsTrue()
+    {
+        var state = new CaptionState(10);
+        var line = Active(1, "hello");
+        state.UpdateActiveLine(line);
+
+        var translated = line.WithTranslation("kumusta", "tl");
+        Assert.True(state.ReplaceActiveLine(line, translated));
+
+        Assert.Equal("kumusta", state.ActiveLine?.TranslatedText);
+        Assert.Equal("hello", state.ActiveLine?.Text);
+    }
+
+    [Fact]
+    public void ReplaceActiveLine_DifferentInstance_ReturnsFalse_AndChangesNothing()
+    {
+        var state = new CaptionState(10);
+        state.UpdateActiveLine(Active(1, "hello"));
+
+        // A newer partial is a different instance, so a stale translation started for the earlier
+        // partial must not overwrite it.
+        Assert.False(state.ReplaceActiveLine(Active(1, "hello"), Active(1, "hello").WithTranslation("x", "tl")));
+
+        Assert.Equal("hello", state.ActiveLine?.Text);
+        Assert.Null(state.ActiveLine?.TranslatedText);
+    }
+
+    [Fact]
+    public void ReplaceActiveLine_AfterClear_ReturnsFalse()
+    {
+        var state = new CaptionState(10);
+        var line = Active(1, "hello");
+        state.UpdateActiveLine(line);
+        state.ClearActiveLine();
+
+        Assert.False(state.ReplaceActiveLine(line, line.WithTranslation("x", "tl")));
+        Assert.Null(state.ActiveLine);
+    }
+
+    [Fact]
+    public void ReplaceActiveLine_FinalLine_Throws()
+    {
+        var state = new CaptionState(10);
+        Assert.Throws<ArgumentException>(() => state.ReplaceActiveLine(Final(1), Final(1).WithTranslation("x", "tl")));
+    }
+
+    [Fact]
     public void SetTranslation_EnabledSetsTarget_DisabledClearsTarget()
     {
         var state = new CaptionState(10);

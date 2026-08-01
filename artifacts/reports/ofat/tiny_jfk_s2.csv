@@ -1,0 +1,2 @@
+model,window_s,interval_s,stability,feed,size_bytes,ram_mb,model_load_ms,decode_ms,decode_factor,first_partial_s,first_final_s,partials,finals,stream_wall_s,stream_factor,decode_cpu_s,stream_cpu_s,avg_partial_lat_ms,avg_final_lat_ms,wer,stream_wer
+ggml-tiny.bin,8,1,2,Realtime,77691713,84.9,449,1282,0.12,2.924,3.910,9,4,12.32,1.12,7.06,62.80,873,2561,0.0000,0.4091

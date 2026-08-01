@@ -22,6 +22,12 @@ List<string> candidates = new[] { "tiny", "base" }
     .ToList();
 var customWavs = new List<string>();
 string? referenceText = null;
+var sampleFilters = new List<string>();
+double windowSeconds = 8;
+double intervalSeconds = 1;
+int stabilityWindow = 2;
+FeedMode feed = FeedMode.Realtime;
+string? csvPath = null;
 
 if (args.Length > 0 && args[0] == "translate")
 {
@@ -39,6 +45,9 @@ for (int i = 0; i < args.Length; i++)
         case "--wav" when i + 1 < args.Length:
             customWavs.Add(args[++i]);
             break;
+        case "--sample" when i + 1 < args.Length:
+            sampleFilters.Add(args[++i]);
+            break;
         case "--reference" when i + 1 < args.Length:
             referenceText = args[++i];
             break;
@@ -48,17 +57,39 @@ for (int i = 0; i < args.Length; i++)
         case "--model" when i + 1 < args.Length:
             candidates = [args[++i]];
             break;
+        case "--window" when i + 1 < args.Length:
+            windowSeconds = double.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--interval" when i + 1 < args.Length:
+            intervalSeconds = double.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--stability" when i + 1 < args.Length:
+            stabilityWindow = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--feed" when i + 1 < args.Length:
+            feed = Enum.Parse<FeedMode>(args[++i], ignoreCase: true);
+            break;
+        case "--csv" when i + 1 < args.Length:
+            csvPath = args[++i];
+            break;
     }
 }
 
 Console.WriteLine($"Machine: {Environment.OSVersion.VersionString}");
 Console.WriteLine($"CPU: {Environment.ProcessorCount} logical cores; threads per decode: {threads}");
 Console.WriteLine($"Model dir: {Path.GetFullPath(modelsDir)}");
+Console.WriteLine($"Stream config: window {windowSeconds:0.#}s, interval {intervalSeconds:0.#}s, stability {stabilityWindow}, feed {feed}");
 Console.WriteLine();
 
 var samples = customWavs.Count > 0
     ? BuildCustomSamples(customWavs, referenceText)
     : await BuildDefaultSamplesAsync(CancellationToken.None);
+
+if (sampleFilters.Count > 0)
+{
+    samples = samples.Where(s => sampleFilters.Any(f => s.Name.Contains(f, StringComparison.OrdinalIgnoreCase))).ToList();
+    Console.WriteLine($"Samples filtered to: {string.Join(", ", samples.Select(s => s.Name))}");
+}
 
 foreach (var modelPath in candidates)
 {
@@ -88,7 +119,7 @@ foreach (var sample in samples)
 
     foreach (var modelPath in candidates)
     {
-        var result = await BenchmarkModelAsync(modelPath, sample, reference, threads);
+        var result = await BenchmarkModelAsync(modelPath, sample, reference, threads, windowSeconds, intervalSeconds, stabilityWindow, feed);
         allResults.Add(result);
     }
 
@@ -96,6 +127,11 @@ foreach (var sample in samples)
 }
 
 PrintSummary(allResults);
+if (csvPath is not null)
+{
+    WriteCsv(csvPath, allResults);
+}
+
 return 0;
 
 static List<Sample> BuildCustomSamples(List<string> wavPaths, string? referenceText)
@@ -168,12 +204,13 @@ static async Task<string> TranscribePseudoReferenceAsync(
 }
 
 static async Task<ModelResult> BenchmarkModelAsync(
-    string modelPath, Sample sample, string? reference, int threads)
+    string modelPath, Sample sample, string? reference, int threads,
+    double windowSeconds, double intervalSeconds, int stabilityWindow, FeedMode feed)
 {
     string name = Path.GetFileName(modelPath);
     var samples = sample.Samples;
     double audioSeconds = sample.AudioSeconds;
-    Console.WriteLine($"  === {name} ===");
+    Console.WriteLine($"  === {name} (window {windowSeconds:0.#}s, interval {intervalSeconds:0.#}s, stability {stabilityWindow}, feed {feed}) ===");
 
     long ramBefore = Process.GetCurrentProcess().WorkingSet64;
     var swLoad = Stopwatch.StartNew();
@@ -215,16 +252,18 @@ static async Task<ModelResult> BenchmarkModelAsync(
     double partialLatencySumMs = 0;
     double finalLatencySumMs = 0;
     string? streamError = null;
+    var streamedFinalText = new StringBuilder();
     var options = new WhisperEngineOptions
     {
         ModelPath = modelPath,
         Language = "en",
         Threads = threads,
         SampleRate = SampleRate,
-        WindowDuration = TimeSpan.FromSeconds(8),
-        DecodeInterval = TimeSpan.FromSeconds(1),
+        WindowDuration = TimeSpan.FromSeconds(windowSeconds),
+        DecodeInterval = TimeSpan.FromSeconds(intervalSeconds),
         CommitOverlap = TimeSpan.FromSeconds(1.5),
         MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(2),
+        StabilityWindow = stabilityWindow,
     };
     var engine = new WhisperSpeechToTextEngine(options);
     engine.PartialTranscriptAvailable += (_, t) =>
@@ -240,6 +279,7 @@ static async Task<ModelResult> BenchmarkModelAsync(
     {
         finals++;
         finalLatencySumMs += t.Latency.TotalMilliseconds;
+        streamedFinalText.Append(t.Text);
         if (firstFinal == TimeSpan.MaxValue)
         {
             firstFinal = swStream.Elapsed;
@@ -258,7 +298,10 @@ static async Task<ModelResult> BenchmarkModelAsync(
         var chunk = new float[count];
         Array.Copy(samples, offset, chunk, 0, count);
         engine.Process(new AudioChunk(chunk, new AudioFormat(SampleRate, 1, 32), baseTime.AddSeconds(offset / (double)SampleRate), ++seq));
-        Thread.Sleep((int)(chunkSeconds * 1000));
+        if (feed == FeedMode.Realtime)
+        {
+            Thread.Sleep((int)(chunkSeconds * 1000));
+        }
     }
 
     engine.Stop();
@@ -266,6 +309,8 @@ static async Task<ModelResult> BenchmarkModelAsync(
     swStream.Stop();
     var cpuStream = Process.GetCurrentProcess().TotalProcessorTime - cpuStreamBefore;
     double streamFactor = swStream.Elapsed.TotalSeconds / audioSeconds;
+    string streamedTranscript = streamedFinalText.ToString();
+    double streamWer = reference is null ? double.NaN : ComputeWer(streamedTranscript, reference);
 
     string firstPartialText = firstPartial == TimeSpan.MaxValue ? "n/a" : $"{firstPartial.TotalSeconds:0.000}s";
     string firstFinalText = firstFinal == TimeSpan.MaxValue ? "n/a" : $"{firstFinal.TotalSeconds:0.000}s";
@@ -275,6 +320,7 @@ static async Task<ModelResult> BenchmarkModelAsync(
     Console.WriteLine($"    stream:          {swStream.Elapsed.TotalSeconds,6:0.00}s wall ({streamFactor:0.00}x realtime, {cpuStream.TotalSeconds:0.00}s cpu); {partials} partials, {finals} finals");
     Console.WriteLine($"    first partial:   {firstPartialText,10}  avg lat {avgPartialLatText}");
     Console.WriteLine($"    first final:     {firstFinalText,10}  avg lat {avgFinalLatText}");
+    Console.WriteLine($"    stream WER:      {(double.IsNaN(streamWer) ? "n/a" : $"{streamWer * 100:0.0}%")}");
     if (streamError is not null)
     {
         Console.WriteLine($"    stream error:    {streamError}");
@@ -298,7 +344,13 @@ static async Task<ModelResult> BenchmarkModelAsync(
         partials == 0 ? 0 : partialLatencySumMs / partials,
         finals == 0 ? 0 : finalLatencySumMs / finals,
         wer,
-        transcript);
+        transcript,
+        windowSeconds,
+        intervalSeconds,
+        stabilityWindow,
+        feed.ToString(),
+        streamWer,
+        streamedTranscript);
 }
 
 static void PrintSummary(List<ModelResult> results)
@@ -307,13 +359,67 @@ static void PrintSummary(List<ModelResult> results)
     foreach (var r in results)
     {
         Console.WriteLine(
-            $"{r.Name,-12} WER {(double.IsNaN(r.Wer) ? "n/a " : $"{r.Wer * 100,4:0.0}%")}  dec {r.DecodeFactor,5:0.00}x  strm {r.StreamFactor,5:0.00}x  " +
+            $"{r.Name,-10} cfg {r.WindowSeconds:0.#}/{r.IntervalSeconds:0.#}s/st{r.StabilityWindow}  " +
+            $"WER {(double.IsNaN(r.Wer) ? "n/a " : $"{r.Wer * 100,4:0.0}%")}  strWER {(double.IsNaN(r.StreamWer) ? "n/a  " : $"{r.StreamWer * 100,4:0.0}%")}  " +
+            $"dec {r.DecodeFactor,5:0.00}x  strm {r.StreamFactor,5:0.00}x  " +
             $"1stPart {FormatLatency(r.FirstPartial),7}  1stFin {FormatLatency(r.FirstFinal),7}  part {r.PartialCount,3} fin {r.FinalCount,3}  " +
             $"cpuDec {r.DecodeCpu.TotalSeconds,5:0.0}s cpuStrm {r.StreamCpu.TotalSeconds,5:0.0}s");
     }
 
     Console.WriteLine("========================================================================");
 }
+
+static void WriteCsv(string path, List<ModelResult> results)
+{
+    var sb = new StringBuilder();
+    sb.AppendLine("model,window_s,interval_s,stability,feed,size_bytes,ram_mb,model_load_ms,decode_ms,decode_factor,first_partial_s,first_final_s,partials,finals,stream_wall_s,stream_factor,decode_cpu_s,stream_cpu_s,avg_partial_lat_ms,avg_final_lat_ms,wer,stream_wer,transcript,streamed_transcript");
+    foreach (var r in results)
+    {
+        sb.AppendLine(string.Join(',',
+            Csv(r.Name),
+            Csv(r.WindowSeconds.ToString("0.#", CultureInfo.InvariantCulture)),
+            Csv(r.IntervalSeconds.ToString("0.#", CultureInfo.InvariantCulture)),
+            Csv(r.StabilityWindow.ToString(CultureInfo.InvariantCulture)),
+            Csv(r.FeedMode),
+            Csv(r.SizeBytes.ToString(CultureInfo.InvariantCulture)),
+            Csv((r.RamBytes / (1024.0 * 1024.0)).ToString("0.0", CultureInfo.InvariantCulture)),
+            Csv(r.ModelLoad.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)),
+            Csv(r.Decode.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)),
+            Csv(r.DecodeFactor.ToString("0.00", CultureInfo.InvariantCulture)),
+            Csv(FormatLatencyCsv(r.FirstPartial)),
+            Csv(FormatLatencyCsv(r.FirstFinal)),
+            Csv(r.PartialCount.ToString(CultureInfo.InvariantCulture)),
+            Csv(r.FinalCount.ToString(CultureInfo.InvariantCulture)),
+            Csv(r.StreamWall.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)),
+            Csv(r.StreamFactor.ToString("0.00", CultureInfo.InvariantCulture)),
+            Csv(r.DecodeCpu.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)),
+            Csv(r.StreamCpu.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)),
+            Csv(r.AvgPartialLatencyMs.ToString("0", CultureInfo.InvariantCulture)),
+            Csv(r.AvgFinalLatencyMs.ToString("0", CultureInfo.InvariantCulture)),
+            Csv(FormatWerCsv(r.Wer)),
+            Csv(FormatWerCsv(r.StreamWer)),
+            Csv(r.Transcript),
+            Csv(r.StreamedTranscript)));
+    }
+
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+    File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+    Console.WriteLine($"CSV written to {Path.GetFullPath(path)}");
+}
+
+static string Csv(string value)
+{
+    if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+    {
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+
+    return value;
+}
+
+static string FormatLatencyCsv(TimeSpan latency) => latency == TimeSpan.MaxValue ? string.Empty : latency.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture);
+
+static string FormatWerCsv(double wer) => double.IsNaN(wer) ? string.Empty : wer.ToString("0.0000", CultureInfo.InvariantCulture);
 
 static string FormatLatency(TimeSpan latency) => latency == TimeSpan.MaxValue ? "n/a" : $"{latency.TotalSeconds:0.000}s";
 
@@ -504,6 +610,13 @@ static float[] Concat(params float[][] arrays)
 
 internal sealed record Sample(string Name, float[] Samples, double AudioSeconds, string? Reference, string? PseudoReferenceModel);
 
+/// <summary>How audio is fed to the streamed engine: realtime paces chunks with wall-clock sleeps, fast feeds as quickly as the engine can consume.</summary>
+internal enum FeedMode
+{
+    Realtime,
+    Fast,
+}
+
 internal sealed record ModelResult(
     string Name,
     long SizeBytes,
@@ -522,4 +635,10 @@ internal sealed record ModelResult(
     double AvgPartialLatencyMs,
     double AvgFinalLatencyMs,
     double Wer,
-    string Transcript);
+    string Transcript,
+    double WindowSeconds,
+    double IntervalSeconds,
+    int StabilityWindow,
+    string FeedMode,
+    double StreamWer,
+    string StreamedTranscript);

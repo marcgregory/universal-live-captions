@@ -57,6 +57,7 @@ public partial class ControlWindow : Window
         Closed += OnClosed;
         _pipeline.StatusChanged += OnPipelineStatus;
         _pipeline.LatencyUpdated += OnLatencyUpdated;
+        _pipeline.EndToEndLatencyUpdated += OnEndToEndLatencyUpdated;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -121,8 +122,17 @@ public partial class ControlWindow : Window
     {
         string? deviceId = (AudioSourceCombo.SelectedItem as LoopbackDevice)?.Id;
         string? language = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
+
+        // Reset the caption service to clear previous session's history/text from the overlay
+        _captions.Reset();
+        // Re-apply the translation settings (as Reset disables them by default)
+        ApplyTranslationSettings();
+
         _pipeline.Start(deviceId, language);
+        _overlay.Show();
     }
+
+    private void OnShowCaptionsClicked(object sender, RoutedEventArgs e) => _overlay.Show();
 
     private void OnStopClicked(object sender, RoutedEventArgs e)
     {
@@ -205,6 +215,26 @@ public partial class ControlWindow : Window
     private void OnLatencyUpdated(object? sender, TimeSpan latency)
     {
         Dispatcher.InvokeAsync(() => LatencyText.Text = $"{latency.TotalMilliseconds:0} ms");
+    }
+
+    private TimeSpan? _lastPartialEndToEnd;
+    private TimeSpan? _lastFinalEndToEnd;
+
+    private void OnEndToEndLatencyUpdated(object? sender, EndToEndLatencySample sample)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (sample.Kind == EndToEndLatencyKind.Partial)
+            {
+                _lastPartialEndToEnd = sample.EndToEndLatency;
+            }
+            else
+            {
+                _lastFinalEndToEnd = sample.EndToEndLatency;
+            }
+
+            EndToEndLatencyText.Text = $"partial: {_lastPartialEndToEnd?.TotalMilliseconds ?? 0:0} ms · final: {_lastFinalEndToEnd?.TotalMilliseconds ?? 0:0} ms";
+        });
     }
 
     private void SetIndicator(PipelineStatusKind kind)

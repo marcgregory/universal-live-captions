@@ -1,0 +1,2 @@
+model,window_s,interval_s,stability,feed,size_bytes,ram_mb,model_load_ms,decode_ms,decode_factor,first_partial_s,first_final_s,partials,finals,stream_wall_s,stream_factor,decode_cpu_s,stream_cpu_s,avg_partial_lat_ms,avg_final_lat_ms,wer,stream_wer
+ggml-base.bin,8,1,3,Realtime,147951465,148.2,526,5201,0.15,4.175,8.445,13,5,35.98,1.07,30.22,202.52,2459,8133,0.0494,0.3951
