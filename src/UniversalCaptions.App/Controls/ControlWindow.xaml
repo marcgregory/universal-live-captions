@@ -122,6 +122,7 @@
                 Margin="10,4"
                 Minimum="0.2"
                 Maximum="1"
+                Value="1"
                 ValueChanged="OnOpacityChanged" />
 
         <TextBlock Grid.Row="9"
@@ -134,6 +135,7 @@
                 Margin="10,4"
                 Minimum="10"
                 Maximum="96"
+                Value="16"
                 ValueChanged="OnFontSizeChanged" />
 
         <TextBlock Grid.Row="10"

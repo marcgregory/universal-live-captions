@@ -70,6 +70,10 @@ public static class CaptionDisplayPolicy
         var allHistory = new List<CaptionDisplayLine>(snapshot.History.Count);
         foreach (CaptionLine caption in snapshot.History)
         {
+            // Tagalog-only display: a committed final whose translation is still pending is not shown,
+            // so its English source never flashes. The previous committed (Tagalog) caption remains
+            // visible until the new final's translation completes; CaptionService then raises
+            // CaptionLineUpdated and this entry re-renders as the new translated Tagalog text.
             if (snapshot.TranslationEnabled &&
                 caption.TranslationStatus == CaptionTranslationStatus.Pending)
             {

@@ -11,10 +11,11 @@ namespace UniversalCaptions.App.Overlay;
 /// <summary>
 /// The always-on-top caption overlay styled after Google Chrome's Live Caption panel: a dark
 /// semi-transparent rectangle with a header row showing the session language badge, a fixed-height
-/// scrolling text area that renders each committed caption as its own stable item with the live
-/// in-progress line as a single mutable item at the bottom (newest text always at the bottom), and a
-/// collapse/expand chevron at the footer. Implements <see cref="IOverlayService"/> so the control
-/// window can configure appearance and placement without touching caption state (ADR-0004).
+/// scrolling text area that renders each committed FINAL caption as its own stable item (newest text
+/// always at the bottom), and a collapse/expand chevron at the footer. The live/partial active line
+/// is deliberately not painted, so the overlay shows only stable translated FINAL captions. Implements
+/// <see cref="IOverlayService"/> so the control window can configure appearance and placement without
+/// touching caption state (ADR-0004).
 /// </summary>
 public partial class CaptionOverlayWindow : Window, IOverlayService
 {
@@ -24,16 +25,17 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     private readonly EventHandler<CaptionState> _stateChangedHandler;
 
     private double _opacity = 1.0;
-    private double _fontSize = 30;
+    private double _fontSize = 16;
     private bool _clickThrough;
     private bool _expanded = true;
     private bool _renderQueued;
     private bool _positioned;
     private bool _bottomAnchored = true;
 
-    // Stable visual items: one TextBlock per committed (finalized) caption line, kept in display
-    // order, plus a single mutable TextBlock for the live in-progress line at the bottom. Existing
-    // finalized blocks are reused by sequence so a Partial never rebuilds the caption visual tree.
+    // Stable visual items: one TextBlock per committed FINAL caption line, kept in display order and
+    // reused by sequence so a new forwarded caption never rebuilds the caption visual tree. The
+    // live in-progress line is never painted (_activeBlock stays null), so partials do not churn the
+    // panel — the overlay is committed-FINAL-only.
     private readonly List<TextBlock> _historyBlocks = new();
     private TextBlock? _activeBlock;
 
@@ -148,9 +150,10 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         CaptionSnapshot snapshot = _captions.GetSnapshot();
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(snapshot);
 
-        // When translation is enabled and the active line is still being translated, do not update
-        // the caption items at all: keep the previously shown translated caption so the overlay never
-        // flashes a blank or shows the source language between live translations.
+        // The overlay is committed-FINAL-only: the live/partial active line is never rendered. While
+        // the active line is in flight we hold the existing history on screen (no re-render), so the
+        // overlay never churns on ASR partials, never flashes a blank, and never shows the source
+        // language. Reconciliation happens when a NEW FINAL is available (snapshot.ActiveLine is null).
         bool shouldUpdate = model.ActiveLine is not null
             || !model.TranslationEnabled
             || snapshot.ActiveLine is null;
@@ -158,9 +161,9 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         bool newBlockAdded = false;
         if (shouldUpdate)
         {
-            // Returns true only when a brand-new caption block (a Final, or the first ever active
-            // line) was inserted — the one event that legitimately requires a bottom scroll. A
-            // Partial/active mutation never inserts a block, so it never forces a scroll.
+            // Returns true only when a brand-new caption block (a committed Final) was inserted —
+            // the one event that legitimately requires a bottom scroll. Live active-line mutations
+            // are never painted, so they never touch the block list and never force a scroll.
             newBlockAdded = UpdateCaptionItems(model);
         }
 
@@ -201,28 +204,18 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     {
         bool newBlockAdded = ReconcileHistory(model.History);
 
-        if (model.ActiveLine is { } active)
-        {
-            if (_activeBlock is null)
-            {
-                _activeBlock = CreateCaptionBlock(active.Text, active.Sequence);
-                CaptionPanel.Children.Add(_activeBlock);
-                newBlockAdded = true;
-            }
-            else if (!string.Equals(_activeBlock.Text, active.Text, StringComparison.Ordinal))
-            {
-                _activeBlock.Text = active.Text;
-            }
-        }
-        else if (_activeBlock is not null)
+        // The overlay displays committed FINAL translated captions only. The live/partial active line
+        // is intentionally never painted, so the display is stable instead of churning on every ASR
+        // partial. Remove any block that may already exist (e.g. from an earlier full-window render).
+        if (_activeBlock is not null)
         {
             CaptionPanel.Children.Remove(_activeBlock);
             _activeBlock = null;
         }
 
-        bool hasContent = !model.IsEmpty;
+        bool hasContent = model.History.Count > 0;
         CaptionPanel.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
-        HintText.Visibility = model.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+        HintText.Visibility = hasContent ? Visibility.Collapsed : Visibility.Visible;
         return newBlockAdded;
     }
 
@@ -231,7 +224,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     /// TextBlock instances by sequence. Blocks that already match are left untouched; new finals get
     /// a fresh block inserted in chronological position; a block whose text changed (e.g. a completed
     /// translation replaces source on an already-visible line) is updated in place; stale blocks are
-    /// removed. The live active block, if any, always remains the last panel child.
+    /// removed. The overlay never paints a live active line, so the history blocks are the only children.
     /// </summary>
     private bool ReconcileHistory(IReadOnlyList<CaptionDisplayLine> history)
     {
@@ -298,6 +291,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             Text = text,
             TextWrapping = TextWrapping.Wrap,
             Foreground = Brushes.White,
+            FontWeight = FontWeights.Bold,
             FontSize = _fontSize,
             LineHeight = _fontSize * 1.4,
             Tag = sequence,
@@ -362,6 +356,41 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
         // After resizing, scroll to the bottom so the newest caption is visible in either state.
         CaptionScroller.ScrollToBottom();
+    }
+
+    /// <summary>
+    /// Copies the overlay's currently displayed caption text to the clipboard (debug aid). The text
+    /// is gathered from the rendered caption blocks in display order, newest last.
+    /// </summary>
+    private void OnCopyClicked(object sender, RoutedEventArgs e)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (object child in CaptionPanel.Children)
+        {
+            if (child is TextBlock block && !string.IsNullOrWhiteSpace(block.Text))
+            {
+                if (sb.Length > 0)
+                {
+                    sb.AppendLine();
+                }
+
+                sb.Append(block.Text);
+            }
+        }
+
+        if (sb.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            // Clipboard is occasionally busy (held by another app); silently skip the copy.
+        }
     }
 
     private void OnCloseClicked(object sender, RoutedEventArgs e) => Hide();

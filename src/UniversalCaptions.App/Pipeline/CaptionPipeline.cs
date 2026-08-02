@@ -334,6 +334,7 @@ public sealed class CaptionPipeline : IDisposable
     {
         TempaudioLatencyProbe.RecordFinal();
         UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(4, "First Whisper Final result");
+        TempEosTracer.Final(transcript.Sequence);
         _captions.ProcessFinal(transcript);
         LatencyUpdated?.Invoke(this, transcript.Latency);
     }

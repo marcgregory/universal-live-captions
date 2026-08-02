@@ -140,16 +140,27 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Right: close button -->
-                <Button x:Name="CloseButton"
-                        Grid.Column="1"
-                        Style="{StaticResource ChromeIconButton}"
-                        ToolTip="Hide captions"
-                        Click="OnCloseClicked">
-                    <TextBlock Text="&#xE711;"
-                               FontFamily="Segoe MDL2 Assets"
-                               FontSize="11" />
-                </Button>
+                <!-- Right: copy (debug) + close buttons -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Button x:Name="CopyButton"
+                            Style="{StaticResource ChromeIconButton}"
+                            ToolTip="Copy captions to clipboard (debug)"
+                            Click="OnCopyClicked">
+                        <TextBlock Text="&#xE8C8;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="11" />
+                    </Button>
+                    <Button x:Name="CloseButton"
+                            Style="{StaticResource ChromeIconButton}"
+                            ToolTip="Hide captions"
+                            Click="OnCloseClicked">
+                        <TextBlock Text="&#xE711;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="11" />
+                    </Button>
+                </StackPanel>
             </Grid>
 
             <!-- ─── Row 1: Caption text area ─── -->

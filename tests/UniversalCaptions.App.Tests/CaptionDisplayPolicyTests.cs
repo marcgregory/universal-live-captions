@@ -200,6 +200,48 @@ public class CaptionDisplayPolicyTests
     }
 
     [Fact]
+    public void Pending_final_never_shows_english_and_retains_previous_tagalog()
+    {
+        // Tagalog-only display: while a newly committed final's translation is Pending, its English
+        // source must NOT appear in history, and the previously committed (Tagalog) line stays visible
+        // until the new translation completes and swaps it out.
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [
+                    Final("Magandang umaga.", 1, "Magandang umaga.", CaptionTranslationStatus.Completed),
+                    Final("Good morning, everyone.", 2, status: CaptionTranslationStatus.Pending),
+                ],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl"));
+
+        // Only the previously committed Tagalog line remains; the pending final's English is hidden.
+        CaptionDisplayLine retained = Assert.Single(model.History);
+        Assert.Equal("Magandang umaga.", retained.Text);
+        Assert.True(retained.IsTranslated);
+        Assert.False(model.IsEmpty);
+    }
+
+    [Fact]
+    public void Pending_final_resolves_to_tagalog_after_translation_completes()
+    {
+        // The same pending final, once its translation completes, becomes the newest history line in
+        // Tagalog — never English.
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [Final("Good morning, everyone.", 2, "Magandang umaga sa inyong lahat.", CaptionTranslationStatus.Completed)],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl"));
+
+        CaptionDisplayLine resolved = Assert.Single(model.History);
+        Assert.Equal("Magandang umaga sa inyong lahat.", resolved.Text);
+        Assert.True(resolved.IsTranslated);
+    }
+
+    [Fact]
     public void Translation_enabled_hides_untranslated_active_line()
     {
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
