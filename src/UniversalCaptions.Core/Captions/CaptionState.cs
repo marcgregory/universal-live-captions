@@ -77,7 +77,7 @@ public sealed class CaptionState
     public void UpdateActiveLine(CaptionLine line)
     {
         RequireState(line, CaptionLineState.Active, nameof(line));
-        
+
         // Carry over any in-progress translation so the UI doesn't hide the active line
         if (ActiveLine != null && ActiveLine.Sequence == line.Sequence && !string.IsNullOrWhiteSpace(ActiveLine.TranslatedText))
         {
@@ -95,7 +95,7 @@ public sealed class CaptionState
                 ActiveLine.TranslationStartedAtUtc,
                 ActiveLine.TranslationCompletedAtUtc);
         }
-        
+
         ActiveLine = line;
     }
 

@@ -18,7 +18,7 @@ public static class DiagnosticTracer
             RecordLocked(0, "Video/Audio playback starts (Capture started)");
         }
     }
-    
+
     public static void Record(int stage, string name)
     {
         lock (_lock)
@@ -34,13 +34,13 @@ public static class DiagnosticTracer
             _times[stage] = _sw.Elapsed;
             var current = _times[stage]!.Value;
             Console.Error.WriteLine($"[DIAGNOSTICS] T{stage}: {current.TotalSeconds:F3}s - {name}");
-            
+
             if (stage > 0)
             {
                 TimeSpan? prev = _times[stage - 1];
                 if (prev != null)
                 {
-                     Console.Error.WriteLine($"[DIAGNOSTICS]       Delta (T{stage} - T{stage-1}): {(current - prev.Value).TotalSeconds:F3}s");
+                    Console.Error.WriteLine($"[DIAGNOSTICS]       Delta (T{stage} - T{stage - 1}): {(current - prev.Value).TotalSeconds:F3}s");
                 }
             }
             if (stage == 7 && _times[0] != null)

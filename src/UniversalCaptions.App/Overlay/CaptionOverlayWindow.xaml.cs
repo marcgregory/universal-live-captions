@@ -351,6 +351,30 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
     private void OnCloseClicked(object sender, RoutedEventArgs e) => Hide();
 
+    /// <summary>
+    /// Reveals the header bar and collapse chevron on hover (Chrome Live Caption behaviour): by
+    /// default only the caption strip is visible; the nav controls appear when the mouse is over the
+    /// overlay and hide again when it leaves.
+    /// </summary>
+    private void OnChromeMouseEnter(object sender, MouseEventArgs e) => SetChromeVisible(true);
+
+    private void OnChromeMouseLeave(object sender, MouseEventArgs e) => SetChromeVisible(false);
+
+    /// <summary>
+    /// Shows/hides the header bar and chevron. Both must use <see cref="Visibility.Hidden"/> (not
+    /// <see cref="Visibility.Collapsed"/>) while hidden so their layout space is always reserved:
+    /// because the window is <c>SizeToContent="Height"</c>, collapsing the rows to zero would change
+    /// the overlay's height on hover/leave. Using Hidden keeps the panel a constant size whether or
+    /// not it is hovered.
+    /// </summary>
+    private void SetChromeVisible(bool visible)
+    {
+        HeaderBar.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
+        CollapseButton.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
+        // Re-pin to the bottom edge when anchored so it grows upward like Chrome instead of shifting.
+        ScheduleBottomAnchor();
+    }
+
     private void OnChromeMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed)

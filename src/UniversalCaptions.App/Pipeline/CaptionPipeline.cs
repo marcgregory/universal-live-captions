@@ -90,6 +90,8 @@ public sealed class CaptionPipeline : IDisposable
 
         _faulted = false;
 
+        TempaudioLatencyProbe.RecordCaptureStarted();
+
         _capture = CreateCapture(deviceId);
         if (_capture is null)
         {
@@ -133,6 +135,7 @@ public sealed class CaptionPipeline : IDisposable
 
         if (_capture.IsCapturing)
         {
+            TempaudioLatencyProbe.RecordDeviceStarted();
             UniversalCaptions.Core.Diagnostics.DiagnosticTracer.StartSession();
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
         }
@@ -297,10 +300,12 @@ public sealed class CaptionPipeline : IDisposable
     {
         try
         {
+            TempaudioLatencyProbe.RecordChunk(chunk);
             UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(1, "First non-silent audio chunk reaches capture pipeline");
 
             if (_processor.TryProcess(chunk, out AudioChunk? processed) && processed is not null)
             {
+                TempaudioLatencyProbe.RecordDispatch();
                 UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(2, "First audio chunk dispatched to Whisper");
                 _speechToText?.Process(processed);
             }
@@ -320,12 +325,14 @@ public sealed class CaptionPipeline : IDisposable
 
     private void OnPartialTranscript(object? sender, PartialTranscript transcript)
     {
+        TempaudioLatencyProbe.RecordPartial();
         UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(3, "First Whisper Partial result");
         _captions.ProcessPartial(transcript);
     }
 
     private void OnFinalTranscript(object? sender, FinalTranscript transcript)
     {
+        TempaudioLatencyProbe.RecordFinal();
         UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(4, "First Whisper Final result");
         _captions.ProcessFinal(transcript);
         LatencyUpdated?.Invoke(this, transcript.Latency);

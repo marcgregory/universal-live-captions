@@ -41,10 +41,13 @@ internal sealed class LineProtocolArgosProcess : IArgosProcess
                 return;
             }
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             StartProcess();
+            Console.Error.WriteLine($"[ARGOS-DIAG] T5b process spawned: {sw.Elapsed.TotalSeconds:F3}s");
 
             var ping = JsonSerializer.Serialize(new { id = PingRequestId, ping = true });
             var line = await ExchangeAsync(ping, _options.StartupTimeout, cancellationToken);
+            Console.Error.WriteLine($"[ARGOS-DIAG] T5c/T5d ping + python import + model load: {sw.Elapsed.TotalSeconds:F3}s (since spawn)");
             try
             {
                 using var doc = JsonDocument.Parse(line);
@@ -76,7 +79,9 @@ internal sealed class LineProtocolArgosProcess : IArgosProcess
         try
         {
             var json = JsonSerializer.Serialize(new { id = request.Id, text = request.Text, source = request.Source, target = request.Target });
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var line = await ExchangeAsync(json, _options.RequestTimeout, cancellationToken);
+            Console.Error.WriteLine($"[ARGOS-DIAG] T5e->T5f translate round-trip id={request.Id}: {sw.Elapsed.TotalSeconds:F3}s");
             return ParseResponse(line, request.Id);
         }
         finally

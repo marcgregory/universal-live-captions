@@ -32,6 +32,13 @@ public sealed class ArgosTranslationEngineOptions
         set => _requestTimeout = RequirePositiveTimeout(value, nameof(RequestTimeout));
     }
 
+    /// <summary>
+    /// The short throwaway source text sent as a one-time background warm-up after the process
+    /// model/lifetime loads, so the first real caption does not pay the one-time model
+    /// instantiation cost. Never surfaced as a caption.
+    /// </summary>
+    public string WarmUpText { get; set; } = "The quick brown fox jumps over the lazy dog.";
+
     private TimeSpan _startupTimeout = TimeSpan.FromSeconds(30);
     private TimeSpan _requestTimeout = TimeSpan.FromSeconds(60);
 

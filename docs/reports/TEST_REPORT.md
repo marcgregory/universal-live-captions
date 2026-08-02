@@ -285,3 +285,30 @@ Slice 5 — Overlay + Control Window is **complete (close-out 2026-08-01)**: `Un
 **Post-close-out refinement (Entry 7, 2026-08-01):** live active-line translation + Chrome-style overlay redesign are implemented with automated tests **224/224** (66 Audio + 58 Captions + 41 Speech + 21 Translation + 38 App), build 0 warnings/0 errors, format clean. **Manual verification of the redesigned overlay + live active-line translation completed 2026-08-01** (recorded in the Slice 5 refinement note above): Tagalog appears on the in-progress overlay line before commit, `TL` badge, chevron expand/collapse of history, close-hide, "Show Captions" re-show, and pipeline-continues-while-hidden all verified against real audio + real Argos. **Entry 7 closed out 2026-08-01.**
 
 **Slice 6 (Entry 8) — complete (close-out 2026-08-01):** Phase 1a (E2E latency metric + tests, **238/238**) and Phase 1b (OFAT sweep + shortlist) are complete, and **Phase 1c — App-level SAPI E2E validation — completed 2026-08-01** (recorded in the Slice 6 Phase 1c section above): baseline + shortlist configs × 3 runs each through the real App (loopback → Whisper → Argos en→tl → overlay), every run publishing real translated Tagalog. Latency winner **tiny/8/1/st2** (E2E final median 16.25 s incl. Argos cold start; warm last-final 7.45 s; STT 3.61 s; 18 translated finals); accuracy-preserving candidate **base/8/1/st2** (commits faster than the old default with identical model accuracy); control **base/8/1/st3**. **The validated baseline `base/8/1/st2` was promoted to the App default on 2026-08-01** (`StabilityWindow` 3→2, model `ggml-base` unchanged — one authoritative config) as the validated baseline for the current release. A fresh-context review of the Phase 1a E2E metric code completed clean (no findings). Phase 2 real-app validation (deferred per user) is a future reassessment pass over the baseline defaults. **All MVP slices (0–6) are complete.**
+
+## Argos Pre-Warm — First-Caption Latency Verification (2026-08-02)
+
+**Manual verification of the Argos background pre-warm, real Windows 10 machine.** Objective: reduce first-caption latency from the ~28-34 s Argos cold-start to ~5-7 s by warming Argos (Python + language discovery + model load, then first `en->tl` inference) in the background when translation is enabled, so the first real caption reuses a warmed process/model.
+
+**Harness:** UIA-launched `UniversalCaptions.App.exe` (Release, cwd = repo root), translation ON + target **Tagalog (tl)**, Argos dev venv python via `UC_ARGOS_PYTHON`, SAPI-paced English clip over default render (WASAPI loopback), App stderr captured to files for `[DIAGNOSTICS] T0-T8` + `[ARGOS-DIAG]` traces.
+
+### Case A — warm-up finishes before playback (headline fix)
+
+| Measurement | Before (cold) | Case A observed |
+|---|---|---|
+| First audio (T1-T0) | ~0.06 s | **0.064 s** ✓ |
+| Whisper Partial (T3-T2) | ~2.0 s | **2.060 s** ✓ |
+| Whisper Final (T4-T3) | ~3.6 s | **3.553 s** ✓ |
+| Argos first translation (T6-T5) | **23.06 s+** | **0.463 s** (real id=3 round-trip **0.454 s**) |
+| First caption (E2E final) | **~28-34 s** | **3.80 s / 6.85 s** |
+
+- `pre-warm ready in 24.2 s` finished ~30 s clip; cold costs paid before first caption.
+- Post-warm translation round-trips **0.17-1.50 s**. The 20-30 s Argos gap is gone; first caption ~4-7 s.
+
+### Case B — speech starts during warm-up (concurrency)
+
+- Clip played ~2 s after Start, before background pre-warm finished.
+- Exactly **one** process spawn (`T5b ... 0.011 s`) and **one** model load (`T5c/T5d ... 13.4 s`); the first real translation awaited the same shared `_startTask`/`_warmTask` and completed in **0.355 s** once warm finished — **no second process/initialization**.
+- The ~23 s first caption in this case is expected/correct: playback began before warm-up was done, so the real caption waits on the one warm-up rather than triggering a duplicate.
+
+**Result: Passed.** Case A meets the ~5-7 s first-caption target; Case B confirms the single shared initialization + lazy-fallback concurrency requirement. Tests 260/260, build 0 warnings/0 errors, format clean; baseline defaults unchanged.

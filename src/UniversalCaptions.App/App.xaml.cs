@@ -76,7 +76,12 @@ public partial class App : Application
             }
         }
 
-        services.AddSingleton<ITranslationEngine>(_ => new ArgosTranslationEngine(argosOptions));
+        // Single shared Argos engine instance: the concrete type is registered so the control
+        // window can trigger the background pre-warm, and the interface key resolves to it so the
+        // caption service and the concrete engine share one process/initialization.
+        var argosEngine = new ArgosTranslationEngine(argosOptions);
+        services.AddSingleton(argosEngine);
+        services.AddSingleton<ITranslationEngine>(argosEngine);
 
         var captionOptions = new CaptionServiceOptions(sourceLanguage: "en", targetLanguage: "en", historyCapacity: 50);
         services.AddSingleton(captionOptions);

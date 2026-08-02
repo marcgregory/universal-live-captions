@@ -200,4 +200,115 @@ public sealed class ArgosTranslationEngineTests
 
         Assert.True(process.Disposed);
     }
+
+    [Fact]
+    public async Task TriggerPreWarm_StartsProcess_AndSendsOneWarmupRequest()
+    {
+        var process = new FakeArgosProcess();
+        process.SetHandler(req => new ArgosResponse(true, "warm", null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        await fixture.Engine.TriggerPreWarmAsync("en", "tl");
+
+        Assert.True(process.Started);
+        Assert.Equal(1, process.StartCount);
+        Assert.Single(process.Requests);
+        Assert.Equal("The quick brown fox jumps over the lazy dog.", process.Requests[0].Text);
+        Assert.Equal("tl", process.Requests[0].Target);
+    }
+
+    [Fact]
+    public async Task TriggerPreWarm_IsIdempotent_SharedTask_DoesNotStartTwice()
+    {
+        var process = new FakeArgosProcess();
+        process.SetHandler(req => new ArgosResponse(true, "ok", null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        var first = fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        var second = fixture.Engine.TriggerPreWarmAsync("en", "tl");
+
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, process.StartCount);
+        Assert.Single(process.Requests);
+    }
+
+    [Fact]
+    public async Task RealTranslation_DuringWarmup_ReusesSharedStart_NoDuplicateInit()
+    {
+        var process = new FakeArgosProcess();
+        process.AddTranslateDelay(TimeSpan.FromMilliseconds(150));
+        process.SetHandler(req => new ArgosResponse(true, $"[{req.Target}] {req.Text}", null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        var warmTask = fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        // Real translation arrives while warm-up/init is still in flight: must await the same
+        // start task (StartCount == 1), not spawn a second initialization.
+        var real = await fixture.Engine.TranslateAsync("Hello", "en", "tl");
+        await warmTask;
+
+        Assert.Equal(1, process.StartCount);
+        Assert.Single(process.Requests.Where(r => r.Text == "Hello"));
+        Assert.Equal("Hello", real.Text[real.Text.IndexOf(']')..].TrimStart(']', ' ').Trim());
+    }
+
+    [Fact]
+    public async Task TriggerPreWarm_StartFailure_IsSwallowed_RealTranslationStillFallsBackToLazyStart()
+    {
+        var process = new FakeArgosProcess();
+        process.ThrowOnStart(new TranslationProcessException(TranslationErrorKind.EngineUnavailable, "python missing"));
+        using var fixture = CreateFixture(process);
+
+        // Pre-warm swallows the failure; the shared start task is cleared so the real translation
+        // retries start (fallback) rather than failing forever.
+        await fixture.Engine.TriggerPreWarmAsync("en", "tl");
+
+        // Pre-warm swallows the failure; the shared start task is cleared so the real translation
+        // retries start (fallback) rather than failing forever.
+        var exc = await Assert.ThrowsAsync<TranslationException>(() =>
+            fixture.Engine.TranslateAsync("hello", "en", "tl"));
+        Assert.Equal(TranslationErrorKind.EngineUnavailable, exc.Kind);
+        Assert.Equal(2, fixture.Process.StartCount);
+    }
+
+    [Fact]
+    public async Task RealTranslation_AfterFatalWarmProcessError_RestartsProcess()
+    {
+        var process = new FakeArgosProcess();
+        // Warm-up translate fails with a fatal kind that kills the underlying process.
+        process.SetHandler(req => throw new TranslationProcessException(TranslationErrorKind.Timeout, "warm timed out"));
+        using var fixture = CreateFixture(process);
+
+        await fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        Assert.Equal(1, process.StartCount);
+
+        // The fatal warm error must reset the shared start task so a real translation re-creates
+        // the process instead of being handed a dead "completed" start and losing the first caption.
+        var exc = await Assert.ThrowsAsync<TranslationException>(() =>
+            fixture.Engine.TranslateAsync("hello", "en", "tl"));
+        Assert.Equal(TranslationErrorKind.Timeout, exc.Kind);
+        // The real translation re-started the process (StartCount incremented), proving the shared
+        // start task was reset rather than reused-as-completed.
+        Assert.Equal(2, fixture.Process.StartCount);
+    }
+
+    [Fact]
+    public async Task TriggerPreWarm_TargetChange_TriggersFreshWarm()
+    {
+        var process = new FakeArgosProcess();
+        process.SetHandler(req => new ArgosResponse(true, req.Text, null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        await fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        Assert.Single(fixture.Process.Requests);
+
+        // A different target must not reuse the completed warm-up; it needs its own.
+        await fixture.Engine.TriggerPreWarmAsync("en", "de");
+        Assert.Equal(2, fixture.Process.Requests.Count);
+        Assert.Equal("de", fixture.Process.Requests[1].Target);
+
+        // Re-requesting the original target re-warms it again (it is no longer the candidate).
+        await fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        Assert.Equal(3, fixture.Process.Requests.Count);
+    }
 }

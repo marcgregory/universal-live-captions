@@ -5,6 +5,7 @@ using UniversalCaptions.App.Overlay;
 using UniversalCaptions.App.Pipeline;
 using UniversalCaptions.Audio.Capture;
 using UniversalCaptions.Core.Captions;
+using UniversalCaptions.Translation;
 
 namespace UniversalCaptions.App.Controls;
 
@@ -19,6 +20,7 @@ public partial class ControlWindow : Window
     private readonly CaptionPipeline _pipeline;
     private readonly IOverlayService _overlay;
     private readonly ICaptionService _captions;
+    private readonly ArgosTranslationEngine _translationEngine;
     private readonly string _captionSourceLanguage;
 
     private sealed record LanguageOption(string Label, string? Code);
@@ -45,11 +47,12 @@ public partial class ControlWindow : Window
     /// <param name="overlay">The overlay this window configures.</param>
     /// <param name="captions">The caption service this window toggles translation on.</param>
     /// <param name="captionOptions">The caption service options, for the caption source language.</param>
-    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions)
+    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine)
     {
         _pipeline = pipeline;
         _overlay = overlay;
         _captions = captions;
+        _translationEngine = translationEngine ?? throw new ArgumentNullException(nameof(translationEngine));
         _captionSourceLanguage = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions))).SourceLanguage;
         InitializeComponent();
 
@@ -184,6 +187,31 @@ public partial class ControlWindow : Window
         }
 
         _captions.SetTranslationEnabled(enabled, target);
+
+        // Kick the Argos pre-warm in the background so the cold-start is not paid on the first real
+        // caption. Fire-and-forget on a background task: the UI stays responsive, and the engine's
+        // shared warm-up task is awaited by real translations if the user starts speaking first.
+        if (enabled && !string.IsNullOrWhiteSpace(target))
+        {
+            _ = PreheatInBackgroundAsync(target!);
+        }
+    }
+
+    /// <summary>
+    /// Starts the Argos pre-warm off the UI thread. The engine shares one initialization with real
+    /// translations and swallows/report errors, so a pre-warm failure is never user-visible and the
+    /// lazy translation path remains the fallback.
+    /// </summary>
+    private async Task PreheatInBackgroundAsync(string target)
+    {
+        try
+        {
+            await _translationEngine.TriggerPreWarmAsync(_captionSourceLanguage, target).ConfigureAwait(false);
+        }
+        catch (Exception exc)
+        {
+            System.Diagnostics.Trace.WriteLine($"[UniversalCaptions] Argos pre-warm background error: {exc}");
+        }
     }
 
     private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

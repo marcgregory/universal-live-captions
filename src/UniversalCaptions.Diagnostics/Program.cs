@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using NAudio.Wave;
 using UniversalCaptions.Audio.Capture;
 using UniversalCaptions.Audio.Metering;
+using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Core.Audio;
 using UniversalCaptions.Core.Capture;
 
@@ -12,6 +15,7 @@ internal static class Program
     {
         int? deviceIndex = null;
         double? seconds = null;
+        string? latencyWav = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -23,6 +27,10 @@ internal static class Program
                     break;
                 case "--seconds" when i + 1 < args.Length && double.TryParse(args[i + 1], out double secs):
                     seconds = secs;
+                    i++;
+                    break;
+                case "--latency" when i + 1 < args.Length:
+                    latencyWav = args[i + 1];
                     i++;
                     break;
                 case "--help":
@@ -50,6 +58,12 @@ internal static class Program
             return 1;
         }
 
+        if (latencyWav is not null)
+        {
+            int idx = deviceIndex ?? 0;
+            return RunLatencyProbe(devices[idx], latencyWav, seconds);
+        }
+
         IAudioCapture capture;
         try
         {
@@ -67,6 +81,125 @@ internal static class Program
         {
             return RunMeter(capture, seconds);
         }
+    }
+
+    // TEMP-DIAGNOSTIC (REMOVE AFTER ROOT-CAUSE INVESTIGATION)
+    // Measures T0 (session init) -> T1 (device started) -> T2 (first buffer) -> T3 (first non-silent)
+    // while playing a short WAV into the SAME render device via loopback.
+    private static int RunLatencyProbe(LoopbackDevice device, string wavPath, double? seconds)
+    {
+        if (!File.Exists(wavPath))
+        {
+            Console.Error.WriteLine($"ERROR: WAV file not found: {wavPath}");
+            return 2;
+        }
+
+        var sw = Stopwatch.StartNew();
+        sw.Stop();
+        double lastTag = 0;
+        void Tag(string tag, string what, bool force = false)
+        {
+            double t = sw.Elapsed.TotalSeconds;
+            Console.Error.WriteLine($"[LATENCY] {tag}: {t:F3}s - {what} (gap from prev {t - lastTag:F3}s)");
+            lastTag = t;
+        }
+
+        using var done = new ManualResetEventSlim(false);
+        bool firstByte = false;
+        double? firstNonSilent = null;
+        var vad = new EnergyVad(new VadOptions(RmsThreshold: 0.008, MinActiveChunks: 1, SilenceHangoverChunks: 6));
+
+        Console.WriteLine($"Latency probe: playing '{Path.GetFileName(wavPath)}' into '{device.FriendlyName}'.");
+        Console.WriteLine("START marker logged at capture Start(). Playback begins on the same call.");
+        Console.WriteLine();
+
+        // T0
+        sw.Start();
+        Tag("T0", "session init begins");
+
+        IAudioCapture capture;
+        try
+        {
+            capture = WasapiLoopbackCaptureSource.CreateForDevice(device.Id);
+        }
+        catch (AudioCaptureException ex)
+        {
+            Console.Error.WriteLine($"ERROR: {ex.Message}");
+            return 2;
+        }
+
+        capture.CaptureFailed += (_, error) =>
+        {
+            Console.Error.WriteLine($"\nERROR: {error.Message} ({error.Kind})");
+            done.Set();
+        };
+
+        capture.AudioAvailable += (_, chunk) =>
+        {
+            if (!firstByte)
+            {
+                firstByte = true;
+                Tag("T2", "first audio buffer/chunk received");
+            }
+
+            if (firstNonSilent is null && vad.IsSpeech(chunk))
+            {
+                firstNonSilent = sw.Elapsed.TotalSeconds;
+                Tag("T3", "first NON-SILENT audio detected (rms >= 0.001)");
+            }
+        };
+
+        // Play the WAV into the same device. If captures use the device mix, this routes playback
+        // into loopback. (WAV format sample rate may not match device; NAudio resamples via ResamplerDmoStream.)
+        WaveOutEvent? player = null;
+        try
+        {
+            var reader = new AudioFileReader(wavPath);
+            var targetRate = new WaveFormat(48000, 16, 2);
+            player = new WaveOutEvent { DeviceNumber = -1 }; // default render device
+            player.Init(new MediaFoundationResampler(reader, targetRate.SampleRate));
+            player.Play();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"WARN: could not route playback to default device: {ex.Message}");
+        }
+
+        // T1
+        try
+        {
+            capture.Start();
+        }
+        catch (AudioCaptureException ex)
+        {
+            Console.Error.WriteLine($"ERROR: {ex.Message}");
+            player?.Dispose();
+            return 2;
+        }
+        Tag("T1", "capture device/stream started (IsCapturing)");
+
+        double waitSeconds = seconds ?? 8;
+        double elapsed = sw.Elapsed.TotalSeconds;
+        done.Wait(TimeSpan.FromSeconds(waitSeconds));
+
+        double tNow = sw.Elapsed.TotalSeconds;
+        Console.WriteLine();
+        Console.WriteLine($"----- Probe complete after {tNow:F3}s. firstByte={firstByte} firstNonSilent={firstNonSilent?.ToString("F3") ?? "NEVER"}");
+
+        if (firstNonSilent is not null)
+        {
+            Console.WriteLine($"[RESULT] T3 - T0 (first non-silent audio detected): {firstNonSilent:F3}s after Start()");
+        }
+        else
+        {
+            Console.WriteLine($"[RESULT] NO non-silent audio within {waitSeconds}s of Start(). If the source played and audio routes to the default render device, this indicates capture-side delay.");
+        }
+
+        capture.Stop();
+        capture.Dispose();
+        player?.Stop();
+        player?.Dispose();
+        return 0;
     }
 
     private static int RunMeter(IAudioCapture capture, double? seconds)
@@ -160,6 +293,7 @@ internal static class Program
         Console.WriteLine("Usage: UniversalCaptions.Diagnostics [options]");
         Console.WriteLine("  --device <index>   Capture a specific output device (index from the device list).");
         Console.WriteLine("  --seconds <n>      Stop automatically after n seconds.");
+        Console.WriteLine("  --latency <wav>    Latency probe: play <wav> into the default device and time T0..T3.");
         Console.WriteLine("  -h, --help         Show this help.");
     }
 }

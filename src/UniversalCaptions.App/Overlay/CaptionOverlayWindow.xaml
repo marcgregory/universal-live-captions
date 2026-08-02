@@ -83,11 +83,13 @@
             </Grid.RowDefinitions>
 
             <!-- ─── Row 0: Header ─── -->
-            <!-- Hidden by default (Chrome-style): revealed on mouse hover. -->
+            <!-- Invisible but still reserved so the overlay keeps a constant size on/off hover -->
+            <!-- (the row collapses to 0 height with Visibility=Collapsed, which would resize the
+                 window); the controls themselves are revealed on mouse hover. -->
             <Grid x:Name="HeaderBar"
                   Grid.Row="0"
                   Margin="14,10,10,6"
-                  Visibility="Collapsed">
+                  Visibility="Hidden">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -188,14 +190,15 @@
             </ScrollViewer>
 
             <!-- ─── Row 2: Collapse / expand chevron ─── -->
-            <!-- Hidden by default (Chrome-style): revealed on mouse hover. -->
+            <!-- Invisible but still reserved so the overlay keeps a constant size on/off hover -->
+            <!-- (collapsing the row to 0 height would resize the window). -->
             <Button x:Name="CollapseButton"
                     Grid.Row="2"
                     Style="{StaticResource ChevronButton}"
                     HorizontalAlignment="Center"
                     Height="20"
                     Margin="0,0,0,6"
-                    Visibility="Collapsed"
+                    Visibility="Hidden"
                     ToolTip="Collapse"
                     Click="OnCollapseToggled">
                 <TextBlock x:Name="CollapseChevron"

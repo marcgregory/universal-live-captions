@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## Metadata
 
@@ -16,6 +16,18 @@ Last updated: 2026-08-01
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.9 - 2026-08-02
+
+### Added
+
+- **Argos background pre-warm to remove the ~23-30 s cold-start from the first caption (2026-08-02).** Real measurement showed STT/audio/overlay are not the bottleneck: the first translation result arrived 24-34 s out of a ~28-34 s first-caption E2E time, driven by Argos cold start (Python interpreter import + language discovery/model load ≈ 18 s + first `en→tl` inference ≈ 5-12 s under Whisper CPU load). The fix warms Argos off the first real-caption path:
+  - `ArgosTranslationEngine.TriggerPreWarmAsync(source, target)` — idempotent background warm-up: one shared `_warmTask` is reused while running/completed *for the same target language*; changing the target starts a fresh warm-up so the first caption in the new language is not cold.
+  - `EnsureStartedAsync`/`StartCoreAsync` are rewritten so every caller (pre-warm and real translations) awaits a single shared `_startTask`; at most one process/initialization ever starts. If that shared start task faults, it is cleared and the next real translation re-creates the process instead of being handed a dead "completed" start.
+  - A warm-up process error is swallowed and logged (never surfaced as a caption), and fatal kinds (timeout/unavailable/unknown) reset the shared start task so the real translation re-starts the local Argos process rather than losing the first caption (lazy start remains the fallback).
+  - `ArgosTranslationEngineOptions.WarmUpText` (default `"The quick brown fox jumps over the lazy dog."`) — the one-time throwaway source text; it and its result stay purely local and are discarded.
+  - `ControlWindow` kicks the Argos pre-warm fire-and-forget when translation is enabled with a target (`ApplyTranslationSettings`), and `App.xaml.cs` registers the engine as both the concrete singleton and `ITranslationEngine` so the control window and the caption service share one process/initialization.
+- **Tests:** new `ArgosTranslationEngineTests` (26 → 27): pre-warm starts the process + sends one warm-up request, idempotency across concurrent triggers, real translation during warm-up reuses the shared start (StartCount == 1), fatal warm error → real translation re-starts the process (StartCount == 2), and target change → fresh warm-up. Solution total **260/260 passing** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 51 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean, baseline defaults unchanged (`ggml-base`, `StabilityWindow` 2, window 8 s / interval 1 s).
 
 ## v0.5.8 - 2026-08-01
 
