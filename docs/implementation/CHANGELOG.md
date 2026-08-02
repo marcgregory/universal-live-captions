@@ -17,6 +17,16 @@ Last updated: 2026-08-02
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.10 - 2026-08-02
+
+### Fixed
+
+- **Slice 7 — stable incremental caption rendering + scope-limited bottom scrolling (2026-08-02).** Addresses the reported "whole text reflows / newest content jumps" feel without touching the translation or STT path:
+  - **Layout measurement (diagnosis first).** A deterministic STA layout probe (`CaptionLayoutProbeTests`) recreates the exact `ScrollViewer → Grid → StackPanel → TextBlock` tree at the real overlay width and confirms the caption `TextBlock` already measures and wraps correctly: a short utterance fills the full ~522 px viewport and stays on one line (it does not measure at its natural word width, which would cause the "two words → new line" symptom), a long sentence uses the full width and wraps only when width is exhausted, and growing tails keep a constant realized width (constancy across appends). Width is therefore not the cause of the reported reflow.
+  - **Stable incremental render (A):** `UpdateCaptionItems`/`ReconcileHistory` now return whether a brand-new text block was inserted; a Partial only ever rewrites the existing live active line's `Text` in place — history `TextBlock` instances are reused by sequence and never rebuilt. A Final inserts the committed line as a fresh block and reuses the single live block for the next partial. Verified by new `CaptionRenderIdentityTests` (4) that drive the real `CaptionOverlayWindow` over STA/reflection and assert block-instance identity is preserved across Partial and Final steps.
+  - **Scope-limited bottom scroll (C):** the overlay previously forced `ScrollToBottom` and re-ran the bottom re-anchor on every caption render. It now scrolls to the bottom only when a new block was actually inserted (a Final commit or the first line), and only when the content overflows the fixed-height viewport — a Partial that rewrites the live line never forces a scroll and never reflows history. The window's bottom re-anchor no longer runs per render (only on Loaded / collapse / hover toggles, where the window size actually changes), removing the per-partial window "jump".
+- **Tests:** App tests 51 → **58** (3 layout probe + 4 render-identity). Solution total **267/267 passing** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 58 App), build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. Baseline defaults unchanged (`ggml-base`, `StabilityWindow` 2); Whisper/Argos/latency path untouched.
+
 ## v0.5.9 - 2026-08-02
 
 ### Added

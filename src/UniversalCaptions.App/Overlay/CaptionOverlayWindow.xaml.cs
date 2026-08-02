@@ -155,9 +155,13 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             || !model.TranslationEnabled
             || snapshot.ActiveLine is null;
 
+        bool newBlockAdded = false;
         if (shouldUpdate)
         {
-            UpdateCaptionItems(model);
+            // Returns true only when a brand-new caption block (a Final, or the first ever active
+            // line) was inserted — the one event that legitimately requires a bottom scroll. A
+            // Partial/active mutation never inserts a block, so it never forces a scroll.
+            newBlockAdded = UpdateCaptionItems(model);
         }
 
         // Language badge header: show source→target pills when translation is active.
@@ -172,25 +176,30 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             TranslationBadgePanel.Visibility = Visibility.Collapsed;
         }
 
-        // Auto-scroll only when the content actually overflows the fixed-height viewport, so the
-        // newest caption stays visible without re-scrolling on every unchanged partial.
-        if (shouldUpdate)
+        // Auto-scroll to the newest caption only when a block was actually added (a Final commits or
+        // the first line appears), and only when the content really overflows the fixed-height
+        // viewport. A Partial that only rewrites the live line's text never scrolls and never causes
+        // the caption area to reflow. Scrolling is never used to paper over a re-render problem.
+        if (newBlockAdded)
         {
             ScrollToBottomIfNeeded();
         }
-
-        ScheduleBottomAnchor();
+        // No per-render bottom re-anchor here: the overlay's height is fixed (fixed-height caption
+        // scroll area + reserved hover chrome), so a caption render never changes the window size.
+        // Re-anchoring happens only on Loaded and on the collapse/hover toggles (see those methods).
     }
 
     /// <summary>
     /// Reconciles the caption panel against the display model by mutating only the items that
     /// changed: committed history lines are reused by sequence (a new final simply appends a fresh
     /// block above the live line) and only the live in-progress line's text is rewritten in place.
-    /// Existing finalized items keep their TextBlock instance and are never rebuilt.
+    /// Existing finalized items keep their TextBlock instance and are never rebuilt. A Partial that
+    /// only rewrites the active line's text returns false; only a freshly inserted block (a Final or
+    /// the first ever line) returns true, so the caller knows a bottom scroll is warranted.
     /// </summary>
-    private void UpdateCaptionItems(CaptionDisplayModel model)
+    private bool UpdateCaptionItems(CaptionDisplayModel model)
     {
-        ReconcileHistory(model.History);
+        bool newBlockAdded = ReconcileHistory(model.History);
 
         if (model.ActiveLine is { } active)
         {
@@ -198,6 +207,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             {
                 _activeBlock = CreateCaptionBlock(active.Text, active.Sequence);
                 CaptionPanel.Children.Add(_activeBlock);
+                newBlockAdded = true;
             }
             else if (!string.Equals(_activeBlock.Text, active.Text, StringComparison.Ordinal))
             {
@@ -213,6 +223,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         bool hasContent = !model.IsEmpty;
         CaptionPanel.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
         HintText.Visibility = model.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+        return newBlockAdded;
     }
 
     /// <summary>
@@ -222,8 +233,9 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     /// translation replaces source on an already-visible line) is updated in place; stale blocks are
     /// removed. The live active block, if any, always remains the last panel child.
     /// </summary>
-    private void ReconcileHistory(IReadOnlyList<CaptionDisplayLine> history)
+    private bool ReconcileHistory(IReadOnlyList<CaptionDisplayLine> history)
     {
+        bool newBlockAdded = false;
         int insertIndex = 0;
         foreach (CaptionDisplayLine line in history)
         {
@@ -251,6 +263,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
                 TextBlock block = CreateCaptionBlock(line.Text, line.Sequence);
                 _historyBlocks.Insert(insertIndex, block);
                 CaptionPanel.Children.Insert(insertIndex, block);
+                newBlockAdded = true;
                 insertIndex++;
             }
         }
@@ -261,6 +274,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             _historyBlocks.RemoveAt(_historyBlocks.Count - 1);
             CaptionPanel.Children.Remove(stale);
         }
+
+        return newBlockAdded;
     }
 
     private int FindHistoryIndex(long sequence)

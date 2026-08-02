@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## Metadata
 
@@ -19,7 +19,7 @@ This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
 
-Slice 5 — WPF overlay + control window (render `CaptionState`, consume `ICaptionService` events on the dispatcher) — **complete (close-out 2026-08-01)**: implementation + unit tests complete; manual overlay/device verification **completed 2026-08-01** (real capture → Whisper → overlay, interaction, lifecycle, error paths); **real-Argos wiring verified end-to-end through the App 2026-08-01** (committed overlay lines translated to Tagalog via a real local Argos child process).
+**Slices 1–6 complete (close-out 2026-08-01).** Slice 5 (WPF overlay + control window) + Entry 7 (live active-line translation + Chrome-style overlay) closed out 2026-08-01; Slice 6 (E2E latency + OFAT baseline) closed out 2026-08-01. **Argos pre-warm closed out 2026-08-02** (v0.5.9): first-caption latency ~23–30 s → ~3.8–6.85 s. **Slice 7 — caption overlay layout & stable incremental rendering (in progress, 2026-08-02)**: full-viewport width verified via a layout probe; the render path now mutates only the live block on a Partial and reuses history blocks by identity, with bottom scroll/re-anchor limited to when a new block is inserted and content overflows. **All MVP slices (0–6) complete; Phase 2 real-app validation deferred per user.**
 
 **Post-close-out refinement (2026-08-01):** live **active-line translation** + **Chrome-style overlay redesign** landed on top of Slice 5 (change-impact Entry 7): the in-progress caption line is now translated in the target language while the speaker is still talking (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded); the overlay is an auto-sized translucent pill with white text, a target-language badge, expand/collapse chevron, and a hide button; the control window adds "Show Captions". Implementation + unit tests **complete (224/224)**; **manual verification with real audio + real Argos completed 2026-08-01** — Tagalog appears on the in-progress overlay line before commit, `TL` badge, chevron expand/collapse, close-hide, "Show Captions" re-show, and pipeline-continues-while-hidden all verified (evidence in `TEST_REPORT.md`). **Entry 7 closed out 2026-08-01.**
 
@@ -53,7 +53,7 @@ Status:           Validated baseline for the current release (one authoritative
 
 ## Current Focus
 
-Slice 6 is **complete (close-out 2026-08-01)** — all Definition-of-Done items satisfied: Phase 1a (E2E latency metric + tests, **238/238**), Phase 1b (OFAT sweep + shortlist in `BENCHMARK_REPORT.md`), and Phase 1c (App-level SAPI E2E validation in `TEST_REPORT.md` — baseline + shortlist × 3 runs each through the real App, loopback → Whisper → Argos en→tl → overlay, every run publishing real translated Tagalog). **The validated baseline `base/8/1/st2` was promoted to the App default** (`StabilityWindow` 3→2 via `WhisperEngineOptions` + App + benchmark, one authoritative config; model default `ggml-base` unchanged per ADR-0003 — see the Slice 6 Baseline Defaults block above). Fresh-context review of the Phase 1a E2E metric code completed clean (2026-08-01). Latency winner `tiny/8/1/st2` (E2E final median 16.25 s incl. Argos cold start; warm last-final 7.45 s; STT 3.61 s; 18 translated finals). **All MVP slices (0–6) are complete.** Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) is **deferred per user** — a future reassessment pass over the baseline defaults, not a prerequisite.
+**All MVP slices (0–6) remain complete.** **Argos pre-warm landed 2026-08-02** (v0.5.9): background pre-warm warms one shared Argos process/model off the real-caption path, so the first caption drops from ~23–30 s cold start to ~3.8–6.85 s (warm translation ~0.46 s), verified live through the real App (Cases A + B: single process spawn + single model init, no duplicate init, no lost first caption; 260/260 tests). **Slice 7 — caption overlay layout & stable incremental rendering (2026-08-02)**: a layout probe confirmed the caption `TextBlock` already uses the full ~522 px viewport width correctly (short lines stay one line; long text wraps only on width exhaustion — the reported "whole text re-flows" is not a width bug), and the render path now does scope-stable incremental rendering (a Partial only rewrites the live block's text in place; history blocks reused by identity, never rebuilt) with bottom scroll re-anchoring limited to when a new block is inserted and content overflows. **Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) stays deferred per user.**
 
 ## Architecture Status
 
@@ -69,8 +69,8 @@ None.
 
 ## Next Milestone
 
-**Slice 6 is complete (close-out 2026-08-01)** — Phases 1a (E2E metric + tests), 1b (OFAT sweep + shortlist), and 1c (App-level SAPI E2E validation) all complete; the validated baseline **`base/8/1/st2` was promoted to the App default** (`StabilityWindow` 3→2, model `ggml-base` unchanged — one authoritative config). **All MVP slices (0–6) are complete.** Next work is from the roadmap Future list; Phase 2 real-app validation (YouTube/VLC/Zoom) is a deferred reassessment pass per user. See `docs/implementation/BUILD_PLAN.md` and `docs/implementation/ROADMAP.md`.
+**Slice 6 is complete (close-out 2026-08-01)** (E2E metric, OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, App-level SAPI E2E validation; baseline `base/8/1/st2` promoted to the App default — `StabilityWindow` 3→2, model `ggml-base` unchanged). **All MVP slices (0–6) are complete.** **Argos pre-warm closed out 2026-08-02** (v0.5.9) — first-caption latency ~23–30 s → ~3.8–6.85 s, verified live. **Slice 7 (caption overlay layout & stable incremental rendering) in progress (2026-08-02)**: full-viewport width verified; render path made scope-stable (Partial mutates only the live block; history reused by identity; scroll/re-anchor only on new block + overflow) — tests 267/267. Next work after Slice 7 is from the roadmap Future list and the deferred Phase 2 real-app validation (YouTube/VLC/Zoom) reassessment per user. See `docs/implementation/BUILD_PLAN.md` and `docs/implementation/ROADMAP.md`.
 
 ## Last Build
 
-2026-08-01 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed 253/253 (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). `dotnet format --verify-no-changes` clean. `dotnet list package --vulnerable` — no vulnerable packages (all 13 projects). Overlay caption display fix closed 2026-08-01 (chronological history, newest at bottom; height caps removed so the newest/current caption is never clipped — see CHANGELOG v0.5.8 and TEST_REPORT).
+2026-08-02 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **267/267** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 58 App). `dotnet format --verify-no-changes` clean. `dotnet list package --vulnerable` — no vulnerable packages (all 13 projects). Argos pre-warm closed out 2026-08-02 (first-caption ~23–30 s → ~3.8–6.85 s; v0.5.9). Slice 7 (2026-08-02) caption layout probe + stable incremental rendering added (see CHANGELOG v0.5.10 and TEST_REPORT).

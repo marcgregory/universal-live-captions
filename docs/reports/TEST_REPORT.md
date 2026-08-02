@@ -312,3 +312,35 @@ Slice 5 — Overlay + Control Window is **complete (close-out 2026-08-01)**: `Un
 - The ~23 s first caption in this case is expected/correct: playback began before warm-up was done, so the real caption waits on the one warm-up rather than triggering a duplicate.
 
 **Result: Passed.** Case A meets the ~5-7 s first-caption target; Case B confirms the single shared initialization + lazy-fallback concurrency requirement. Tests 260/260, build 0 warnings/0 errors, format clean; baseline defaults unchanged.
+
+## Slice 7 — Caption Layout & Stable Incremental Rendering (2026-08-02)
+
+**Slice:** stable incremental rendering (A) + scope-limited bottom scrolling (C), after a measurement-first diagnosis of the reported "whole text re-flows / newest content jumps" symptom. Translation (Whisper/Argos/latency) path untouched.
+
+### Task B — width/measurement diagnosis (probe, deterministic STA)
+
+Layout probe `CaptionLayoutProbeTests` recreates the exact overlay tree `ScrollViewer(522px viewport) → Grid → StackPanel → TextBlock(font 20, L260)` and measures real WPF layout:
+
+| Case | Realized width | Available text width | Wrapped lines |
+|---|---|---|---|
+| "two words" (short) | ~522 px | ~522 px | **1** |
+| long sentence | ~522 px | ~522 px | ≥ 2 (wraps only on exhaustion) |
+| "the quick" vs long tail | ~522 px (constant) | ~522 px | grows, width constant |
+
+**Verdict: width is correct.** A caption fills the full ~522px viewport and stays on one line for short utterances (it does not measure at its natural word width, so appended tails don't force premature new lines); long text wraps only when 522px is exhausted; growing tails keep a constant fill width. The reported reflow is therefore **not** a width/measurement problem — it must be in the render path.
+
+### Task A — stable incremental rendering (fixed + verified by render-identity test)
+
+`UpdateCaptionItems`/`ReconcileHistory` now return whether a new block was inserted. A Partial only mutates the live `TextBlock`'s `Text` in place; history `TextBlock` instances are reused by sequence and never rebuilt; a Final inserts the committed line as a fresh history block while the single live block is reused for the next phrase.
+
+`CaptionRenderIdentityTests` (4) drive the real `CaptionOverlayWindow` (STA + reflection) and assert **block instance identity is preserved**:
+- Partial stream → identical history instances before/after, only active text changes;
+- growing Partial → same active instance, text updated in place;
+- Final → finalized text becomes history, live block reused for next partial;
+- multiple finals → first/second history instances stay `Assert.Same`, order + text preserved.
+
+### Task C — verification via scope-limited bottom scroll
+
+The overlay no longer forces `ScrollToBottom` and no longer re-runs the bottom re-anchor on every caption render. It scrolls only when a new caption block was inserted (a Final or the first line) and the content overflows the fixed-height viewport; a Partial that rewrites the live line alone never scrolls and never reflows history. Window re-anchor runs only on Loaded / collapse / hover (where size actually changes).
+
+**Gates:** App tests 51 → **58** (3 layout probe + 4 render-identity); solution **267/267** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 58 App); build 0 warnings / 0 errors; `dotnet format --verify-no-changes` clean; baseline defaults unchanged; Whisper/Argos/latency path untouched.
