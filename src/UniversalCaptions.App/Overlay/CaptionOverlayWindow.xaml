@@ -164,6 +164,7 @@
                           Grid.Row="1"
                           VerticalScrollBarVisibility="Hidden"
                           HorizontalScrollBarVisibility="Disabled"
+                          HorizontalContentAlignment="Stretch"
                           ClipToBounds="True"
                           Height="160"
                           Margin="16,4,16,4"

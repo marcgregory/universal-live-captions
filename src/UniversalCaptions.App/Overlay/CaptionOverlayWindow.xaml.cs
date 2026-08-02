@@ -23,8 +23,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     private readonly EventHandler<CaptionLine> _lineChangedHandler;
     private readonly EventHandler<CaptionState> _stateChangedHandler;
 
-    private double _opacity = 0.9;
-    private double _fontSize = 20;
+    private double _opacity = 1.0;
+    private double _fontSize = 30;
     private bool _clickThrough;
     private bool _expanded = true;
     private bool _renderQueued;
