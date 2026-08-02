@@ -1,5 +1,5 @@
-using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -10,11 +10,11 @@ namespace UniversalCaptions.App.Overlay;
 
 /// <summary>
 /// The always-on-top caption overlay styled after Google Chrome's Live Caption panel: a dark
-/// semi-transparent rectangle with a header row showing the session language badge, a single
-/// scrolling text area that renders history and the active in-progress line as a continuous
-/// paragraph (newest text always at the bottom), and a collapse/expand chevron at the footer.
-/// Implements <see cref="IOverlayService"/> so the control window can configure appearance and
-/// placement without touching caption state (ADR-0004).
+/// semi-transparent rectangle with a header row showing the session language badge, a fixed-height
+/// scrolling text area that renders each committed caption as its own stable item with the live
+/// in-progress line as a single mutable item at the bottom (newest text always at the bottom), and a
+/// collapse/expand chevron at the footer. Implements <see cref="IOverlayService"/> so the control
+/// window can configure appearance and placement without touching caption state (ADR-0004).
 /// </summary>
 public partial class CaptionOverlayWindow : Window, IOverlayService
 {
@@ -30,6 +30,12 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     private bool _renderQueued;
     private bool _positioned;
     private bool _bottomAnchored = true;
+
+    // Stable visual items: one TextBlock per committed (finalized) caption line, kept in display
+    // order, plus a single mutable TextBlock for the live in-progress line at the bottom. Existing
+    // finalized blocks are reused by sequence so a Partial never rebuilds the caption visual tree.
+    private readonly List<TextBlock> _historyBlocks = new();
+    private TextBlock? _activeBlock;
 
     /// <summary>
     /// Creates the overlay. Caption state events are consumed on the dispatcher.
@@ -143,7 +149,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(snapshot);
 
         // When translation is enabled and the active line is still being translated, do not update
-        // the text block at all: keep the previously shown translated caption so the overlay never
+        // the caption items at all: keep the previously shown translated caption so the overlay never
         // flashes a blank or shows the source language between live translations.
         bool shouldUpdate = model.ActiveLine is not null
             || !model.TranslationEnabled
@@ -151,35 +157,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
         if (shouldUpdate)
         {
-            // Combine committed history + active line into a single continuous paragraph so the
-            // overlay scrolls naturally, mirroring Chrome's Live Caption behaviour.
-            var sb = new StringBuilder();
-            foreach (var line in model.History)
-            {
-                if (sb.Length > 0)
-                {
-                    sb.Append(' ');
-                }
-
-                sb.Append(line.Text);
-            }
-
-            if (model.ActiveLine is { } active)
-            {
-                if (sb.Length > 0)
-                {
-                    sb.Append(' ');
-                }
-
-                sb.Append(active.Text);
-            }
-
-            string combined = sb.ToString();
-            bool hasContent = !string.IsNullOrWhiteSpace(combined);
-
-            CaptionTextBlock.Text = hasContent ? combined : string.Empty;
-            CaptionTextBlock.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
-            HintText.Visibility = model.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+            UpdateCaptionItems(model);
         }
 
         // Language badge header: show source→target pills when translation is active.
@@ -194,10 +172,133 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             TranslationBadgePanel.Visibility = Visibility.Collapsed;
         }
 
-        // Auto-scroll to the bottom so the newest line is always visible.
-        CaptionScroller.ScrollToBottom();
+        // Auto-scroll only when the content actually overflows the fixed-height viewport, so the
+        // newest caption stays visible without re-scrolling on every unchanged partial.
+        if (shouldUpdate)
+        {
+            ScrollToBottomIfNeeded();
+        }
 
         ScheduleBottomAnchor();
+    }
+
+    /// <summary>
+    /// Reconciles the caption panel against the display model by mutating only the items that
+    /// changed: committed history lines are reused by sequence (a new final simply appends a fresh
+    /// block above the live line) and only the live in-progress line's text is rewritten in place.
+    /// Existing finalized items keep their TextBlock instance and are never rebuilt.
+    /// </summary>
+    private void UpdateCaptionItems(CaptionDisplayModel model)
+    {
+        ReconcileHistory(model.History);
+
+        if (model.ActiveLine is { } active)
+        {
+            if (_activeBlock is null)
+            {
+                _activeBlock = CreateCaptionBlock(active.Text, active.Sequence);
+                CaptionPanel.Children.Add(_activeBlock);
+            }
+            else if (!string.Equals(_activeBlock.Text, active.Text, StringComparison.Ordinal))
+            {
+                _activeBlock.Text = active.Text;
+            }
+        }
+        else if (_activeBlock is not null)
+        {
+            CaptionPanel.Children.Remove(_activeBlock);
+            _activeBlock = null;
+        }
+
+        bool hasContent = !model.IsEmpty;
+        CaptionPanel.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
+        HintText.Visibility = model.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Reconciles the committed-history region of the panel against the display history, reusing
+    /// TextBlock instances by sequence. Blocks that already match are left untouched; new finals get
+    /// a fresh block inserted in chronological position; a block whose text changed (e.g. a completed
+    /// translation replaces source on an already-visible line) is updated in place; stale blocks are
+    /// removed. The live active block, if any, always remains the last panel child.
+    /// </summary>
+    private void ReconcileHistory(IReadOnlyList<CaptionDisplayLine> history)
+    {
+        int insertIndex = 0;
+        foreach (CaptionDisplayLine line in history)
+        {
+            int existingIndex = FindHistoryIndex(line.Sequence);
+            if (existingIndex >= 0)
+            {
+                TextBlock block = _historyBlocks[existingIndex];
+                if (existingIndex != insertIndex)
+                {
+                    _historyBlocks.RemoveAt(existingIndex);
+                    CaptionPanel.Children.Remove(block);
+                    _historyBlocks.Insert(insertIndex, block);
+                    CaptionPanel.Children.Insert(insertIndex, block);
+                }
+
+                if (!string.Equals(block.Text, line.Text, StringComparison.Ordinal))
+                {
+                    block.Text = line.Text;
+                }
+
+                insertIndex++;
+            }
+            else
+            {
+                TextBlock block = CreateCaptionBlock(line.Text, line.Sequence);
+                _historyBlocks.Insert(insertIndex, block);
+                CaptionPanel.Children.Insert(insertIndex, block);
+                insertIndex++;
+            }
+        }
+
+        while (_historyBlocks.Count > history.Count)
+        {
+            TextBlock stale = _historyBlocks[^1];
+            _historyBlocks.RemoveAt(_historyBlocks.Count - 1);
+            CaptionPanel.Children.Remove(stale);
+        }
+    }
+
+    private int FindHistoryIndex(long sequence)
+    {
+        for (int i = 0; i < _historyBlocks.Count; i++)
+        {
+            if (_historyBlocks[i].Tag is long tag && tag == sequence)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private TextBlock CreateCaptionBlock(string text, long sequence)
+    {
+        return new TextBlock
+        {
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = Brushes.White,
+            FontSize = _fontSize,
+            LineHeight = _fontSize * 1.4,
+            Tag = sequence,
+        };
+    }
+
+    /// <summary>
+    /// Advances the scroll position only when the content overflows the fixed-height viewport, so
+    /// the newest caption remains visible. When everything fits, no scroll pass runs at all.
+    /// </summary>
+    private void ScrollToBottomIfNeeded()
+    {
+        if (CaptionScroller.ScrollableHeight > 0)
+        {
+            CaptionScroller.ScrollToBottom();
+        }
     }
 
     private void OnCollapseToggled(object sender, RoutedEventArgs e)
@@ -322,8 +423,18 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         }
 
         OverlayChrome.Opacity = _opacity;
-        CaptionTextBlock.FontSize = _fontSize;
-        CaptionTextBlock.LineHeight = _fontSize * 1.4;
+        foreach (TextBlock block in _historyBlocks)
+        {
+            block.FontSize = _fontSize;
+            block.LineHeight = _fontSize * 1.4;
+        }
+
+        if (_activeBlock is not null)
+        {
+            _activeBlock.FontSize = _fontSize;
+            _activeBlock.LineHeight = _fontSize * 1.4;
+        }
+
         HintText.FontSize = Math.Max(12, _fontSize * 0.6);
         SourceLanguageBadge.FontSize = Math.Max(10, _fontSize * 0.45);
         TargetLanguageBadge.FontSize = Math.Max(10, _fontSize * 0.45);

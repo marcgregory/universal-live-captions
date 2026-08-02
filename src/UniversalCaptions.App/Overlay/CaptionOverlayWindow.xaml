@@ -72,7 +72,9 @@
             BorderThickness="1"
             CornerRadius="8"
             ClipToBounds="True"
-            MouseLeftButtonDown="OnChromeMouseLeftButtonDown">
+            MouseLeftButtonDown="OnChromeMouseLeftButtonDown"
+            MouseEnter="OnChromeMouseEnter"
+            MouseLeave="OnChromeMouseLeave">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -81,7 +83,11 @@
             </Grid.RowDefinitions>
 
             <!-- ─── Row 0: Header ─── -->
-            <Grid Grid.Row="0" Margin="14,10,10,6">
+            <!-- Hidden by default (Chrome-style): revealed on mouse hover. -->
+            <Grid x:Name="HeaderBar"
+                  Grid.Row="0"
+                  Margin="14,10,10,6"
+                  Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -146,9 +152,11 @@
 
             <!-- ─── Row 1: Caption text area ─── -->
             <!--
-                Single ScrollViewer+TextBlock renders all captions as a continuous flowing paragraph.
-                Auto-scrolls to the bottom on every render so the newest line is always visible.
-                MaxHeight is set in code-behind via ApplyExpandedState().
+                Fixed-height ScrollViewer containing a stable StackPanel of caption items: one
+                TextBlock per committed (finalized) line, plus one mutable TextBlock for the live
+                in-progress line at the bottom. Existing finalized items keep their TextBlock
+                instance so a Partial only rewrites the live item's text — the visual tree is never
+                rebuilt wholesale. The viewport height is set in code-behind via ApplyExpandedState().
             -->
             <ScrollViewer x:Name="CaptionScroller"
                           Grid.Row="1"
@@ -167,13 +175,9 @@
                     </LinearGradientBrush>
                 </ScrollViewer.OpacityMask>
                 <Grid>
-                    <TextBlock x:Name="CaptionTextBlock"
-                               TextWrapping="Wrap"
-                               Foreground="White"
-                               FontSize="20"
-                               LineHeight="28"
-                               Margin="0,0,4,0"
-                               Visibility="Collapsed" />
+                    <StackPanel x:Name="CaptionPanel"
+                                Margin="0,0,4,0"
+                                Visibility="Collapsed" />
                     <TextBlock x:Name="HintText"
                                Text="Listening…"
                                Foreground="#77FFFFFF"
@@ -184,12 +188,14 @@
             </ScrollViewer>
 
             <!-- ─── Row 2: Collapse / expand chevron ─── -->
+            <!-- Hidden by default (Chrome-style): revealed on mouse hover. -->
             <Button x:Name="CollapseButton"
                     Grid.Row="2"
                     Style="{StaticResource ChevronButton}"
                     HorizontalAlignment="Center"
                     Height="20"
                     Margin="0,0,0,6"
+                    Visibility="Collapsed"
                     ToolTip="Collapse"
                     Click="OnCollapseToggled">
                 <TextBlock x:Name="CollapseChevron"
