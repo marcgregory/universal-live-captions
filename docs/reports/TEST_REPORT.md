@@ -1,6 +1,6 @@
-# Universal Live Captions Test Report
+﻿# Universal Live Captions Test Report
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -17,7 +17,9 @@ Last updated: 2026-08-04
 
 ## Summary
 
-Slices 1–5 automated tests pass: **253/253 passed, 0 failed, 0 skipped** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). Solution builds with **0 warnings, 0 errors** (warnings-as-errors). A post-close-out refinement (change-impact Entry 7) adds **live active-line translation** (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded) and a **Chrome-style overlay redesign** (auto-sized translucent pill, white text, target-language badge, expand/collapse chevron, hide button) with a ControlWindow "Show Captions" button; its automated tests are complete (**238/238** for Slice 6 Phase 1a; Entry 7 itself was 224/224) and its **manual verification with real audio + real Argos is complete (2026-08-01)** — the in-progress overlay line reads Tagalog before it commits (see Slice 5 refinement note). **Overlay caption display fixed (2026-08-01):** `CaptionDisplayPolicy` renders the committed history chronologically (oldest at top, newest at the bottom), and the overlay's hard height caps (`HistoryList MaxHeight` + window `MaxHeight`) were removed so the auto-sized pill grows to fit every rendered line — the newest committed caption and the highlighted/current caption are never clipped or covered (the active line occupies its own layout row, separate from the history). Deterministic display-policy tests cover first-caption, chronological ordering, newest-at-bottom, capacity eviction (oldest removed from the top), and partial→final append with no duplication; build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **Slice 6 (Phases 1a–1c) is complete (close-out 2026-08-01)** — E2E latency metric + tests (238/238), OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, and the App-level SAPI E2E validation recorded below (baseline + shortlist configs × 3 runs each through the real App: WASAPI loopback → Whisper → Argos en→tl → overlay, E2E latency row polled via UIA, every run publishing real translated Tagalog). The validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). Phase 2 real-app validation remains deferred per user. Slice 1 manual verification against real system audio succeeded. Slice 2 real-model verification succeeded: `WhisperSpeechToTextEngine` streamed **partial and final transcripts** from four samples through the real ggml-tiny/base models at realtime pacing with a clean stop/dispose (see [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 3 real-Argos verification succeeded: `ArgosTranslationEngine` translated **offline/local** through a real Argos 1.11.0 child process for direct pairs (`en→tl`, `ja→en`, `en→ja`) and a pivot pair (`ja→tl` via `en`), with correct error mapping (see below and [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 4 (complete): `CaptionService`/`CaptionState` verified with deterministic fake translation engines — partial→active→final→committed transitions, translation on/off, translation failure preserving the source caption, ordering, bounded history, and cancellation. Slice 5 (complete): `UniversalCaptions.App` overlay display policy + pipeline wiring verified with deterministic fakes (`CaptionDisplayPolicyTests` 8 + `CaptionPipelineTests` 20 + `AudioSourceLoaderTests` 4 + `TranslationGuardTests` 4) — Q1 display policy resolution (active line = verbatim latest partial; finals = bounded history newest-first; translated text replaces source only when `Completed`), capture→processor→STT→caption-service wiring, error handling, lifecycle, audio-source enumeration (preferred default, failure-surfacing), and translation guard (source-equals-target rejection). **Manual overlay/device verification completed 2026-08-01** (all items Passed — see Slice 5 section below), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog by a real local Argos child process).
+**TD-016 closed - `LineProtocolFasterWhisperProcess` protocol-contract suite (2026-08-04): full suite now 302/302 passing** (66 Audio + 72 Captions + 77 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors. A fake-worker fixture emits exactly the production wire format over an in-memory stdout stream (no Python/venv/model); the real production reader is exercised unchanged through a new internal injectable-stream constructor seam (`StartAsync` skips the real spawn; `WriteRequestAsync` no longer requires a live `_process`). New `LineProtocolFasterWhisperProcessProtocolTests` (9) deterministically guard the two Slice 9 wire bugs (magic `0x46574355`; 20-byte segment header) plus: request-header layout/int16 PCM, wrong-magic rejection, 20-byte-header-does-not-consume-payload, two-segment ordering, fragmented pipe reads, truncated segment/response header -> deterministic protocol error, multi-byte UTF-8 payload boundary. Isolated to the opt-in faster-whisper path; `ggml-base` default untouched (see TD-016 section).
+
+**Faster-whisper selectable STT engine (Slice 9, 2026-08-04): full suite now 293/293 passing** (66 Audio + 72 Captions + 68 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors; the whisper.cpp decode was extracted to the `ISTTDecoder` seam with zero behavior change to the frozen `ggml-base` default, and a persistent binary-framed Python worker drives `FasterWhisperDecoder` (`UC_STT_ENGINE=fasterwhisper`). Real-App validation PASS on the 90 s Tagalog slice: faster-whisper `small` int8 gave whisper-small-level accuracy with **no `1.`/`one` hallucination** at STT latency **10.7–11.7 s** (whisper.cpp small was 16.9–21.9 s); two wire-protocol bugs (magic endianness; 16→20-byte segment header) were surfaced only by the real-App run and fixed. **`ggml-base` remains the frozen default; faster-whisper is opt-in** (see Slice 9 section). Slices 1–5 automated tests pass: **253/253 passed, 0 failed, 0 skipped** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). Solution builds with **0 warnings, 0 errors** (warnings-as-errors). A post-close-out refinement (change-impact Entry 7) adds **live active-line translation** (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded) and a **Chrome-style overlay redesign** (auto-sized translucent pill, white text, target-language badge, expand/collapse chevron, hide button) with a ControlWindow "Show Captions" button; its automated tests are complete (**238/238** for Slice 6 Phase 1a; Entry 7 itself was 224/224) and its **manual verification with real audio + real Argos is complete (2026-08-01)** — the in-progress overlay line reads Tagalog before it commits (see Slice 5 refinement note). **Overlay caption display fixed (2026-08-01):** `CaptionDisplayPolicy` renders the committed history chronologically (oldest at top, newest at the bottom), and the overlay's hard height caps (`HistoryList MaxHeight` + window `MaxHeight`) were removed so the auto-sized pill grows to fit every rendered line — the newest committed caption and the highlighted/current caption are never clipped or covered (the active line occupies its own layout row, separate from the history). Deterministic display-policy tests cover first-caption, chronological ordering, newest-at-bottom, capacity eviction (oldest removed from the top), and partial→final append with no duplication; build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **Slice 6 (Phases 1a–1c) is complete (close-out 2026-08-01)** — E2E latency metric + tests (238/238), OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, and the App-level SAPI E2E validation recorded below (baseline + shortlist configs × 3 runs each through the real App: WASAPI loopback → Whisper → Argos en→tl → overlay, E2E latency row polled via UIA, every run publishing real translated Tagalog). The validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). Phase 2 real-app validation remains deferred per user. Slice 1 manual verification against real system audio succeeded. Slice 2 real-model verification succeeded: `WhisperSpeechToTextEngine` streamed **partial and final transcripts** from four samples through the real ggml-tiny/base models at realtime pacing with a clean stop/dispose (see [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 3 real-Argos verification succeeded: `ArgosTranslationEngine` translated **offline/local** through a real Argos 1.11.0 child process for direct pairs (`en→tl`, `ja→en`, `en→ja`) and a pivot pair (`ja→tl` via `en`), with correct error mapping (see below and [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 4 (complete): `CaptionService`/`CaptionState` verified with deterministic fake translation engines — partial→active→final→committed transitions, translation on/off, translation failure preserving the source caption, ordering, bounded history, and cancellation. Slice 5 (complete): `UniversalCaptions.App` overlay display policy + pipeline wiring verified with deterministic fakes (`CaptionDisplayPolicyTests` 8 + `CaptionPipelineTests` 20 + `AudioSourceLoaderTests` 4 + `TranslationGuardTests` 4) — Q1 display policy resolution (active line = verbatim latest partial; finals = bounded history newest-first; translated text replaces source only when `Completed`), capture→processor→STT→caption-service wiring, error handling, lifecycle, audio-source enumeration (preferred default, failure-surfacing), and translation guard (source-equals-target rejection). **Manual overlay/device verification completed 2026-08-01** (all items Passed — see Slice 5 section below), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog by a real local Argos child process).
 
 ## ADR-0007 Option B — boundary-preserving fallback (2026-08-04)
 
@@ -61,6 +63,148 @@ Changes under test: `StreamingTranscriptCommitter` Option B rules 1/3/4 (`LastCo
 **Evidence:** `artifacts/samples/adv7_optionB_jfk.log`; driver script (UI Automation) preserved at the temp harness used for both runs.
 
 **Acceptance gate — PENDING:** the original Tagalog recording scenario (`"At gusto ko"` / `"Kaya"` / `"artipisyal na katalinuhan"`) is the remaining acceptance evidence. The original operator recording is **not available** in the workspace; per user, no substitute Tagalog sample may be used to claim acceptance. ADR-0007 therefore remains **Proposed** until that live evidence exists (fragmentation, duplicates, missing words, Stop drain judged end-to-end through the real App).
+
+## Slice 8 — Tagalog STT-vs-Committer Isolation & Model-Selection (2026-08-04)
+
+**Purpose:** classify the reported Tagalog live-caption defects as STT (Whisper) vs committer, and
+measure the accuracy-vs-latency tradeoff across the three locally available models — **without
+changing the frozen production default or the boundary algorithm.** This addresses the earlier
+open question independently of ADR-0007.
+
+**Diagnostic evidence (`artifacts/samples/raw_vs_committed_tagalog.log`):**
+- RAW Whisper full-file segments already contain the reported symptom classes verbatim:
+  recognition errors (`Kung usta?`, `Ikao.`, `Salaman.`, `Syangapala.`, `Tagaman nila ako.`),
+  hallucinated `1.` segments, and short 0.5–1.6 s fragment boundaries.
+- The committer **aggregates** these RAW segments into larger FINALs (90 s streamed-harness run:
+  10 RAW groups → 3–4 cleaner FINALs); it does not manufacture the cuts.
+- **Conclusion: the reported issues are STT model quality on Tagalog, not committer logic.
+  ADR-0007 is not implicated** and stays Proposed/frozen.
+
+**Real-App model comparison** — UIA-driven Release App, same 90 s Tagalog slice (STT `tl`), frozen
+config (st2 / window 8 s / interval 0.5 s / min-audio 0.5 s), full `ProcessorCount` threads:
+
+| Model | STT latency | First final | Finals | Tagalog accuracy | Halluc. `1.` | Stop drain |
+|---|---|---|---|---|---|---|
+| tiny | ~1.75 s | ~2.7 s | ~23 | ❌ `Komosita!`, `guan`, `Salaman` | ❌ `My name is One` | ✅ |
+| base | ~3.1 s | ~17.5 s | 10 | ❌ `Kung usta`, `Ikaw`, `Mabutirin` | ❌ `ay 1.` | ✅ |
+| small | 16.9–21.9 s | ~35.3 s | 4 | ✅ all target words correct | ✅ none | ✅ |
+
+Evidence: `artifacts/samples/realapp_{tiny,base,small}_tagalog.log`. Detailed findings in
+[`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md) (Slice 8).
+
+**Decision (recorded per user):** no production change. **`ggml-base` stays the frozen default**
+(ADR-0003) for acceptable responsiveness. `small` gives better Tagalog accuracy but unacceptable
+real-time latency; `tiny` is fastest but does not solve recognition. Model exploration deferred;
+testing done — no automated test count change (284/284 still the current suite). ADR-0007 remains
+**Proposed** (acceptance gate unchanged).
+
+## Faster-whisper selectable STT engine — Slice 9 (2026-08-04)
+
+**Purpose/Hardware path:** the Slice 8 T3 gap (no whisper.cpp model gives both Tagalog quality and
+responsiveness) was addressed with a **parallel faster-whisper `ISpeechToTextEngine`** selected via
+`UC_STT_ENGINE=fasterwhisper`, without touching the frozen `ggml-base` default. Hardware/real-path:
+real App Release build, faster-whisper `small` int8 in the `%TEMP%\fwv` venv (faster-whisper 1.2.1,
+CTranslate2 4.8.1), real WASAPI loopback, `artifacts/samples/first_meeting_tagalog_90s.wav` played
+through the loopback device, overlay committed-FINAL lines polled via UI Automation.
+
+**Automated tests — PASS.** Full suite **293/293 passing, 0 failed, 0 skipped**, Release build 0
+warnings / 0 errors.
+
+```
+Passed!  - Failed: 0, Passed: 66, Total: 66  - UniversalCaptions.Audio.Tests.dll
+Passed!  - Failed: 0, Passed: 72, Total: 72  - UniversalCaptions.Captions.Tests.dll
+Passed!  - Failed: 0, Passed: 68, Total: 68  - UniversalCaptions.Speech.Tests.dll
+Passed!  - Failed: 0, Passed: 27, Total: 27  - UniversalCaptions.Translation.Tests.dll
+Passed!  - Failed: 0, Passed: 60, Total: 60  - UniversalCaptions.App.Tests.dll
+```
+
+Changes under test: `ISTTDecoder`/`WhisperCppDecoder` extraction (no behavior change to the
+whisper.cpp path), `FasterWhisperDecoder`/`LineProtocolFasterWhisperProcess`/
+`FasterWhisperProcessException`/`IFasterWhisperProcess`/`FasterWhisperEngineOptions`,
+`FasterWhisperSpeechToTextEngine`, and the `App.xaml.cs` `UC_STT_ENGINE` selection +
+`ResolveFasterWhisperPython()`. New tests: `FasterWhisperSpeechToTextEngineTests` (5 — finals
+pipeline, changing partials no premature commit, Stop idempotent, decode-failure → EngineFailed,
+restart reset) + `FasterWhisperDecoderTests` (4 — startup failure → FileNotFoundException,
+float→int16 + language passthrough, clamp, worker failure → InvalidOperationException).
+
+**Real-App validation — PASS.** Same 90 s Tagalog slice, STT `tl`, frozen config
+(st2 / window 8 s / interval 0.5 s / min-audio 0.5 s). faster-whisper `small` int8 committed clean
+**bilingual finals with no `1.`/`one` hallucination**, STT latency **10.7–11.7 s** (vs whisper.cpp
+small 16.9–21.9 s), first final 16.5–29.9 s, 3–4 finals. A 1.5 s-interval variant gave the cleanest
+complete sentences (first final 16.5 s ≈ base 17.5 s). Metric-by-metric comparison confirming the
+Slice 8 target is met:
+`artifacts/samples/realapp_fasterwhisper_small_tagalog.log` (+ `_int1_5_` variant). Full findings in
+[`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md) (Slice 9).
+
+**Protocol fixes surfaced by the real App (not covered by the fake seam):** the live run exposed two
+wire-format bugs in `LineProtocolFasterWhisperProcess` — (1) magic constant byte order
+(`0x55435746` → `0x46574355` "UCWF") and (2) a 16-byte segment-header read that should be 20 bytes.
+Both fixed; the pre-fix build committed only `Listening.`, the post-fix build produced transcripts.
+Adds a lasting argument for a direct protocol round-trip test (TD-013-style).
+
+**Decision (recorded per user):** faster-whisper is **opt-in** (`UC_STT_ENGINE=fasterwhisper`);
+**`ggml-base` stays the frozen default**; no default promotion happens without explicit user
+approval.
+
+**Decision-gate (startup + responsiveness) — PASS, NOT promoted (2026-08-04).** The promotion
+candidate (faster-whisper `small` int8) was measured on startup and steady-state latency against the
+frozen default. Worker cold-start decomposition (direct probe): spawn 0.006 s + Python import/model
+load **2.6 s** + first 8 s-window decode 2.5 s = ~5.2 s. Real-App first-caption harness (UIA-driven
+Release App, same 90 s Tagalog slice, STT `tl`): faster-whisper `small` first caption **16.5–17.4 s**
+(vs ggml-base **25.0 s**) but steady-state STT latency **13.7–15.8 s** (vs ggml-base **2.4–3.7 s**).
+faster-whisper finals were composed sentences (7) with no hallucination; ggml-base finals were
+fragmented (10) with `1.`/`One.`/`May name is`/`Mabuterin` hallucinations. Window/interval tuning:
+1.0 s ≈ no change (13.7 s), 1.5 s worse (24.2 s), 4 s window produced **no captions** — the frozen
+8 s/0.5 s config is already near-optimal for the faster-whisper path. Pre-warm would save only ~2.6 s.
+**Result: no promotion. `ggml-base` remains the production default; faster-whisper `small` stays
+opt-in until steady-state latency can be materially reduced.** Evidence:
+`artifacts/samples/firstcaption_{fw_small,i1_fw_small,base,w4_fw_small}.log`; findings in
+[`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md) (Slice 9 decision-gate).
+## TD-016 - `LineProtocolFasterWhisperProcess` protocol-contract suite (2026-08-04)
+
+**Purpose:** close the Slice 9 finding that the two wire bugs (magic byte order `0x46574355`; the
+16 to 20-byte segment-header read) were surfaced only by the real-App run. The existing unit-test
+fake seam (`IFasterWhisperProcess`) never exercised the wire format. This suite drives the real
+production reader against a deterministic fake-worker byte stream - no Python/venv/model.
+
+**Automated tests - PASS.** `LineProtocolFasterWhisperProcessProtocolTests` (9/9). Full suite now
+**302/302 passing, 0 failed, 0 skipped**, Release build 0 warnings / 0 errors (66 Audio + 72
+Captions + 77 Speech + 27 Translation + 60 App).
+
+```
+
+Passed!  - Failed: 0, Passed: 77, Total: 77  - UniversalCaptions.Speech.Tests.dll
+```
+
+**Seam:** a new internal `LineProtocolFasterWhisperProcess(FasterWhisperEngineOptions, Stream stdin,
+Stream stdout)` constructor injects the worker streams directly. `StartAsync` skips the real
+`Process.Start` when streams are injected; `WriteRequestAsync` no longer requires a live `_process`
+handle (it checks the stdin stream instead). Production behavior of the real worker path is
+unchanged; only the opt-in faster-whisper path is touched - the `ggml-base` default is untouched.
+
+**Cases (deterministic protocol contract):**
+
+1. `StartAsync_And_TranscribeAsync_ValidFrame_20ByteHeader_ParsesExactly` - golden frame parses to
+   exact text/timestamps; the reader consumes exactly 16 + 20 + 7 bytes.
+2. `RequestHeader_WritesCorrectMagic_AndLayout` - request header magic/version/sample-rate/sample-
+   count/language length + int16 PCM layout verified byte-for-byte.
+3. `WrongMagic_IsRejected` - magic `0x55435746` (byte-swapped) is rejected as `Protocol`, not parsed.
+4. `TwentyByteHeader_DoesNotConsumePayload` - a 16-byte reader would read "Kums" as the text length
+   (huge length -> EOF -> failure); the 20-byte reader consumes exactly 20 and the frame parses.
+5. `TwoSegments_ParseInOrder_WithDistinctTimestamps` - two segments parse in order with distinct
+   timestamps (catches cursor-offset bugs a one-segment test hides).
+6. `FragmentedPipeReads_ReconstructFrame` - frame served in 3/7/1/9-byte chunks; reader reconstructs
+   (pipe reads are not message boundaries).
+7. `TruncatedSegmentHeader_IsDeterministicProtocolError` - 19 of the 20-byte segment header then EOF;
+   deterministic `EngineUnavailable` "closed the protocol stream", never a partial segment.
+8. `TruncatedResponseHeader_IsDeterministicProtocolError` - 15 of the 16-byte response header;
+   deterministic error, no hang.
+9. `PayloadBoundary_ConsumesExactlyDeclaredBytes` - multi-byte UTF-8 ("Kumustañ") consumed exactly the
+   declared byte length.
+
+**Evidence:** `tests/UniversalCaptions.Speech.Tests/LineProtocolFasterWhisperProcessProtocolTests.cs`;
+findings in `BENCHMARK_REPORT.md` (Slice 9) and CHANGELOG v0.5.14.
+
 
 ## Environment
 
@@ -311,8 +455,8 @@ The shortlist is validated end-to-end through the real App. The latency-first ca
 ## Known Gaps / Deferred
 
 - Real-device verification was performed on this machine only; a second output device or a different machine is not recorded.
-- Resampler benchmark against speech signals (TD-001) still open; unit tests verify sine frequency preservation only.
-- Device-change notifications not yet wired (TD-002).
+- Resampler benchmark against speech signals: **closed (TD-001, 2026-08-05)** — no recognition regression to fix; current windowed-sinc kept (see BENCHMARK_REPORT TD-001).
+- Device-change notifications + automatic recovery (TD-002): **contract + production wiring implemented + tested (2026-08-05)**; real hotplug verification is pending (TD-002 stays Open until it passes).
 - Default model: **ggml-base** (user-approved; tiny kept as a low-resource fallback) — see ADR-0003 / BENCHMARK_REPORT.
 - Slice 5 manual overlay/device verification **completed 2026-08-01** (recorded in the Slice 5 section above), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog via a real local Argos child process); **Slice 5 closed out 2026-08-01**.
 - **Slice 6 is complete (close-out 2026-08-01)** — Phases 1a (E2E metric + tests), 1b (OFAT sweep + shortlist), and 1c (App-level SAPI E2E validation) all complete; the validated baseline **base/8/1/st2 was promoted to the App default** (`StabilityWindow` 3→2; model `ggml-base` unchanged — see `PROJECT_STATUS.md` "Slice 6 Baseline Defaults"). **Phase 2 — real-application validation (YouTube/Chrome, VLC, Zoom) — is deferred per user** and is a future reassessment pass over the baseline defaults, not a prerequisite for the current release.
@@ -387,3 +531,110 @@ Layout probe `CaptionLayoutProbeTests` recreates the exact overlay tree `ScrollV
 The overlay no longer forces `ScrollToBottom` and no longer re-runs the bottom re-anchor on every caption render. It scrolls only when a new caption block was inserted (a Final or the first line) and the content overflows the fixed-height viewport; a Partial that rewrites the live line alone never scrolls and never reflows history. Window re-anchor runs only on Loaded / collapse / hover (where size actually changes).
 
 **Gates:** App tests 51 → **58** (3 layout probe + 4 render-identity); solution **267/267** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 58 App); build 0 warnings / 0 errors; `dotnet format --verify-no-changes` clean; baseline defaults unchanged; Whisper/Argos/latency path untouched.
+
+## TD-001 - Windowed-sinc vs NAudio `WdlResampler` benchmark (2026-08-05)
+
+**Purpose:** close TD-001's open question — does replacing the current `<SampleRateConverter>`
+(windowed-sinc) with NAudio `WdlResampler` improve real-time STT performance without degrading
+audio/recognition? Benchmark-only first pass; no production replacement is made here.
+
+**Automated suite - PASS.** Full suite **302/302 passing** (66 Audio + 72 Captions + 77 Speech + 27
+Translation + 60 App), Release build 0 warnings / 0 errors. No product code changed — a `resample`
+command was added to `UniversalCaptions.Benchmarks` (new `ResamplerBenchmark.cs`; the benchmark
+project now references `UniversalCaptions.Audio` for `SampleRateConverter`).
+
+**Manual execution evidence (Release, ggml-base, 6 STT threads, best-of-5 runs, 0.5 s chunks):**
+
+```
+Command: dotnet run --project src/UniversalCaptions.Benchmarks -c Release -- resample --repeats 5   (jfk.wav clean)
+impl      path         wall_ms realtime  cpu_ms  MB_alloc out_frames
+control   16k->16k           0   0.00x       0        0.0      176000
+sinc      44.1k->16k       400   0.04x     375        5.7      175984
+wdl       44.1k->16k        13   0.00x      16        3.0      175992
+sinc      48k->16k         356   0.03x     359        6.1      175984
+wdl       48k->16k          13   0.00x      16        3.2      175992
+
+STT (ggml-base full-file, lang en):
+control 16k->16k : decode 2163 ms (0.20x)  WER 0.0%
+sinc  44.1k->16k : decode 2144 ms (0.19x)  WER 0.0%
+wdl   44.1k->16k : decode 2170 ms (0.20x)  WER 0.0%
+sinc  48k->16k  : decode 2133 ms (0.19x)  WER 0.0%
+wdl   48k->16k  : decode 2158 ms (0.20x)  WER 0.0%
+```
+
+Second run (`--wav artifacts/samples/jfk_noisy.wav`, +10 dB SNR): sinc 401–411 ms / 5.7–6.1 MB;
+wdl 13–14 ms / 3.0–3.2 MB; **all five rows again 0.0% WER**.
+
+**Result — TD-001 closed (2026-08-05): keep the current windowed-sinc resampler.** WDL is ~30x
+faster and ~half the allocations, but STT/audio is equivalent (0.0% WER clean + noisy) and the
+current sinc already runs 0.03–0.04x realtime, so resampling does not materially contribute to live
+latency (decode dominates by >10x; ~0.4 ms/chunk saving is unobservable). No production change.
+Findings + decision in `docs/reports/BENCHMARK_REPORT.md` (TD-001).
+
+## TD-002 — Device-change notifications + automatic recovery (2026-08-05)
+
+**Purpose:** close the TD-002 recovery UX gap (device hotplug requires a manual restart; a default-device
+switch silently keeps the old endpoint) with the trace → design → deterministic-tests discipline. The
+**notification/recovery contract** and the **production wiring** (monitor → `DefaultDeviceAutoRecovery` →
+`CaptionPipeline` → App DI) are both implemented and driven with deterministic fakes; **real hotplug
+verification is the only remaining gate** (TD-002 stays Open until it passes).
+
+**Trace (current behavior):** `WasapiLoopbackCaptureSource` wraps NAudio `WasapiLoopbackCapture`; on
+device invalidation WASAPI raises `AUDCLNT_E_DEVICE_INVALIDATED` → `RecordingStopped` → `CaptureFailed`
+(`DeviceDisconnected`) → `CaptionPipeline.OnCaptureFailed` stops the session → **manual restart only**.
+No `RegisterEndpointNotificationCallback` exists; a default-device switch to a still-live endpoint
+silently continues capturing the old device.
+
+**Contract added:**
+
+- `UniversalCaptions.Core.Capture` — `IDeviceChangeMonitor` (`DeviceChanged` event + `Start`/`Stop`),
+  `DeviceChangeNotification` (`Kind`/`DeviceId`/`State`), `DeviceChangeKind`, `DeviceState` (Core-pure).
+- `UniversalCaptions.Audio` — `WasapiDeviceChangeNotifier`: implements `IMMNotificationClient`,
+  registered via `MMDeviceEnumerator.RegisterEndpointNotificationCallback`; **lazy** `MMDeviceEnumerator`
+  so unit tests invoke the `IMMNotificationClient` methods directly with no COM/audio service; surfaces
+  only `DataFlow.Render` (output) changes.
+- `UniversalCaptions.App` — `DefaultDeviceAutoRecovery`: while the session is on the system default
+  device, restarts it on default-device change, unplug/not-present, or a device removal; explicit-device
+  sessions never auto-restart; burst notifications coalesce into one restart.
+- `UniversalCaptions.App` — `CaptionPipeline` wiring: an optional `IDeviceChangeMonitor` composes a
+  `DefaultDeviceAutoRecovery`; a live default-device session calls `Start` (monitor on) and stops it on
+  teardown. `RestartCaptureAsync` detaches + disposes the stale capture, re-queries the default device,
+  and recreates a capture chain **while preserving the speech engine unchanged**; guarded against stop/
+  dispose races, duplicate sessions, and faulted/disposed restarts. A failed recovery stops the session
+  in a controlled error state. `App.xaml.cs` registers `WasapiDeviceChangeNotifier` as the monitor.
+
+**Automated tests — PASS.** `WasapiDeviceChangeNotifierTests` (11/11) + `DefaultDeviceAutoRecoveryTests`
+(9/9, incl. `Removed` now a restart trigger). Plus **7 `CaptionPipeline` recovery tests**. Full suite now
+**329/329 passing, 0 failed, 0 skipped** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 76 App),
+Release build 0 warnings / 0 errors.
+
+**Notifier contract (direct `IMMNotificationClient` invocation, no hardware):**
+
+1. `DefaultDeviceChanged` on `DataFlow.Render` → `DefaultDeviceChanged` notification with the new endpoint id.
+2. `DefaultDeviceChanged` on `DataFlow.Capture` → filtered (no event).
+3. `DeviceStateChanged` `Unplugged`/`Disabled`/`Active`/`NotPresent`/`All` → `StateChanged` with the mapped state + id.
+4. `DeviceAdded`/`DeviceRemoved` → `Added`/`Removed`.
+5. `PropertyValueChanged` → ignored. Dispose → no further events.
+
+**Recovery coordinator (fake monitor, deterministic):**
+
+1. Default-device change while on default device → restart default.
+2. Default-device change while on an explicit device → **no** restart.
+3. `StateChanged` `NotPresent`/`Unplugged` while on default → restart; `Active` → no restart.
+4. `Removed` while on default → restart; `Added` → no restart.
+5. A burst of notifications while a restart is in flight → coalesced into one restart.
+6. After `Stop` / `Dispose` → no restart.
+
+**Pipeline recovery (fake monitor + fake capture, deterministic):**
+
+1. Default-device change → stale capture disposed, a new capture created + started on the default, the
+   same speech engine kept recognizing, pipeline running.
+2. `Removed` on default → capture recreated + started.
+3. Explicit-device session → monitor not started, no recovery, original capture preserved.
+4. Burst of notifications → exactly one recovery session (no duplicates).
+5. `Stop` → no recovery; `Dispose` (shutdown) → no recovery.
+6. Recovery failure (no default device) → controlled Error status + session stopped.
+
+**Gates:** full suite **329/329**; Release build 0 warnings / 0 errors; `dotnet format --verify-no-changes`
+clean. Change-impact analysis Entry 9; TD-002 row status updated. Production wiring is complete;
+**real hotplug verification remains pending — TD-002 stays Open until it passes.**

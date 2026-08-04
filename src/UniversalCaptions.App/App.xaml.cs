@@ -99,6 +99,20 @@ public partial class App : Application
 
         services.AddSingleton<Func<string?, ISpeechToTextEngine>>(_ => language =>
         {
+            string engine = Environment.GetEnvironmentVariable("UC_STT_ENGINE")?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (engine == "fasterwhisper")
+            {
+                return new FasterWhisperSpeechToTextEngine(new FasterWhisperEngineOptions
+                {
+                    PythonExecutablePath = ResolveFasterWhisperPython(),
+                    Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim().ToLowerInvariant(),
+                    WindowDuration = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_WINDOW", 8)),
+                    DecodeInterval = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_INTERVAL", 0.5)),
+                    MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_MIN_AUDIO", 0.5)),
+                    StabilityWindow = ResolveIntEnv("UC_STT_STABILITY", 2),
+                });
+            }
+
             var options = new WhisperEngineOptions
             {
                 ModelPath = ResolveModelPath(),
@@ -117,6 +131,9 @@ public partial class App : Application
             return new WhisperSpeechToTextEngine(options);
         });
 
+        // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
+        // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.
+        services.AddSingleton<IDeviceChangeMonitor, WasapiDeviceChangeNotifier>();
         services.AddSingleton<CaptionPipeline>();
         services.AddSingleton<CaptionOverlayWindow>();
         services.AddSingleton<IOverlayService>(sp => sp.GetRequiredService<CaptionOverlayWindow>());
@@ -136,6 +153,32 @@ public partial class App : Application
         }
 
         return Path.Combine("artifacts", "models", "ggml-base.bin");
+    }
+
+    /// <summary>
+    /// Resolves the Python interpreter hosting faster-whisper: the <c>UC_FW_PYTHON</c> environment
+    /// variable when set, otherwise a <c>fwv</c> venv under <c>TEMP</c> (the same auto-discovery
+    /// pattern as Argos), otherwise the system <c>python</c>.
+    /// </summary>
+    private static string ResolveFasterWhisperPython()
+    {
+        string? configured = Environment.GetEnvironmentVariable("UC_FW_PYTHON");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        var tempPath = Environment.GetEnvironmentVariable("TEMP");
+        if (!string.IsNullOrWhiteSpace(tempPath))
+        {
+            var autoPython = Path.Combine(tempPath, "fwv", "Scripts", "python.exe");
+            if (File.Exists(autoPython))
+            {
+                return autoPython;
+            }
+        }
+
+        return "python";
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 # Universal Live Captions Change Impact Analysis
 
-Last updated: 2026-08-01
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -11,6 +11,104 @@ Last updated: 2026-08-01
 | Audience | Engineering, reviewers |
 | Owner | Engineering |
 | Status | Active |
+
+---
+
+## Entry 9 — TD-002: Device-Change Notifications + Automatic Recovery (contract + tests first)
+
+Date: 2026-08-05
+
+### 1. Change Summary
+
+```text
+Change Title: TD-002 — device-change notifications (RegisterEndpointNotificationCallback) for automatic recovery of the default-device capture session
+Change Type:        Feature / Fix (recovery UX gap on device hotplug)
+Requirement Source: TECHNICAL_DEBT.md TD-002; user TD sprint order (2026-08-04); TD-001-style discipline (trace → design → deterministic tests → decide whether production implementation is justified)
+Priority:           Medium
+Estimated Effort:   Medium (contract + tests this pass; production wiring + real-device verification gated on the decision)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Core.Capture` — new `IDeviceChangeMonitor`, `DeviceChangeNotification`, `DeviceChangeKind`, `DeviceState` (additive, Core-pure — no NAudio dependency).
+- `UniversalCaptions.Audio` — new `WasapiDeviceChangeNotifier` (`IMMNotificationClient` registration, lazy `MMDeviceEnumerator` so unit tests touch no COM).
+- `UniversalCaptions.App` — new `DefaultDeviceAutoRecovery` coordinator (default-device auto-restart policy; **not wired into `CaptionPipeline`/`App.xaml.cs` in this pass**).
+- Tests — `UniversalCaptions.Audio.Tests` (notifier contract, 11), `UniversalCaptions.App.Tests` (recovery coordinator, 9).
+
+### 3. Affected APIs
+
+- `UniversalCaptions.Core.Capture.IDeviceChangeMonitor` (+ `DeviceChangeNotification` record and enums) — **Additive** (new interface; no existing API changes).
+- `WasapiDeviceChangeNotifier`, `DefaultDeviceAutoRecovery` — new types. `CaptionPipeline` and `App.xaml.cs` are **unchanged** this pass (frozen baseline untouched).
+
+**API changes required:** Additive (backward-compatible).
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [ ] Capture behavior change — **none in this pass** (no wiring; baseline capture path untouched).
+- [ ] Audio/transcript handling change — none.
+- [ ] New external communication — none (local WASAPI endpoint notification only).
+- [ ] Sensitive data handling — none (endpoint IDs only).
+- [ ] Security review required: No.
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `WasapiDeviceChangeNotifierTests` (11: render/capture filter, state mapping, add/remove, property-ignore, dispose-suppression) and `DefaultDeviceAutoRecoveryTests` (9: restart-on-default-change, explicit-device non-restart, unplug/notpresent restart, active no-restart, add/remove no-restart, burst coalescing, dispose).
+- [ ] Integration tests — n/a.
+- [x] Manual/device verification — **deferred to the production-implementation decision** (real hotplug/unplug of the default device through the real App).
+
+### 7. Documentation Updates Required
+
+- [ ] `PRD.md` — n/a (TD remediation; not a new product requirement).
+- [ ] `ARCHITECTURE.md` — `ARCHITECTURE.md` no longer lists Core Capture types exhaustively; add-only at wiring time if the coordinator is wired.
+- [ ] `TECH_STACK.md` — n/a.
+- [ ] `SECURITY_PLAN.md` — n/a.
+- [ ] `QUALITY_ASSURANCE.md` — n/a.
+- [x] ADR required: No (fits ADR-0001 native/NAudio stack; no stack or privacy change).
+- [x] `CHANGELOG.md`, `TECHNICAL_DEBT.md` (TD-002 status), `TEST_REPORT.md` (evidence), `CHANGE_IMPACT_ANALYSIS.md` (this entry).
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: none.
+- [ ] Blocking: none.
+- [ ] Risks identified:
+  1. Real `RegisterEndpointNotificationCallback` behavior (callback thread affinity, registration lifetime, behavior when the audio service is stopped) is only verifiable on real hardware/Windows — unit tests cover the mapping/contract, not COM registration. Mitigation: lazy enumerator; `Stop`/`Dispose` always unregister+dispose; production wiring pass will record manual verification in TEST_REPORT before promoting.
+  2. Auto-restart could fight an explicit user device choice. Mitigation: the coordinator only restarts while the live session is on the **default** device (`isOnDefaultDevice`); explicit-device sessions are never auto-restarted.
+  3. Restart churn on a burst of endpoint events. Mitigation: coalescing guard — one restart per notification window.
+- [ ] Mitigation plan: as above; all decisions are encoded in the deterministic tests.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | The app's capture scope is render (output) devices only, so the monitor surfaces only `DataFlow.Render` endpoint changes. | A future microphone-capture feature would need a broader monitor; the Core contract already carries state/kind so it extends. | ADR-0001; `WasapiLoopbackCaptureSource` (loopback-only). |
+| 2 | Automatic recovery applies only to the system-default session; a user-picked device stays on their explicit choice. | Auto-restarting an explicit choice would be surprising and destructive. | TD-002 "automatic recovery" intent; PRD FR-10 user control. |
+| 3 | Restart triggers = default-device changed, or current endpoint unplugged/not-present (monitor-driven). Disconnect-triggered restart via `CaptureFailed` is a production-wiring concern for the post-decision packet. | A pure `AUDCLNT_E_DEVICE_INVALIDATED` without a preceding state/default notification would not auto-recover until the next monitor event. | WASAPI device-invalidated behavior; TD-002 row. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Is production implementation justified (wire `WasapiDeviceChangeNotifier` + `DefaultDeviceAutoRecovery` into `CaptionPipeline`/`App.xaml.cs`, plus disconnect-triggered restart and manual hotplug verification)? | User | **Decided — Approved (2026-08-05):** wiring implemented + tested; **only real hotplug verification remains** (TD-002 stays Open until it passes). |
+
+### 11. Close-Out Record (this pass)
+
+- **Contract + deterministic tests complete (2026-08-05).** New `IDeviceChangeMonitor`/`DeviceChangeNotification`/`DeviceChangeKind`/`DeviceState` (Core), `WasapiDeviceChangeNotifier` (Audio, `IMMNotificationClient`), `DefaultDeviceAutoRecovery` (App, off-by-default). 20 new tests (11 Audio + 9 App); full suite **322/322 passing** (66→77 Audio, 60→69 App), Release build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean.
+- **Production wiring complete (2026-08-05, user-approved step-6 decision).** `CaptionPipeline` composes a `DefaultDeviceAutoRecovery` when given an `IDeviceChangeMonitor` and exposes `IsOnDefaultDevice` + `RestartCaptureAsync` (capture-only restart, STT preserved, stop/dispose-guarded, coalesced); `Removed` added as a restart trigger; `WasapiDeviceChangeNotifier` registered in `App.xaml.cs`. **7 pipeline recovery tests** added; full suite now **329/329** (App 69→76). **Real hotplug verification pending — TD-002 stays Open.** No change to `ggml-base` / faster-whisper / ADR-0007 / resampler.
+
+---
+
+## Impact Analysis Decision
+
+**Decision:** Proceed with the contract + deterministic tests this pass; **production implementation (wiring + manual hotplug verification) gated on the user's TD-002 step-6 decision.**
+
+**Step-6 decision (2026-08-05): Approved.** Production wiring implemented (`CaptionPipeline` recovery + `WasapiDeviceChangeNotifier` in DI) + 7 pipeline recovery tests; full suite **329/329**. **Only real hotplug verification remains** — TD-002 stays Open until it passes (see Entry 9 Close-Out Record).
+
+**Analysis performed by:** Engineering
+**Date:** 2026-08-05
 
 ---
 

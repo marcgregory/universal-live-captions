@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -16,6 +16,85 @@ Last updated: 2026-08-04
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.15 - 2026-08-05
+
+### Changed / decided
+
+- **TD-001 closed — resampler benchmark: windowed-sinc vs NAudio `WdlResampler` (2026-08-05).** The
+  current `<SampleRateConverter>` (windowed-sinc) was benchmarked head-to-head against `WdlResampler`
+  on the same representative audio (clean + noisy `jfk.wav`), per the TD-001 decision gate.
+  Benchmark-only — no production change. A `resample` command was added to
+  `UniversalCaptions.Benchmarks` (`ResamplerBenchmark.cs`; benchmark project now references
+  `UniversalCaptions.Audio`). Measurements (best of 5, 0.5 s chunks, mono): WDL converts 44.1k->16k
+  and 48k->16k in **~13 ms** vs **~356–400 ms** for the current sinc (≈28–31x faster, 0.00x vs
+  0.03–0.04x realtime) with ~3.0–3.2 MB vs 5.7–6.1 MB allocation per 11 s clip; **STT impact is
+  identical** — both resamplers and the no-resampling control give **0.0% WER** on clean and noisy
+  audio at equal decode latency. Because the current sinc already runs 25-30x faster than realtime
+  and decode dominates the pipeline by >10x, resampling does not materially contribute to live-caption
+  latency (saving ≈0.4 ms per 0.5 s chunk), so the switch is **not justified**: keep
+  `SampleRateConverter`, do not introduce `WdlResampler` into production. Full suite **302/302
+  passing**, Release build 0 warnings / 0 errors. Findings + decision in `BENCHMARK_REPORT.md`
+  (TD-001); evidence in `TEST_REPORT.md` (TD-001).
+
+## v0.5.15 - 2026-08-05
+
+### Added
+
+- **TD-002 — device-change notification + automatic-recovery contract (2026-08-05).** Trace-first pass
+  per the TD-001 discipline; delivers the **notification/recovery contract + 20 deterministic tests**.
+  New Core-pure contract `UniversalCaptions.Core.Capture` `IDeviceChangeMonitor` (`DeviceChanged` +
+  `Start`/`Stop`), `DeviceChangeNotification` (`Kind`/`DeviceId`/`State`), `DeviceChangeKind`,
+  `DeviceState`. New `UniversalCaptions.Audio` `WasapiDeviceChangeNotifier`: implements
+  `IMMNotificationClient` registered via `MMDeviceEnumerator.RegisterEndpointNotificationCallback`,
+  with a **lazy** `MMDeviceEnumerator` so unit tests drive the `IMMNotificationClient` methods directly
+  with no COM/audio service; surfaces only `DataFlow.Render` (output) changes. New `UniversalCaptions.App`
+  `DefaultDeviceAutoRecovery` coordinator: while the live session is on the **system default** device it
+  restarts that session on default-device change or when the endpoint is unplugged/not-present;
+  explicit-device sessions are never auto-restarted; a burst of notifications coalesces into one restart.
+  Tests: `WasapiDeviceChangeNotifierTests` (11) + `DefaultDeviceAutoRecoveryTests` (9). Full suite now
+  **322/322 passing** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 69 App), Release build 0
+  warnings/0 errors, `dotnet format --verify-no-changes` clean.
+- **TD-002 production wiring (2026-08-05).** User-approved step-6 decision. `CaptionPipeline` composes a
+  `DefaultDeviceAutoRecovery` when given an `IDeviceChangeMonitor`: a live default-device session starts
+  monitoring and stops it on teardown; **`Removed` is added as a restart trigger** alongside default-change
+  and unplug/not-present. New `CaptionPipeline.RestartCaptureAsync` detaches + disposes the stale capture,
+  re-queries the **system default** device, and recreates a capture chain **while preserving the speech
+  engine unchanged** (engine/model never touched); guarded against stop/dispose races, duplicate sessions,
+  and faulted/disposed restarts; a failed recovery stops the session in a controlled error state.
+  `App.xaml.cs` registers `WasapiDeviceChangeNotifier` as the monitor (DI composition root). New tests:
+  **7 `CaptionPipeline` recovery tests** (default-change recreates + keeps STT; removed triggers; explicit
+  device never recovers; burst coalesces to one session; stop/dispose no recovery; failure → error+stop).
+  Full suite now **329/329 passing** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 76 App).
+  **Real hotplug verification is pending — TD-002 stays Open until it passes** (change-impact Entry 9;
+  TD-002 row + TEST_REPORT updated). No change to the `ggml-base` default / faster-whisper selection /
+  ADR-0007 / resampler.
+
+## v0.5.14 - 2026-08-04
+
+### Added
+
+- **TD-016 closed — deterministic protocol-contract tests for `LineProtocolFasterWhisperProcess` (2026-08-04).** Closes the Slice 9 finding that the two wire bugs (magic byte order `0x46574355`; 16→20-byte segment header) were caught only by the real-App run. A fake-worker fixture emits exactly the production wire format over an in-memory stdout stream (no Python/venv/model), and the real production reader is exercised unchanged through a new internal injectable-stream constructor seam on `LineProtocolFasterWhisperProcess` (`Stream stdin, Stream stdout`; `StartAsync` skips the real process spawn when streams are injected; `WriteRequestAsync` no longer requires a live `_process`). New tests: `LineProtocolFasterWhisperProcessProtocolTests` (9) — golden 20-byte-header frame parses exactly (Kumusta/0.5/1.25), request header writes correct magic + layout (incl. int16 PCM), wrong magic `0x55435746` rejected as `Protocol`, 20-byte header does not consume payload (a 16-byte reader would read "Kums" as text length → huge length → EOF), two segments parse in order with distinct timestamps, fragmented pipe reads (3/7/1/9 chunks) reconstruct the frame, truncated 19-byte segment header → deterministic `EngineUnavailable` "closed the protocol stream" (never a partial segment), truncated 15-byte response header → deterministic error, multi-byte UTF-8 payload boundary consumes exactly the declared byte length. Full suite **302/302 passing** (66 Audio + 72 Captions + 77 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors. This is the higher-priority TD item per user (TD-013-style faster-whisper protocol suite; Argos `LineProtocolArgosProcess` TD-013 remains Open separately). Isolated to the opt-in faster-whisper path; the `ggml-base` default is untouched.
+
+## v0.5.13 - 2026-08-04
+
+### Added
+
+- **Faster-whisper as a selectable `ISpeechToTextEngine` (2026-08-04).** Adds a parallel faster-whisper STT path (`UC_STT_ENGINE=fasterwhisper`; default/empty still whisper.cpp `ggml-base`, ADR-0003 unchanged) targeting the "small-level Tagalog accuracy + lower-than-small latency" gap that no whisper.cpp model closed (Slice 8 finding: base ~3.1 s but weak accuracy/hallucinated `1.`; small best accuracy but 16.9–21.9 s). Architecture preserved the approved shape: the whisper.cpp **decode portion** was extracted to the `ISTTDecoder` seam (`WhisperCppDecoder` owns `WhisperFactory`/`WhisperProcessor`; the engine's windowing/trim/commit orchestration is untouched, zero behavior change to the `ggml-base` path), and `FasterWhisperDecoder` runs a persistent binary-framed Python worker (`Server/faster_whisper_worker.py`) that loads the faster-whisper model once (`small` int8, 8 threads, beam 5, `condition_on_previous_text=False`, float32-normalized PCM). New env knobs: `UC_FW_PYTHON` (venv auto-discovery `%TEMP%\fwv`, else system `python`), plus the shared `UC_STT_WINDOW`/`UC_STT_INTERVAL`/`UC_STT_MIN_AUDIO`/`UC_STT_STABILITY`. New types: `FasterWhisperEngineOptions`, `IFasterWhisperProcess`, `FasterWhisperProcessException` (EngineUnavailable/Timeout/Protocol/EngineFailed), `LineProtocolFasterWhisperProcess`, `FasterWhisperDecoder`, `FasterWhisperSpeechToTextEngine`.
+- **Tests:** `FasterWhisperSpeechToTextEngineTests` (5) + `FasterWhisperDecoderTests` (4) with a fake process seam; Speech project bundles the worker script (`CopyToOutputDirectory`). Full suite **293/293 passing** (66 Audio + 72 Captions + 68 Speech + 27 Translation + 60 App), Release build 0 warnings/0 errors.
+- **Real-App validation (UIA-driven Release App, same 90 s Tagalog slice, STT `tl`, frozen config st2/8 s/0.5 s/0.5 s):** faster-whisper `small` int8 committed clean bilingual finals with **no `1.`/`one` hallucination** (STT latency 10.7–11.7 s vs whisper.cpp small 16.9–21.9 s; first final 16.5–29.9 s; 3–4 finals). A 1.5 s-interval variant gave the cleanest complete sentences (first final 16.5 s ≈ base 17.5 s). Evidence: `artifacts/samples/realapp_fasterwhisper_small_tagalog.log` (+ `_int1_5_` variant); findings below in `docs/reports/BENCHMARK_REPORT.md` + `docs/reports/TEST_REPORT.md`. **Default model stays `ggml-base`; no promotion without user approval.**
+- **Protocol fixes found during real-App validation:** `LineProtocolFasterWhisperProcess` magic constant corrected to the little-endian `0x46574355` ("UCWF") and the per-segment header read corrected from 16 → 20 bytes (worker's `"<ddI"` is 8+8+4). The unit-test-fake seam did not exercise the wire format; the real-App run surfaced both mismatches (the earlier run committed only `Listening.`).
+
+### Changed / decided
+
+- **Faster-whisper default-selection decision-gate (decision: NOT promoted; 2026-08-04).** Measured real-App startup + steady-state latency for the promotion candidate vs the frozen default. Worker cold start decomposes to spawn 0.006 s + Python import/model load **2.6 s** + first 8 s-window decode 2.5 s. Real-App (same 90 s Tagalog slice, STT `tl`): faster-whisper `small` first caption **16.5–17.4 s** (better than ggml-base's measured 25.0 s) but steady-state STT latency **13.7–15.8 s** vs ggml-base **2.4–3.7 s**. Window/interval tuning did not close the steady-state gap (1.0 s interval ≈ no change; 1.5 s worse at 24.2 s; 4 s window produced no captions) — the frozen 8 s/0.5 s config is already near-optimal for the faster-whisper path. Pre-warm would only save ~2.6 s. **Decision per user: `ggml-base` stays the production default; faster-whisper `small` int8 remains opt-in (`UC_STT_ENGINE=fasterwhisper`) until its steady-state latency can be materially reduced.** Accuracy winner: faster-whisper; responsiveness winner: ggml-base. No production change; evidence in `BENCHMARK_REPORT.md` (Slice 9 decision-gate) + `TEST_REPORT.md`.
+
+## v0.5.12 - 2026-08-04
+
+### Diagnostics
+
+- **Slice 8 — Tagalog STT-vs-committer isolation + model-selection decision (2026-08-04, no production change).** The reported Tagalog live-caption defects (misrecognitions, fragmented finals, hallucinated `1.`) were isolated to the **STT layer**: RAW Whisper full-file segments already contain `Kung usta?`, `Ikao.`, `Salaman.`, hallucinated `1.` segments, and short 0.5–1.6 s boundaries; the committer aggregates them faithfully and does not manufacture cuts. ADR-0007 (commit/boundary/trim) is **not implicated** and remains **Proposed/frozen**.
+- **Real-App model comparison** (UIA-driven Release App, same 90 s Tagalog slice, STT `tl`, frozen config st2 / 8 s / 0.5 s / 0.5 s, full `ProcessorCount` threads): `ggml-base` ~3.1 s STT latency but weak accuracy; `ggml-tiny` ~1.75 s fastest but no accuracy gain + worst fragmentation; `ggml-small` best Tagalog accuracy (`Kumusta`/`Ikaw`/`Salamat`/`Juan` correct, no `1.` hallucination) but **16.9–21.9 s** latency — cannot keep real-time pace. **Conclusion: no available local model gives both Tagalog quality and responsiveness. `ggml-base` remains the frozen default (ADR-0003); model exploration deferred.** Evidence: `artifacts/samples/raw_vs_committed_tagalog.log`, `realapp_{tiny,base,small}_tagalog.log`; findings in `docs/reports/BENCHMARK_REPORT.md` (Slice 8) + `docs/reports/TEST_REPORT.md`. Automated suite unchanged at **284/284**.
 
 ## v0.5.11 - 2026-08-04
 

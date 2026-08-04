@@ -22,6 +22,14 @@ namespace UniversalCaptions.App.Pipeline;
 /// (ARCHITECTURE state-management rule). <see cref="StopAsync"/> returns the in-flight teardown and
 /// <see cref="Dispose"/> waits for it, so shutdown is deterministic without stalling the UI.
 /// </para>
+/// <para>
+/// TD-002 auto-recovery: when a <see cref="IDeviceChangeMonitor"/> is supplied and the live session
+/// captures the system default render device, a <see cref="DefaultDeviceAutoRecovery"/> coordinator
+/// restarts the capture-only half of the session when the default device changes or the endpoint is
+/// removed/unplugged. The speech engine is preserved (engine and model are never changed) and the
+/// recovery re-queries the default device, so captions resume after a hotplug without user action.
+/// Explicitly chosen (non-default) devices never auto-recover — the user's choice is preserved.
+/// </para>
 /// </remarks>
 public sealed class CaptionPipeline : IDisposable
 {
@@ -30,12 +38,16 @@ public sealed class CaptionPipeline : IDisposable
     private readonly IAudioProcessor _processor;
     private readonly Func<string?, ISpeechToTextEngine> _speechToTextFactory;
     private readonly ICaptionService _captions;
+    private readonly IDeviceChangeMonitor? _monitor;
+    private readonly DefaultDeviceAutoRecovery? _recovery;
 
     private IAudioCapture? _capture;
     private ISpeechToTextEngine? _speechToText;
+    private string? _deviceId;
     private Task? _teardownTask;
     private bool _faulted;
     private bool _starting;
+    private bool _restarting;
     private bool _disposed;
 
     /// <summary>
@@ -45,16 +57,27 @@ public sealed class CaptionPipeline : IDisposable
     /// <param name="processor">Converts captured audio to the speech engine's format.</param>
     /// <param name="speechToTextFactory">Creates the speech engine for a language hint (null = auto-detect).</param>
     /// <param name="captions">The caption service the pipeline feeds transcripts into.</param>
+    /// <param name="monitor">
+    /// Optional device-change source for TD-002 auto-recovery. When null (or when the session captures
+    /// an explicitly chosen device), no notification restarts the session.
+    /// </param>
     public CaptionPipeline(
         Func<string?, IAudioCapture> captureFactory,
         IAudioProcessor processor,
         Func<string?, ISpeechToTextEngine> speechToTextFactory,
-        ICaptionService captions)
+        ICaptionService captions,
+        IDeviceChangeMonitor? monitor = null)
     {
         _captureFactory = captureFactory ?? throw new ArgumentNullException(nameof(captureFactory));
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _speechToTextFactory = speechToTextFactory ?? throw new ArgumentNullException(nameof(speechToTextFactory));
         _captions = captions ?? throw new ArgumentNullException(nameof(captions));
+        _monitor = monitor;
+        if (monitor is not null)
+        {
+            _recovery = new DefaultDeviceAutoRecovery(monitor, () => IsOnDefaultDevice, _ => RestartCaptureAsync());
+        }
+
         _captions.CaptionLineUpdated += OnCaptionLineUpdated;
     }
 
@@ -76,6 +99,14 @@ public sealed class CaptionPipeline : IDisposable
     public bool IsRunning => _capture?.IsCapturing == true;
 
     /// <summary>
+    /// True while the live session is capturing the system default render device — the only state in
+    /// which TD-002 auto-recovery may restart the session. False when stopped, faulted, disposed, or
+    /// capturing an explicitly chosen device.
+    /// </summary>
+    public bool IsOnDefaultDevice =>
+        !_disposed && !_faulted && _deviceId is null && _capture?.IsCapturing == true;
+
+    /// <summary>
     /// Starts a caption session on the given device with the given speech-language hint.
     /// </summary>
     /// <param name="deviceId">The Windows endpoint ID of the render device, or null for the system default.</param>
@@ -83,16 +114,17 @@ public sealed class CaptionPipeline : IDisposable
     public void Start(string? deviceId, string? sttLanguage)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (IsRunning)
+        if (IsRunning || _restarting)
         {
             return;
         }
 
         _faulted = false;
+        _deviceId = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId;
 
         TempaudioLatencyProbe.RecordCaptureStarted();
 
-        _capture = CreateCapture(deviceId);
+        _capture = CreateCapture(_deviceId);
         if (_capture is null)
         {
             return;
@@ -137,6 +169,129 @@ public sealed class CaptionPipeline : IDisposable
         {
             TempaudioLatencyProbe.RecordDeviceStarted();
             UniversalCaptions.Core.Diagnostics.DiagnosticTracer.StartSession();
+            if (_monitor is not null && _deviceId is null)
+            {
+                _monitor.Start();
+            }
+
+            RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
+        }
+    }
+
+    /// <summary>
+    /// Restarts the capture-only half of a live default-device session (TD-002): detaches and disposes
+    /// the current capture source, re-queries the system default device, and recreates and starts a
+    /// capture chain on it. The speech engine is preserved unchanged — only the WASAPI capture source
+    /// is recreated — so transcripts continue across a device hotplug without restarting the model.
+    /// No-op when the session is stopped, faulted, disposed, on an explicit device, or already
+    /// restarting (coalesced by the recovery coordinator). Completion means the new capture is live
+    /// or the session was stopped in a controlled error state.
+    /// </summary>
+    public async Task RestartCaptureAsync()
+    {
+        IAudioCapture? oldCapture;
+        ISpeechToTextEngine? speechToText;
+        lock (_gate)
+        {
+            if (_disposed || _faulted || _restarting || _deviceId is not null)
+            {
+                return;
+            }
+
+            oldCapture = _capture;
+            speechToText = _speechToText;
+            if (oldCapture is null || speechToText is null || !oldCapture.IsCapturing)
+            {
+                return;
+            }
+
+            _restarting = true;
+            _capture = null;
+            oldCapture.AudioAvailable -= OnAudioAvailable;
+            oldCapture.CaptureFailed -= OnCaptureFailed;
+        }
+
+        // Yield so the notification callback thread is not tied up while the stale capture is torn
+        // down and recreated; the coordinator is fire-and-forget and coalesces further notifications.
+        await Task.Yield();
+
+        try
+        {
+            oldCapture.Stop();
+            oldCapture.Dispose();
+        }
+        catch
+        {
+            // Best-effort teardown of the stale capture; recovery continues with the new device.
+        }
+
+        IAudioCapture? newCapture = CreateCapture(_deviceId);
+        if (newCapture is null)
+        {
+            // No default device to recover to: surface the error (CreateCapture already raised the
+            // status) and stop the session in a controlled error state.
+            lock (_gate)
+            {
+                _restarting = false;
+            }
+
+            _faulted = true;
+            Stop();
+            return;
+        }
+
+        bool discard;
+        lock (_gate)
+        {
+            // A Stop/Dispose that landed while the restart was in flight is detected by the speech
+            // engine being detached; the freshly created capture must not resurrect the session.
+            if (_disposed || _faulted || !ReferenceEquals(_speechToText, speechToText))
+            {
+                discard = true;
+            }
+            else
+            {
+                _capture = newCapture;
+                discard = false;
+            }
+        }
+
+        if (discard)
+        {
+            newCapture.Dispose();
+            lock (_gate)
+            {
+                _restarting = false;
+            }
+
+            return;
+        }
+
+        newCapture.AudioAvailable += OnAudioAvailable;
+        newCapture.CaptureFailed += OnCaptureFailed;
+
+        try
+        {
+            _starting = true;
+            newCapture.Start();
+        }
+        finally
+        {
+            _starting = false;
+            lock (_gate)
+            {
+                _restarting = false;
+            }
+        }
+
+        if (_faulted)
+        {
+            Stop();
+            return;
+        }
+
+        if (newCapture.IsCapturing)
+        {
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
         }
     }
@@ -212,6 +367,7 @@ public sealed class CaptionPipeline : IDisposable
         }
 
         _captions.CaptionLineUpdated -= OnCaptionLineUpdated;
+        _recovery?.Dispose();
         teardown?.GetAwaiter().GetResult();
     }
 
@@ -231,6 +387,8 @@ public sealed class CaptionPipeline : IDisposable
 
         _capture = null;
         _speechToText = null;
+        _deviceId = null;
+        _monitor?.Stop();
 
         if (capture is not null)
         {

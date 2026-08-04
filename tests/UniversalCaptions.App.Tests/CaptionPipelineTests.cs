@@ -184,6 +184,19 @@ public class CaptionPipelineTests
                 new TranslationException(TranslationErrorKind.EngineUnavailable, "python missing"));
     }
 
+    /// <summary>A device-change source driven by the test, so recovery timing is deterministic.</summary>
+    private sealed class FakeDeviceChangeMonitor : IDeviceChangeMonitor
+    {
+        public event EventHandler<DeviceChangeNotification>? DeviceChanged;
+        public bool Started { get; private set; }
+
+        public void Start() => Started = true;
+        public void Stop() => Started = false;
+        public void Dispose() { }
+
+        public void Raise(DeviceChangeNotification notification) => DeviceChanged?.Invoke(this, notification);
+    }
+
     private sealed class Harness : IDisposable
     {
         public FakeAudioCapture Capture { get; } = new();
@@ -621,5 +634,198 @@ public class CaptionPipelineTests
         await failingCaptions.FlushAsync();
 
         Assert.Empty(failingSamples);
+    }
+
+    [Fact]
+    public async Task Default_device_changed_recreates_capture_and_keeps_speech_engine()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        var stt = new FakeSpeechToTextEngine();
+        using var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => stt,
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start(null, null);
+
+        Assert.True(monitor.Started);
+        Assert.Single(captures);
+        var original = captures[0];
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
+        Assert.True(
+            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
+            "Recovery should recreate and start a capture on the new default device.");
+
+        Assert.NotSame(original, captures[1]);
+        Assert.True(original.IsDisposed, "The stale capture must be disposed on recovery.");
+        Assert.True(captures[1].IsCapturing);
+        Assert.True(stt.IsRecognizing, "Recovery must keep the existing speech engine.");
+        Assert.True(pipeline.IsRunning);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task Device_removed_while_on_default_device_triggers_recovery()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        using var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => new FakeSpeechToTextEngine(),
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start(null, null);
+        var original = captures[0];
+
+        monitor.Raise(DeviceChangeNotification.Removed("gone-device"));
+        Assert.True(
+            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
+            "A removed device should trigger recovery on the default device.");
+
+        Assert.True(original.IsDisposed);
+        Assert.True(captures[1].IsCapturing);
+        Assert.True(pipeline.IsRunning);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public void Device_changed_while_on_explicit_device_does_not_recover()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        using var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => new FakeSpeechToTextEngine(),
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start("device-1", null);
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
+
+        Assert.False(monitor.Started, "Monitoring is only needed while on the default device.");
+        var capture = Assert.Single(captures);
+        Assert.False(capture.IsDisposed, "An explicitly chosen device must never auto-recover.");
+        Assert.True(capture.IsCapturing);
+        Assert.True(pipeline.IsRunning);
+    }
+
+    [Fact]
+    public async Task Burst_of_notifications_does_not_create_duplicate_sessions()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        using var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => new FakeSpeechToTextEngine(),
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start(null, null);
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("a"));
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("b"));
+        monitor.Raise(DeviceChangeNotification.StateChangedOf("device", DeviceState.Unplugged));
+        Assert.True(
+            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
+            "Recovery should complete for the coalesced notification window.");
+
+        // Original session + exactly one recovered session: the burst coalesced into one restart.
+        Assert.Equal(2, captures.Count);
+        Assert.True(captures[0].IsDisposed);
+        Assert.True(captures[1].IsCapturing);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task Device_changed_after_stop_does_not_recover()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        using var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => new FakeSpeechToTextEngine(),
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start(null, null);
+        await pipeline.StopAsync();
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
+
+        Assert.False(monitor.Started);
+        Assert.Single(captures);
+        Assert.False(pipeline.IsRunning);
+    }
+
+    [Fact]
+    public void Device_changed_after_dispose_does_not_recover()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        var captures = new List<FakeAudioCapture>();
+        var pipeline = new CaptionPipeline(
+            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            new PassthroughProcessor(),
+            _ => new FakeSpeechToTextEngine(),
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+
+        pipeline.Start(null, null);
+        pipeline.Dispose();
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
+
+        Assert.Single(captures);
+    }
+
+    [Fact]
+    public async Task Recovery_failure_surfaces_error_and_stops()
+    {
+        using var monitor = new FakeDeviceChangeMonitor();
+        int captureCalls = 0;
+        var captures = new List<FakeAudioCapture>();
+        var stt = new FakeSpeechToTextEngine();
+        var statuses = new List<PipelineStatus>();
+        using var pipeline = new CaptionPipeline(
+            _ =>
+            {
+                captureCalls++;
+                if (captureCalls >= 2)
+                {
+                    throw new AudioCaptureException(
+                        AudioCaptureErrorKind.NoOutputDevice, "No audio output device was found.");
+                }
+
+                var c = new FakeAudioCapture();
+                captures.Add(c);
+                return c;
+            },
+            new PassthroughProcessor(),
+            _ => stt,
+            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
+            monitor);
+        pipeline.StatusChanged += (_, s) => statuses.Add(s);
+
+        pipeline.Start(null, null);
+
+        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
+        Assert.True(
+            SpinWait.SpinUntil(() => statuses.Any(s => s.Kind == PipelineStatusKind.Error), TimeSpan.FromSeconds(2)),
+            "A failed recovery should surface a controlled error status.");
+
+        Assert.Single(captures);
+        Assert.False(pipeline.IsRunning);
+        Assert.False(stt.IsRecognizing);
+        await pipeline.StopAsync();
+        Assert.True(stt.IsDisposed);
     }
 }

@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UniversalCaptions.Core\UniversalCaptions.Core.csproj" />
+    <ProjectReference Include="..\UniversalCaptions.Audio\UniversalCaptions.Audio.csproj" />
     <ProjectReference Include="..\UniversalCaptions.Speech\UniversalCaptions.Speech.csproj" />
     <ProjectReference Include="..\UniversalCaptions.Translation\UniversalCaptions.Translation.csproj" />
   </ItemGroup>

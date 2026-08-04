@@ -1,30 +1,28 @@
 using System.Threading.Channels;
 using UniversalCaptions.Core.Audio;
 using UniversalCaptions.Core.Speech;
-using Whisper.net;
 
 namespace UniversalCaptions.Speech;
 
 /// <summary>
-/// Test seam: decodes a window of mono 16 kHz samples into segments. The production
-/// implementation runs the whisper.cpp model; tests inject a deterministic decoder.
+/// Test seam: decodes a window of mono 16 kHz samples into segments. The production implementation
+/// runs the model; tests inject a deterministic decoder. Wrapped as an <see cref="ISTTDecoder"/>.
 /// </summary>
 internal delegate IReadOnlyList<TranscriptSegment> SegmentDecoder(ReadOnlyMemory<float> samples, CancellationToken cancellationToken);
 
 /// <summary>
-/// An <see cref="ISpeechToTextEngine"/> built on whisper.cpp (via Whisper.net). Buffers
-/// streaming audio into a sliding window, re-decodes on an interval, and surfaces newly
-/// finalized text as final transcripts and the in-progress tail as partial transcripts.
-/// Whisper-specific code is isolated to this class.
+/// An <see cref="ISpeechToTextEngine"/> that buffers streaming audio into a sliding window,
+/// re-decodes on an interval, and surfaces newly finalized text as final transcripts and the
+/// in-progress tail as partial transcripts. All model-specific decoding lives behind
+/// <see cref="ISTTDecoder"/>, so the windowing/trim/commit orchestration is engine-neutral and
+/// reused by any decoder (whisper.cpp today, faster-whisper via the same seam).
 /// </summary>
 public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDisposable
 {
     private readonly WhisperEngineOptions _options;
-    private readonly SegmentDecoder? _injectedDecoder;
+    private readonly ISTTDecoder _decoder;
     private readonly StreamingTranscriptCommitter _committer;
 
-    private WhisperFactory? _factory;
-    private WhisperProcessor? _processor;
     private Channel<ChunkData>? _channel;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -51,6 +49,16 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
     /// Creates a Whisper engine that loads <see cref="WhisperEngineOptions.ModelPath"/> on start.
     /// </summary>
     public WhisperSpeechToTextEngine(WhisperEngineOptions options)
+        : this(options, new WhisperCppDecoder(options))
+    {
+    }
+
+    internal WhisperSpeechToTextEngine(WhisperEngineOptions options, SegmentDecoder decoder)
+        : this(options, InnerSegmentDecoder(decoder))
+    {
+    }
+
+    internal WhisperSpeechToTextEngine(WhisperEngineOptions options, ISTTDecoder decoder)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         if (string.IsNullOrWhiteSpace(options.ModelPath))
@@ -65,16 +73,11 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
                 "StabilityWindow must be at least 2 so partials are emitted before finals.");
         }
 
+        _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
         _committer = new StreamingTranscriptCommitter(
             options.StabilityWindow,
             options.BoundaryWaitBudget,
             () => DateTime.UtcNow);
-    }
-
-    internal WhisperSpeechToTextEngine(WhisperEngineOptions options, SegmentDecoder decoder)
-        : this(options)
-    {
-        _injectedDecoder = decoder;
     }
 
     /// <inheritdoc />
@@ -87,28 +90,25 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
                 return;
             }
 
-            if (_processor is null && _injectedDecoder is null)
+            try
             {
-                try
-                {
-                    LoadModel();
-                }
-                catch (FileNotFoundException ex)
-                {
-                    RecognitionFailed?.Invoke(this, new SpeechRecognitionError(
-                        SpeechRecognitionErrorKind.ModelNotFound,
-                        $"Whisper model file '{_options.ModelPath}' was not found.",
-                        ex));
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    RecognitionFailed?.Invoke(this, new SpeechRecognitionError(
-                        SpeechRecognitionErrorKind.ModelLoadFailed,
-                        $"Whisper model '{_options.ModelPath}' could not be loaded.",
-                        ex));
-                    return;
-                }
+                _decoder.EnsureReady();
+            }
+            catch (FileNotFoundException ex)
+            {
+                RecognitionFailed?.Invoke(this, new SpeechRecognitionError(
+                    SpeechRecognitionErrorKind.ModelNotFound,
+                    $"Whisper model file '{_options.ModelPath}' was not found.",
+                    ex));
+                return;
+            }
+            catch (Exception ex)
+            {
+                RecognitionFailed?.Invoke(this, new SpeechRecognitionError(
+                    SpeechRecognitionErrorKind.ModelLoadFailed,
+                    $"Whisper model '{_options.ModelPath}' could not be loaded.",
+                    ex));
+                return;
             }
 
             _invalidFormatReported = false;
@@ -189,7 +189,7 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
             _cts?.Cancel();
         }
 
-        DisposeProcessor(block: true);
+        _decoder.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -204,88 +204,7 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
             _cts?.Cancel();
         }
 
-        await DisposeProcessorAsync().ConfigureAwait(false);
-    }
-
-    private void DisposeProcessor(bool block)
-    {
-        lock (_gate)
-        {
-            var processor = _processor;
-            var factory = _factory;
-            _processor = null;
-            _factory = null;
-
-            if (processor is not null)
-            {
-                if (block)
-                {
-                    // Whisper.net rejects a synchronous dispose while a native decode is in flight;
-                    // DisposeAsync waits for the decode to unwind.
-                    try
-                    {
-                        processor.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                    }
-                    catch
-                    {
-                        // Best-effort teardown; native memory is reclaimed when the process exits.
-                    }
-                }
-                else
-                {
-                    _ = processor.DisposeAsync().AsTask();
-                }
-            }
-
-            factory?.Dispose();
-        }
-    }
-
-    private async ValueTask DisposeProcessorAsync()
-    {
-        WhisperProcessor? processor;
-        WhisperFactory? factory;
-        lock (_gate)
-        {
-            processor = _processor;
-            factory = _factory;
-            _processor = null;
-            _factory = null;
-        }
-
-        if (processor is not null)
-        {
-            await processor.DisposeAsync().ConfigureAwait(false);
-        }
-
-        factory?.Dispose();
-    }
-
-    private void LoadModel()
-    {
-        if (!File.Exists(_options.ModelPath))
-        {
-            throw new FileNotFoundException("Whisper model file not found.", _options.ModelPath);
-        }
-
-        _factory = WhisperFactory.FromPath(_options.ModelPath);
-        var builder = _factory.CreateBuilder().WithThreads(_options.Threads);
-        if (!string.IsNullOrWhiteSpace(_options.Language))
-        {
-            builder = builder.WithLanguage(_options.Language);
-        }
-
-        if (_options.MaxSegmentLength.HasValue)
-        {
-            builder = builder.WithMaxSegmentLength(_options.MaxSegmentLength.Value);
-        }
-
-        if (_options.SplitOnWord)
-        {
-            builder = builder.SplitOnWord();
-        }
-
-        _processor = builder.Build();
+        await _decoder.DisposeAsync().ConfigureAwait(false);
     }
 
     private void RunLoop(CancellationToken ct)
@@ -377,15 +296,7 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
         var last = windowChunks.Last();
         var windowEndUtc = last.CapturedAtUtc + TimeSpan.FromSeconds((double)last.Samples.Length / _options.SampleRate);
 
-        IReadOnlyList<TranscriptSegment> segments;
-        if (_injectedDecoder is not null)
-        {
-            segments = _injectedDecoder(samples, ct);
-        }
-        else
-        {
-            segments = DecodeWithProcessor(samples, ct);
-        }
+        IReadOnlyList<TranscriptSegment> segments = _decoder.Decode(samples, ct);
 
         var result = _committer.Update(segments, windowStartUtc);
 
@@ -440,23 +351,22 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
         return trimmed;
     }
 
-    private IReadOnlyList<TranscriptSegment> DecodeWithProcessor(ReadOnlyMemory<float> samples, CancellationToken ct)
+    private sealed class InnerDecoder : ISTTDecoder
     {
-        var list = new List<TranscriptSegment>();
-        var enumerator = _processor!.ProcessAsync(samples, ct).GetAsyncEnumerator(ct);
-        try
+        private readonly SegmentDecoder _decode;
+
+        public InnerDecoder(SegmentDecoder decode) => _decode = decode;
+
+        public void EnsureReady()
         {
-            while (enumerator.MoveNextAsync().AsTask().GetAwaiter().GetResult())
-            {
-                var segment = enumerator.Current;
-                list.Add(new TranscriptSegment(segment.Text, segment.Start, segment.End));
-            }
-        }
-        finally
-        {
-            enumerator.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
-        return list;
+        public IReadOnlyList<TranscriptSegment> Decode(ReadOnlyMemory<float> samples, CancellationToken cancellationToken)
+            => _decode(samples, cancellationToken);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
+
+    private static ISTTDecoder InnerSegmentDecoder(SegmentDecoder decoder)
+        => new InnerDecoder(decoder ?? throw new ArgumentNullException(nameof(decoder)));
 }

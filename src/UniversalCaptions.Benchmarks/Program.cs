@@ -25,13 +25,21 @@ string? referenceText = null;
 var sampleFilters = new List<string>();
 double windowSeconds = 8;
 double intervalSeconds = 1;
+double minAudioSeconds = 2;
 int stabilityWindow = 2;
 FeedMode feed = FeedMode.Realtime;
 string? csvPath = null;
+string language = "en";
+bool segments = false;
 
 if (args.Length > 0 && args[0] == "translate")
 {
     return await TranslationBenchmark.RunAsync(args[1..], CancellationToken.None);
+}
+
+if (args.Length > 0 && args[0] == "resample")
+{
+    return await ResamplerBenchmark.RunAsync(args[1..], CancellationToken.None);
 }
 
 for (int i = 0; i < args.Length; i++)
@@ -63,6 +71,9 @@ for (int i = 0; i < args.Length; i++)
         case "--interval" when i + 1 < args.Length:
             intervalSeconds = double.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
+        case "--min-audio" when i + 1 < args.Length:
+            minAudioSeconds = double.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
         case "--stability" when i + 1 < args.Length:
             stabilityWindow = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
@@ -71,6 +82,12 @@ for (int i = 0; i < args.Length; i++)
             break;
         case "--csv" when i + 1 < args.Length:
             csvPath = args[++i];
+            break;
+        case "--language" when i + 1 < args.Length:
+            language = args[++i];
+            break;
+        case "--segments":
+            segments = true;
             break;
     }
 }
@@ -119,7 +136,7 @@ foreach (var sample in samples)
 
     foreach (var modelPath in candidates)
     {
-        var result = await BenchmarkModelAsync(modelPath, sample, reference, threads, windowSeconds, intervalSeconds, stabilityWindow, feed);
+        var result = await BenchmarkModelAsync(modelPath, sample, reference, threads, windowSeconds, intervalSeconds, stabilityWindow, feed, language, segments, minAudioSeconds);
         allResults.Add(result);
     }
 
@@ -205,17 +222,18 @@ static async Task<string> TranscribePseudoReferenceAsync(
 
 static async Task<ModelResult> BenchmarkModelAsync(
     string modelPath, Sample sample, string? reference, int threads,
-    double windowSeconds, double intervalSeconds, int stabilityWindow, FeedMode feed)
+    double windowSeconds, double intervalSeconds, int stabilityWindow, FeedMode feed,
+    string language, bool segments, double minAudioSeconds)
 {
     string name = Path.GetFileName(modelPath);
     var samples = sample.Samples;
     double audioSeconds = sample.AudioSeconds;
-    Console.WriteLine($"  === {name} (window {windowSeconds:0.#}s, interval {intervalSeconds:0.#}s, stability {stabilityWindow}, feed {feed}) ===");
+    Console.WriteLine($"  === {name} (window {windowSeconds:0.#}s, interval {intervalSeconds:0.#}s, stability {stabilityWindow}, feed {feed}, lang {language}) ===");
 
     long ramBefore = Process.GetCurrentProcess().WorkingSet64;
     var swLoad = Stopwatch.StartNew();
     using var factory = WhisperFactory.FromPath(modelPath);
-    using var processor = factory.CreateBuilder().WithLanguage("en").WithThreads(threads).Build();
+    using var processor = factory.CreateBuilder().WithLanguage(language).WithThreads(threads).Build();
     swLoad.Stop();
     long ramAfter = Process.GetCurrentProcess().WorkingSet64;
     long ramDelta = Math.Max(0, ramAfter - ramBefore);
@@ -224,9 +242,11 @@ static async Task<ModelResult> BenchmarkModelAsync(
     var swDecode = Stopwatch.StartNew();
     var sb = new StringBuilder();
     int segmentCount = 0;
+    var rawSegments = new List<(double Start, double End, string Text)>();
     await foreach (var seg in processor.ProcessAsync(samples, CancellationToken.None))
     {
         segmentCount++;
+        rawSegments.Add((seg.Start.TotalSeconds, seg.End.TotalSeconds, seg.Text));
         sb.Append(seg.Text);
     }
 
@@ -242,6 +262,14 @@ static async Task<ModelResult> BenchmarkModelAsync(
     Console.WriteLine($"    segments:        {segmentCount,4}");
     Console.WriteLine($"    WER:             {(double.IsNaN(wer) ? "n/a" : $"{wer * 100:0.0}%")}");
     Console.WriteLine($"    transcript:      {Truncate(transcript, 100)}");
+    if (segments)
+    {
+        Console.WriteLine("    --- RAW Whisper native segments (full-file decode) ---");
+        for (int i = 0; i < rawSegments.Count; i++)
+        {
+            Console.WriteLine($"    RAW[{i + 1,3}] {rawSegments[i].Start,7:0.00}-{rawSegments[i].End,7:0.00}s | {rawSegments[i].Text}");
+        }
+    }
 
     var swStream = Stopwatch.StartNew();
     var cpuStreamBefore = Process.GetCurrentProcess().TotalProcessorTime;
@@ -253,16 +281,17 @@ static async Task<ModelResult> BenchmarkModelAsync(
     double finalLatencySumMs = 0;
     string? streamError = null;
     var streamedFinalText = new StringBuilder();
+    var streamedFinals = new List<string>();
     var options = new WhisperEngineOptions
     {
         ModelPath = modelPath,
-        Language = "en",
+        Language = language,
         Threads = threads,
         SampleRate = SampleRate,
         WindowDuration = TimeSpan.FromSeconds(windowSeconds),
         DecodeInterval = TimeSpan.FromSeconds(intervalSeconds),
         CommitOverlap = TimeSpan.FromSeconds(1.5),
-        MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(2),
+        MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(minAudioSeconds),
         StabilityWindow = stabilityWindow,
     };
     var engine = new WhisperSpeechToTextEngine(options);
@@ -280,6 +309,7 @@ static async Task<ModelResult> BenchmarkModelAsync(
         finals++;
         finalLatencySumMs += t.Latency.TotalMilliseconds;
         streamedFinalText.Append(t.Text);
+        streamedFinals.Add(t.Text);
         if (firstFinal == TimeSpan.MaxValue)
         {
             firstFinal = swStream.Elapsed;
@@ -324,6 +354,15 @@ static async Task<ModelResult> BenchmarkModelAsync(
     if (streamError is not null)
     {
         Console.WriteLine($"    stream error:    {streamError}");
+    }
+
+    if (segments)
+    {
+        Console.WriteLine("    --- COMMITTED FINALs (streamed engine through the committer) ---");
+        for (int i = 0; i < streamedFinals.Count; i++)
+        {
+            Console.WriteLine($"    FINAL[{i + 1,3}] {streamedFinals[i]}");
+        }
     }
 
     return new ModelResult(

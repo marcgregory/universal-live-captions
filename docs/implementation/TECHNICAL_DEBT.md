@@ -1,6 +1,6 @@
 # Universal Live Captions Technical Debt
 
-Last updated: 2026-08-01
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -17,8 +17,8 @@ Last updated: 2026-08-01
 
 | ID | Item | Priority | Reason | Impact | Planned Sprint | Owner | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TD-001 | Replace windowed-sinc resampler with NAudio `WdlResampler` or a benchmarked alternative if STT accuracy/latency demands it | Medium | Initial resampler is a fixed-kernel FIR chosen for determinism; quality not yet benchmarked against speech | Potential STT accuracy impact at extreme ratios | Slice 2 (benchmark) | Engineering | Open |
-| TD-002 | Add device-change notifications (`RegisterEndpointNotificationCallback`) for automatic recovery | Medium | Slice 1 relies on `RecordingStopped` + manual retry | Manual recovery UX gap on device hotplug | Slice 2 | Engineering | Open |
+| TD-001 | Replace windowed-sinc resampler with NAudio `WdlResampler` or a benchmarked alternative if STT accuracy/latency demands it | Medium | Resampler benchmark (2026-08-05) shows WDL is ~30x faster and ~half the allocations, but STT/audio is equivalent (0.0% WER clean + noisy) and the current sinc already runs 0.03–0.04x realtime — resampling is not a live-latency driver (decode dominates by >10x) | No recognition degradation to fix | Closed 2026-08-05 | Engineering | **Closed** |
+| TD-002 | Add device-change notifications (`RegisterEndpointNotificationCallback`) for automatic recovery | Medium | Slice 1 relies on `RecordingStopped` + manual retry | Manual recovery UX gap on device hotplug; default-device switch silently keeps the old endpoint | TD sprint | Engineering | **Contract + production wiring complete (2026-08-05):** `IDeviceChangeMonitor`/`DeviceChangeNotification` (Core), `WasapiDeviceChangeNotifier` (Audio, `IMMNotificationClient`), `DefaultDeviceAutoRecovery` (App, now wired into `CaptionPipeline`: capture-only restart on default-device change/removal/unplug, STT preserved, coalesced, stop/dispose-guarded) + `WasapiDeviceChangeNotifier` registered in `App.xaml.cs`. 20 contract/recovery tests + 7 pipeline recovery tests; full suite **329/329**. **Real hotplug verification pending — TD-002 stays Open until it passes** (change-impact Entry 9). |
 | TD-003 | Centralize DI composition with `Microsoft.Extensions.DependencyInjection` | Low | Slice 1 uses constructor injection only | Wiring cost grows with pipeline stages | Slice 4 | Engineering | Open |
 | TD-004 | Configure line coverage measurement tooling | Low | Coverage targets exist in QA plan but no coverage collector configured | Coverage not measured | Slice 5 | Engineering | Open |
 | TD-005 | Settings persistence (file-based) for overlay/caption preferences | Low | MVP keeps settings in-process | User prefs reset on restart | Slice 4/5 | Engineering | Open |
@@ -32,3 +32,4 @@ Last updated: 2026-08-01
 | TD-013 | `LineProtocolArgosProcess` has no direct unit tests — the risky protocol logic (startup ping, `ok:false` + `kind` mapping, id-mismatch, malformed JSON, timeout→`Timeout`, kill-on-timeout, restart-after-kill) is only exercised by manual smoke + benchmark. Fix risk: a scripted fake Python child (echo harness) could cover the seam deterministically without the real venv | Low | Fresh-context review (Slice 3 close-out); engine-level recovery is covered via `FakeArgosProcess` | A protocol regression could slip through unit gates | Slice 4 | Engineering | Open |
 | TD-014 | `LineProtocolArgosProcess.Dispose()` does not acquire `_gate`, so a dispose racing an in-flight `WaitAsync`/`ExchangeAsync` can throw `ObjectDisposedException` (unwrapped) or release a disposed semaphore. Fix risk: engine typically disposes at shutdown, but a Slice 4 service could dispose while a translation is in flight | Low | Fresh-context review (Slice 3 close-out) | Hard-to-reproduce shutdown crash | Slice 4 | Engineering | Open |
 | TD-015 | `LineProtocolArgosProcess` accumulates stderr unboundedly in a `StringBuilder` for diagnostics; a chatty child process could grow memory without limit | Low | Fresh-context review (Slice 3 close-out); stderr is best-effort diagnostics only | Memory growth on a verbose child | Slice 4 | Engineering | Open |
+| TD-016 | `LineProtocolFasterWhisperProcess` had no direct protocol tests — the two Slice 9 wire bugs (magic byte order `0x46574355`; 16→20-byte segment header) were caught only by the real-App run because the unit-test fake seam (`IFasterWhisperProcess`) did not exercise the wire format | High | Slice 9 close-out finding | A wire-protocol regression could slip through unit gates again | TD sprint (2026-08-04) | Engineering | **Closed** |

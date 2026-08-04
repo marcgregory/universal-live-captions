@@ -1,6 +1,6 @@
 # Benchmark Report
 
-Last updated: 2026-08-01
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -275,3 +275,293 @@ This sweep itself changed no default. After **Phase 1c real-device confirmation*
 ### Phase 1c confirmation (App-level SAPI E2E, completed 2026-08-01)
 
 The shortlist was validated end-to-end through the real App (loopback → Whisper → Argos en→tl → overlay, baseline + shortlist × 3 runs each); full protocol + evidence in [TEST_REPORT.md](TEST_REPORT.md) (Slice 6 Phase 1c section). Results matched the offline sweep: **tiny/8/1/st2** is the end-to-end latency winner (E2E final median 16.25 s incl. per-session Argos cold start; warm last-final 7.45 s; last STT 3.61 s; 18 translated finals), **base/8/1/st2** commits faster than the old default (16 vs 10 finals; STT 4.18 vs 6.49 s) at identical model accuracy, and **base/8/1/st3** remains a conservative control. The baseline **base/8/1/st2** is now the App default.
+
+# Slice 8 — Tagalog Model-Selection Isolation (2026-08-04)
+
+## Purpose
+
+Classify the reported Tagalog live-caption defects (misrecognitions, fragmented finals,
+hallucinated `1.`, missing words) as **STT (Whisper) vs committer** using the real App and the
+streaming pipeline, then quantify the accuracy-vs-latency tradeoff across the three locally
+available models (`ggml-tiny`/`ggml-base`/`ggml-small`) to decide the default.
+
+## Result — defects are STT, not the committer
+
+RAW Whisper full-file segments on real conversational Tagalog (audio.com "First Meeting —
+Meeting Someone", user-supplied; 16 kHz mono; evidence `artifacts/samples/raw_vs_committed_tagalog.log`)
+already contain every symptom class before the committer sees the text:
+
+- **Recognition errors:** `Kung usta?`, `Ikao.`, `Salaman.`, `Syangapala.`, `Tagaman nila ako.`,
+  `May name is Maria and you.`, `Nagagalaka ko makilalaka.` — present verbatim in RAW.
+- **Hallucinated segments:** RAW segments that are literally `1.` (0.52 s, 0.60 s).
+- **Fragment boundaries:** Whisper segments Tagalog into 0.5–1.6 s chunks (`Kung usta?` = 0.82 s);
+  the committer **aggregates** RAW segments into larger FINALs (FINAL[3] = 7 merged RAW segments),
+  it does not manufacture cuts.
+
+The 90 s streamed-harness run reproduced the App's committed FINALs faithfully from the RAW
+boundaries. Conclusion: **`siyinobahako`-class errors and fragment boundaries are Whisper model
+quality on Tagalog, not `StreamingTranscriptCommitter` logic.** ADR-0007 (commit/boundary/trim)
+is not implicated and remains **Proposed** (its acceptance gate is unchanged and separate).
+
+## Model comparison — real App, same 90 s Tagalog slice, STT lang `tl`, frozen config
+(StabilityWindow 2, window 8 s, interval 0.5 s, min-audio 0.5 s; UIA-driven Release App, full
+`ProcessorCount` threads)
+
+| Model | STT latency | First final | Committed finals | Tagalog accuracy | Hallucinated `1.` | Stop drain |
+|---|---|---|---|---|---|---|
+| **tiny** | ~1.75 s | ~2.7 s | ~23 (most fragmented) | ❌ `Komosita!`, `guan`, `Salaman`, `Masayang ang marilala ka?` | ❌ `My name is One` | ✅ |
+| **base** | ~3.1 s | ~17.5 s | 10 | ❌ `Kung usta`, `Ikaw`, `Mabutirin`, `San ka nakatera` | ❌ `Ang pangalan ko ay 1.` | ✅ |
+| **small** | 16.9–21.9 s | ~35.3 s | 4 | ✅ `Kumusta`, `Ikaw`, `Salamat`, `Juan`, `Masaya akong makilalaka` | ✅ none | ✅ |
+
+Evidence: `artifacts/samples/realapp_tiny_tagalog.log`, `realapp_base_tagalog.log`,
+`realapp_small_tagalog.log`.
+
+## Findings
+
+### T1 — `ggml-small` fixes recognition but cannot keep real-time pace
+All target Tagalog words correct and the `1.` hallucination gone, but STT latency 16.9–21.9 s vs
+3.1 s for base; the pipeline lags ~17 s behind live audio at the frozen 8 s/0.5 s config. This is
+a real product hit (full `ProcessorCount` threads), not a harness artifact — the harness number
+(27.9 s avg) merely overestimated slightly.
+
+### T2 — `ggml-tiny` does not solve the accuracy problem
+Fastest (1.75 s) but the same error class as base with different spellings (`Komosita!`, `guan`,
+`Salaman`), the `1.` hallucination persists (`My name is One`), and fragmentation is the worst
+(~23 finals). It is a latency option, not an accuracy option.
+
+### T3 — no available local model gives both quality and responsiveness
+`small` = accuracy, `base`/`tiny` = speed. There is no free lunch among tiny/base/small on this
+hardware under the frozen configuration.
+
+## Decision (recorded 2026-08-04, per user)
+
+No production change. **`ggml-base` remains the frozen default** (ADR-0003) because it preserves
+acceptable responsiveness. `ggml-small` provides substantially better Tagalog recognition but
+incurs unacceptable real-time latency on this setup; `ggml-tiny` is fastest but does not solve
+recognition quality. Model exploration is **deferred** — a better Whisper model or
+hardware-appropriate quantization is the future investigation, not forcing `small` realtime by
+re-tuning window/interval (which would re-confound compute latency with segmentation behavior).
+ADR-0007 remains **Proposed/frozen**, decoupled from this model-selection result.
+
+# Slice 9 - Faster-whisper as a Selectable STT Engine (2026-08-04)
+
+## Purpose
+
+Follow up on Slice 8's T3 finding (no available whisper.cpp model gives both Tagalog quality and
+responsiveness) by evaluating **faster-whisper** (a CTranslate2-backed implementation of the Whisper
+family with int8 quantization and a `small`-level accuracy/latency tradeoff) as a **parallel,
+selectable** `ISpeechToTextEngine`. The goal was not to re-tune whisper.cpp, but to close the
+"small accuracy + base/near-base responsiveness" gap via a model whose runtime cost per decode is
+substantially lower than whisper.cpp's `small`.
+
+## Approach (architecture-strict, no whisper.cpp change)
+
+The whisper.cpp decode portion was extracted to the `ISTTDecoder` seam (`WhisperCppDecoder` owns
+`WhisperFactory`/`WhisperProcessor`) with **zero behavior change** to the frozen `ggml-base` path;
+the engine's windowing/trim/commit orchestration (`RunLoop`, `DecodeInterval`, `WindowDuration`,
+`TrimToCommitted`, `CommittedUntilUtc`, `CommitOverlap`, `StreamingTranscriptCommitter`) is
+untouched. `FasterWhisperDecoder` runs a **persistent, binary-framed Python worker**
+(`Server/faster_whisper_worker.py`) that loads the faster-whisper model **once** per session
+(`model.transcribe` with `language="tl"` when selected, `beam_size=5`,
+`condition_on_previous_text=False`, word_timestamps off, float32-normalized int16 PCM).
+`FasterWhisperSpeechToTextEngine` is an `ISpeechToTextEngine` wrapper over the shared streaming
+engine, selected via `UC_STT_ENGINE=fasterwhisper`; the default `/empty` value keeps **whisper.cpp
+`ggml-base`** unchanged.
+
+## Worker round-trip characterization (venv: `%TEMP%\fwv`, faster-whisper 1.2.1, CTranslate2 4.8.1)
+
+| Model / config | Realtime factor (90 s Tagalog) | Segments | Notes |
+|---|---|---|---|
+| `small` int8, raw int16 PCM (bug) | 0.73× | garbage (`1.`/`2.`) | int16 not normalized → wrong scale + slow |
+| `small` int8, float32-normalized PCM | 5.85× | 24 clean bilingual | 15.4 s wall / 90 s; `language="tl"`, `beam 5`, 8 threads, 1 worker |
+| `base` int8, float32-normalized PCM | 9.84× | — | faster but poor Tagalog accuracy (consistent with whisper.cpp base) |
+
+## Real-App validation (same 90 s Tagalog slice, STT `tl`, frozen config st2/8 s/0.5 s/0.5 s, full `ProcessorCount` threads, UIA-driven Release App)
+
+| Metric | whisper base | whisper small | **faster-whisper `small` int8** |
+|---|---|---|---|
+| STT latency | ~3.1 s | 16.9–21.9 s | **10.7–11.7 s** |
+| First final | ~17.5 s | ~35.3 s | **16.5–29.9 s** |
+| Committed finals | ~10 | 4 | **3–4** |
+| Hallucinated `1.`/`one` | yes (`1.`) | none | **none** |
+| Tagalog accuracy | weak | best | **whisper-small-level (clean bilingual finals)** |
+
+Evidence: `artifacts/samples/realapp_fasterwhisper_small_tagalog.log`,
+`realapp_fasterwhisper_small_int1_5_tagalog.log`.
+
+## Findings
+
+### FW1 — faster-whisper `small` meets the Slice 8 target
+On the frozen 0.5 s-interval config, faster-whisper `small` int8 committed clean bilingual Tagalog
+finals (**no `1.`/`one` hallucination**) at **10.7–11.7 s** STT latency, versus whisper.cpp small's
+16.9–21.9 s. Accuracy was whisper-small-level (comparable correct `Kumusta`/`Ikaw`/`Salamat`/
+`Juan` family) while halving the STT latency and keeping the first final on par with base.
+
+### FW2 — a 1.5 s decode interval trades final latency for cleaner boundaries
+The 1.5 s-interval variant emitted the cleanest complete sentences (single multi-clause FINAL,
+first final 16.5 s ≈ base 17.5 s) but raised the last-final STT latency to ~24 s because the
+stability-window confirmation (2 passes at 1.5 s apart) plus the boundary-wait budget now span a
+longer wall-clock window. Acceptable for a recorded/minimal-partial use, but not the streaming
+default.
+
+### FW3 — two wire-protocol bugs were surfaced only by the real App
+The unit-test fake seam did not exercise the wire format. The live run exposed (a) a wrong
+little-endian magic constant (`0x55435746` → corrected `0x46574355`, "UCWF") and (b) a 16-byte
+segment-header read that should have been 20 bytes (the worker's `"<ddI"` struct is 8+8+4). After
+both fixes the run produced transcripts (the pre-fix run committed only `Listening.`). This is a
+lasting reason the faster-whisper worker should gain a direct protocol round-trip test (TD-013-style).
+
+**Addressed 2026-08-04 (TD-016):** a deterministic protocol-contract suite now guards both wire bugs
+without a Python/venv — `LineProtocolFasterWhisperProcessProtocolTests` (9 tests) drives the real
+production reader against a fake-worker byte stream over an injectable `Stream` seam, including the
+exact byte-order (`0x46574355`) and the 16-vs-20-byte segment-header regression cases. Full suite
+302/302. See CHANGELOG v0.5.14 and TEST_REPORT (TD-016).
+
+## Startup / responsiveness decision-gate measurement (2026-08-04)
+
+Follow-on to the Slice 9 validation, gated on whether faster-whisper `small` warrants promotion to
+the default. Measured on the real App (UIA-driven Release build, same 90 s Tagalog slice, STT `tl`,
+full `ProcessorCount` threads) and via a direct worker probe.
+
+**Worker cold-start decomposition (direct probe, `small` int8):** process spawn 0.006 s + Python
+import + model load **2.6 s** + first 8 s-window decode 2.5 s = **~5.2 s total**. The model load
+itself is small and rising early in the window is not the first-caption driver.
+
+**Real-App first-caption & steady-state latency:**
+
+| Metric | faster-whisper `small` int8 | ggml-base (default) |
+|---|---|---|
+| **First caption** | **16.5–17.4 s** | 25.0 s |
+| **STT latency (last final)** | 13.7–15.8 s | **2.4–3.7 s** |
+| Committed finals | 7 (composed sentences) | 10 (fragmented) |
+| Hallucinated `1.`/`One.`/`May name is` | none | present |
+| Tagalog accuracy | clean bilingual | weak |
+
+Evidence: `artifacts/samples/firstcaption_fw_small.log`, `firstcaption_i1_fw_small.log`,
+`firstcaption_base.log`, `firstcaption_w4_fw_small.log`.
+
+**Window/interval tuning (faster-whisper `small`):**
+
+| Config | STT latency | Result |
+|---|---|---|
+| 8 s / 0.5 s (frozen) | 11.7–15.8 s | best |
+| 8 s / 1.0 s | 13.7 s | no change |
+| 8 s / 1.5 s | 24.2 s | worse (fewer decode passes = slower stability confirmation) |
+| 4 s / 0.5 s | no captions | dead end (window too small to commit with StabilityWindow 2) |
+
+**Conclusion: the frozen 8 s / 0.5 s configuration is already close to the practical optimum for
+the faster-whisper path; window/interval tuning does not close the steady-state gap.**
+
+**Pre-warm assessment:** the worker model load is ~2.6 s; a pre-warm would move that off the Start
+click and shave ~2.6 s off the first caption (≈16.5 s → ≈14 s), but it would not reduce the
+steady-state final latency. It is a minor nicety, not a decision-changer.
+
+## Decision (recorded 2026-08-04)
+
+**`ggml-base` remains the frozen default** (ADR-0003). faster-whisper is **opt-in** via
+`UC_STT_ENGINE=fasterwhisper` (with `UC_FW_PYTHON` for the interpreter; auto-discovery to
+`%TEMP%\fwv`). **No default promotion happens without explicit user approval.** The faster-whisper
+path is a validated solution to the Slice 8 T3 gap available on demand, not a replacement for the
+frozen baseline.
+
+**Decision-gate close-out (recorded 2026-08-04, per user) — not promoted.** Accuracy winner is
+faster-whisper `small` int8; responsiveness winner is `ggml-base`. `ggml-base` stays the production
+default because the faster-whisper path introduces a major responsiveness regression in a live-caption
+application (steady-state STT latency 13.7–15.8 s vs ggml-base 2.4–3.7 s). The first-caption advantage
+(16.5 s vs 25.0 s) and pre-warm (~2.6 s) do not compensate. **faster-whisper `small` remains opt-in
+until its steady-state latency can be materially reduced.** No further window/interval tuning is
+planned for this gate — it is already near-optimal. This is a clean close: no production change, no
+forced promotion; the Tagalog accuracy gap on the ggml-base default is acknowledged as open.
+
+# TD-001 — Resampler benchmark: windowed-sinc vs NAudio `WdlResampler` (2026-08-05)
+
+## Purpose
+
+TD-001 gate: does replacing the current windowed-sinc `<SampleRateConverter>` (Slice 1) with NAudio
+`WdlResampler` improve enough real-time STT performance without degrading audio quality/recognition?
+Benchmark-only first pass — no production replacement is made here (per TD-001 decision rule).
+
+## Method
+
+`dotnet run --project src/UniversalCaptions.Benchmarks -c Release -- resample --repeats 5`
+
+Same representative speech (canonical `jfk.wav` — clean, and `jfk_noisy.wav` — +10 dB SNR) is the 11.00
+s 16 kHz mono ground truth. The 44.1 kHz / 48 kHz sources are created from that same 16 kHz speech via
+a reference band-limited upsample, so both candidates downsample **byte-identical input** (fair
+head-to-head). Each conversion runs in 0.5 s input chunks (mirroring the `AudioProcessor` pipeline);
+reported performance is the best of 5 runs (wall, realtime factor vs clip length, CPU time,
+allocation via `GC.GetAllocatedBytesForCurrentThread`, output-frame count). STT impact = ggml-base
+full-file decode WER vs the jfk canonical reference for the resampled 16 kHz output.
+
+| impl | mode |
+|---|---|
+| control | no resampling (pass-through) — the pipeline's no-op behavior; establishes the STT baseline |
+| sinc | current `SampleRateConverter` (windowed-sinc, Blackman, ~32 taps @ 44.1k/48k) |
+| wdl | NAudio `WdlResampler` (`SetMode(true, 2, false)` interpolate + IIR, feed mode) |
+
+## Raw results
+
+### Resampler performance (best of 5, 0.5 s chunks, mono)
+
+| impl | path | wall | realtime vs clip | cpu | alloc (11 s clip) | out frames |
+|---|---|---|---|---|---|---|
+| control | 16k->16k | 0 ms | 0.00x | 0 ms | 0 MB | 176000 |
+| sinc | 44.1k->16k | 400 ms | 0.04x | 375 ms | 5.7 MB | 175984 |
+| wdl | 44.1k->16k | 13 ms | 0.00x | 16 ms | 3.0 MB | 175992 |
+| sinc | 48k->16k | 356 ms | 0.03x | 359 ms | 6.1 MB | 175984 |
+| wdl | 48k->16k | 13 ms | 0.00x | 16 ms | 3.2 MB | 175992 |
+
+Noisy clip was consistent: sinc 401–411 ms / 5.7–6.1 MB per 11 s; wdl 13–14 ms / 3.0–3.2 MB.
+
+### Audio equivalence / STT impact (ggml-base full-file decode, lang en)
+
+| path | clean WER | noisy WER |
+|---|---|---|
+| control 16k->16k | 0.0% | 0.0% |
+| sinc 44.1k->16k | 0.0% | 0.0% |
+| wdl 44.1k->16k | 0.0% | 0.0% |
+| sinc 48k->16k | 0.0% | 0.0% |
+| wdl 48k->16k | 0.0% | 0.0% |
+
+Decode latency is indistinguishable across rows (≈2.0–2.2 s, 0.19–0.21x) — resampling adds no STT
+timing or accuracy signal. Output keeps ~equal length (175984 vs 175992 frames; 0.5 ms delta).
+
+## Findings
+
+### F1 — WDL is ~30x faster and ~half the allocations
+WDL converts both 44.1k->16k and 48k->16k in ~13 ms vs ~356–400 ms for the current sinc resampler
+(≈28–31x faster, realtime factor 0.00x vs 0.03–0.04x), with ~3.0–3.2 MB vs 5.7–6.1 MB per 11 s clip.
+
+### F2 — STT/audio quality is equivalent, not degraded
+Clean and noisy rounds trips both transcribe to **0.0% WER** with either resampler, identical to the
+no-resampling control, at equal decode latency and nearly identical output lengths. There is **no
+measurable recognition or audio-quality difference** between the two — the WDL speedup costs nothing.
+
+### F3 — the sinc resampler is NOT a live-latency driver
+The current sinc resampler already runs at **0.03–0.04x realtime** (≈25-30x faster than live). The real
+STT decode runs at ~0.2x — an order of magnitude above the resampler. Per-chunk, replacing sinc with
+WDL saves ~0.4 ms per 0.5 s audio chunk (~0.03% of a live caption slice) — it cannot move end-to-end
+live-caption latency. The 5.7 MB/11 s sinc allocation is ~0.5 MB/s GC churn, negligible.
+
+## Decision (recorded 2026-08-05) — keep the current windowed-sinc resampler; TD-001 closed
+
+Applying the TD-001 decision rule to the measured numbers:
+
+- WDL is faster (≈30x) and STT-equivalent — a candidate on raw throughput.
+- But whether to switch keys on the rule's operative question: **does the switch improve real-time
+  STT performance?** No. The current resampler already runs 25-30x faster than realtime and does not
+  meaningfully contribute to live-caption latency (decode dominates by >10x); the ~0.4 ms/chunk WDL
+  saving is not observable in end-to-end latency, and the current sinc is deterministic and
+  dependency-free.
+- The last decision row ("current resampler materially contributes to live latency → optimization
+  justified") is **false** — it does not.
+
+**Therefore: keep `SampleRateConverter`; do not introduce `WdlResampler` into production. No code
+change to the product subgraph.** The resample `resample` benchmark stays available in
+`UniversalCaptions.Benchmarks` for a future reassessment if STT is ever offloaded (when resampling
+could become a fraction of the pipeline, e.g. a hardware/accelerated STT path). If the sinc
+resampler's list/array churn is ever a concern, allocations can be reduced independently of the
+algorithm choice — not a reason to switch.
+
+Execution evidence: resample runs on `jfk.wav` + `jfk_noisy.wav`, both listed in
+`docs/reports/TEST_REPORT.md` (TD-001). Full suite 302/302, Release build 0 warnings/0 errors.
