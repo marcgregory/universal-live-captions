@@ -65,7 +65,10 @@ public sealed class WhisperSpeechToTextEngine : ISpeechToTextEngine, IAsyncDispo
                 "StabilityWindow must be at least 2 so partials are emitted before finals.");
         }
 
-        _committer = new StreamingTranscriptCommitter(options.StabilityWindow);
+        _committer = new StreamingTranscriptCommitter(
+            options.StabilityWindow,
+            options.BoundaryWaitBudget,
+            () => DateTime.UtcNow);
     }
 
     internal WhisperSpeechToTextEngine(WhisperEngineOptions options, SegmentDecoder decoder)

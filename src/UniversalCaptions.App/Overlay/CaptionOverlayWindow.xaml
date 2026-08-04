@@ -148,7 +148,8 @@
                             Style="{StaticResource ChromeIconButton}"
                             ToolTip="Copy captions to clipboard (debug)"
                             Click="OnCopyClicked">
-                        <TextBlock Text="&#xE8C8;"
+                        <TextBlock x:Name="CopyGlyph"
+                                   Text="&#xE8C8;"
                                    FontFamily="Segoe MDL2 Assets"
                                    FontSize="11" />
                     </Button>

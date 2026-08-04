@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -386,10 +387,36 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         try
         {
             Clipboard.SetText(sb.ToString());
+            _ = FlashCopyFeedbackAsync();
         }
         catch (System.Runtime.InteropServices.ExternalException)
         {
             // Clipboard is occasionally busy (held by another app); silently skip the copy.
+        }
+    }
+
+    /// <summary>
+    /// Gives visual feedback that the copy succeeded: the glyph swaps for a green checkmark and the
+    /// tooltip becomes "Copied!" for a moment, then everything is restored.
+    /// </summary>
+    private async Task FlashCopyFeedbackAsync()
+    {
+        string originalGlyph = CopyGlyph.Text;
+        Brush originalForeground = CopyGlyph.Foreground;
+        object originalTooltip = CopyButton.ToolTip;
+
+        CopyGlyph.Text = "\u2713"; // ✓
+        CopyGlyph.Foreground = new SolidColorBrush(Color.FromRgb(0x6F, 0xDD, 0x8B));
+        CopyButton.ToolTip = "Copied!";
+        try
+        {
+            await Task.Delay(1200);
+        }
+        finally
+        {
+            CopyGlyph.Text = originalGlyph;
+            CopyGlyph.Foreground = originalForeground;
+            CopyButton.ToolTip = originalTooltip;
         }
     }
 

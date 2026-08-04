@@ -38,6 +38,14 @@ public sealed class WhisperEngineOptions
     public int StabilityWindow { get; init; } = 2;
 
     /// <summary>
+    /// Maximum extra time a stable prefix waits for a meaningful segment boundary before the bounded
+    /// fallback commits it (ADR-0007). This is a PROVISIONAL default (2 seconds, ~2&times;
+    /// <see cref="DecodeInterval"/>) pending Slice 6 E2E re-measurement; it is injected through to
+    /// the committer so it can be swept after latency data is collected.
+    /// </summary>
+    public TimeSpan BoundaryWaitBudget { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
     /// When set, whisper.cpp is asked to cap each segment to this many characters, producing finer
     /// segment boundaries. Opt-in: behavior should be benchmarked before enabling (see BENCHMARK_REPORT).
     /// </summary>

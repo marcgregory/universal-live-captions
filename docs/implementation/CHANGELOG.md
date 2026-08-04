@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 ## Metadata
 
@@ -16,6 +16,18 @@ Last updated: 2026-08-02
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.11 - 2026-08-04
+
+### Fixed
+
+- **ADR-0007 Option B — boundary-preserving fallback in `StreamingTranscriptCommitter` (2026-08-04).** Replaces the stability-only `stable → FINAL` commit and the original "commit the word-backed stable prefix at the 2 s cap" fallback (which live tracing proved force-committed interior fragments like `country can do for` with `boundary_found: false, fallback_used: true`) with four rules: (1) stable + meaningful segment boundary → FINAL; (2) stable + no boundary, budget running → wait; (3) budget expires + ≥1 completed boundary in the stable prefix → commit the last completed boundary only, keep the tail partial with a fresh timer; (4) budget expires + no completed boundary → keep partial, never manufacture a word-backed FINAL.
+  - New `LastCompletedBoundaryLength(stable, segments)` (largest cumulative segment end `E ≤ stable.Length`) drives rule 3; `AdvanceCommittedUntil` still backward-snaps to real segment ends (I-1 preserved). `PendingStable` accessor added.
+  - **Replacement-drop fix:** `UpdatePendingStable` now also receives `current`; when the stable prefix is empty (transient after a true replacement) it drops any pending that is no longer consistent with the current decode, so stale pending text is never committed against a new window's segments where its length could coincidentally land on a boundary.
+  - Scope held: `FindTailOverlap`, `CaptionService` dedup, overlay, wrapping, Argos, `StabilityWindow`, `DecodeInterval`, and `CommittedUntilUtc` backward-snap untouched. `BoundaryWaitBudget` stays 2 s (provisional; not increased as a substitute fix).
+- **Tests:** `StreamingTranscriptCommitterTests` rewritten for Option B (rule-3/rule-4 fallback, `CommittedUntilUtc` snap-to-boundary, replacement drop, epoch-rollover timer survival); `WhisperSpeechToTextEngineTests` migrated to a multi-segment `ScriptedSegmentDecoder` (Option B never commits interior prefixes in single-segment windows). Solution total **284/284 passing** (66 Audio + 72 Captions + 59 Speech + 27 Translation + 60 App), build 0 warnings/0 errors.
+- **Live JFK verification (controlled English, PASS):** real App Release + `ggml-base`, `StabilityWindow=2`, steady config, real WASAPI loopback, `jfk_long.wav`. Run A (single pass) and Run B (continuous ~2 min loop) both commit complete boundary-backed sentences and **no longer emit the pre-fix `country can do for` interior fragment**; Stop drain preserves committed finals. Evidence `artifacts/samples/adv7_optionB_jfk.log`. (Pre-fix trace: `artifacts/samples/adv7_trace_evidence.log`, gitignored.)
+- **ADR-0007 status:** remains **Proposed** — the controlled English JFK verification passes, but final acceptance still requires live validation of the original `"At gusto ko"` / `"Kaya"` / `"artipisyal na katalinuhan"` scenario against the **original operator recording**, which is unavailable; per user, no substitute Tagalog sample may be used to claim acceptance.
 
 ## v0.5.10 - 2026-08-02
 

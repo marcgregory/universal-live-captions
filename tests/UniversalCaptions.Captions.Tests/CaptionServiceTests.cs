@@ -23,8 +23,9 @@ public sealed class CaptionServiceTests
         string sourceLanguage = "en",
         string? targetLanguage = "tl",
         int historyCapacity = 50,
-        Func<DateTime>? utcNow = null) =>
-        new(new CaptionServiceOptions(sourceLanguage, targetLanguage, historyCapacity), engine, utcNow);
+        Func<DateTime>? utcNow = null,
+        TimeSpan? stopDrainBudget = null) =>
+        new(new CaptionServiceOptions(sourceLanguage, targetLanguage, historyCapacity), engine, utcNow, stopDrainBudget);
 
     /// <summary>
     /// A deterministic clock whose value the test advances, so translation start/completion stamps
@@ -308,10 +309,33 @@ public sealed class CaptionServiceTests
     }
 
     [Fact]
-    public async Task Stop_CancelsInFlightTranslation_LineStaysPending()
+    public async Task Stop_WithInFlightCommittedFinal_IsDrainedAndApplied()
     {
         var engine = new GatedTranslationEngine();
         var service = CreateService(engine);
+        service.Start();
+        service.SetTranslationEnabled(true);
+        service.ProcessFinal(Final(2, "hello"));
+
+        // Stop returns immediately and does not cancel the already-committed final: it is applied once
+        // its translation completes, so captions recognized just before the stop are not dropped.
+        service.Stop();
+        engine.Complete(0, "kumusta", "tl");
+        await service.FlushAsync();
+
+        Assert.False(service.IsRunning);
+        var line = Assert.Single(service.State.History);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+        Assert.Equal("kumusta", line.TranslatedText);
+    }
+
+    [Fact]
+    public async Task Stop_WithCommittedTranslationBeyondDrainBudget_ForceCancelsRemaining()
+    {
+        // A gated engine that never returns, plus a tiny drain budget, means the background drain
+        // must force-cancel the remaining in-flight work rather than wait on it forever.
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine, stopDrainBudget: TimeSpan.FromMilliseconds(50));
         service.Start();
         service.SetTranslationEnabled(true);
         service.ProcessFinal(Final(2, "hello"));
@@ -320,8 +344,7 @@ public sealed class CaptionServiceTests
         await service.FlushAsync();
 
         Assert.False(service.IsRunning);
-        var line = Assert.Single(service.State.History);
-        Assert.Equal(CaptionTranslationStatus.Pending, line.TranslationStatus);
+        Assert.Equal(CaptionTranslationStatus.Pending, Assert.Single(service.State.History).TranslationStatus);
     }
 
     [Fact]

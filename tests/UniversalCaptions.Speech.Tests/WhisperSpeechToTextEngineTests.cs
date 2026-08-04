@@ -14,7 +14,7 @@ public sealed class WhisperSpeechToTextEngineTests
     private const int Rate = 16_000;
     private static readonly DateTime Base = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    private static WhisperEngineOptions TestOptions() => new()
+    private static WhisperEngineOptions TestOptions(TimeSpan? boundaryWaitBudget = null) => new()
     {
         SampleRate = Rate,
         WindowDuration = TimeSpan.FromSeconds(2.0),
@@ -22,6 +22,7 @@ public sealed class WhisperSpeechToTextEngineTests
         MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(0.5),
         CommitOverlap = TimeSpan.FromSeconds(0.2),
         StabilityWindow = 2,
+        BoundaryWaitBudget = boundaryWaitBudget ?? TimeSpan.FromSeconds(2),
         ModelPath = "unused.bin",
     };
 
@@ -54,15 +55,30 @@ public sealed class WhisperSpeechToTextEngineTests
             : [];
     }
 
+    /// <summary>
+    /// Builds a decoder whose windows carry explicit segment lists, so completed segment boundaries
+    /// exist within each window (required by the Option B boundary-preserving fallback).
+    /// </summary>
+    private static SegmentDecoder ScriptedSegmentDecoder(params string[][] windowSegments)
+    {
+        var script = new Queue<string[]>(windowSegments);
+        return (_, _) => script.Count > 0
+            ? script.Dequeue().Select(t => new TranscriptSegment(t, TimeSpan.Zero, TimeSpan.FromSeconds(0.5))).ToArray()
+            : [];
+    }
+
     [Fact]
     public void EmitsPartialsThenFinals_AsStableTextIsConfirmed()
     {
-        var decoder = ScriptedDecoder(
-            "Today we're going ",
-            "Today we're going to discuss ",
-            "Today we're going to discuss the budget ",
-            "Today we're going to discuss the budget ");
-        using var engine = new WhisperSpeechToTextEngine(TestOptions(), decoder);
+        // Windows carry explicit segment lists so completed boundaries exist: segment 0 closes at
+        // "Today we're going ", segment 1 at "to discuss ", segment 2 at "the budget " (ADR-0007
+        // Option B — an interior prefix inside a still-open segment must not be finalized).
+        var decoder = ScriptedSegmentDecoder(
+            ["Today we're going "],
+            ["Today we're going ", "to discuss "],
+            ["Today we're going ", "to discuss ", "the budget "],
+            ["Today we're going ", "to discuss ", "the budget "]);
+        using var engine = new WhisperSpeechToTextEngine(TestOptions(TimeSpan.Zero), decoder);
         var finals = new List<string>();
         var partials = new List<string>();
         engine.FinalTranscriptAvailable += (_, t) => finals.Add(t.Text);
@@ -86,12 +102,14 @@ public sealed class WhisperSpeechToTextEngineTests
     [Fact]
     public void ChangingPartials_DoNotPrematurelyCommit()
     {
-        var decoder = ScriptedDecoder(
-            "today we're going ",
-            "tonight we're going ",
-            "tonight we're going to ",
-            "tonight we're going to ");
-        using var engine = new WhisperSpeechToTextEngine(TestOptions(), decoder);
+        // "today"/"tonight" diverge (no commit), then a completed boundary at "tonight we're going "
+        // allows exactly that segment to finalize; "to " finalizes when its own segment closes.
+        var decoder = ScriptedSegmentDecoder(
+            ["today we're going "],
+            ["tonight we're going "],
+            ["tonight we're going ", "to "],
+            ["tonight we're going ", "to "]);
+        using var engine = new WhisperSpeechToTextEngine(TestOptions(TimeSpan.Zero), decoder);
         var finals = new List<string>();
         var partials = new List<string>();
         engine.FinalTranscriptAvailable += (_, t) => finals.Add(t.Text);

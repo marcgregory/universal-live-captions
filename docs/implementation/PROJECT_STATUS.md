@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 ## Metadata
 
@@ -53,7 +53,9 @@ Status:           Validated baseline for the current release (one authoritative
 
 ## Current Focus
 
-**All MVP slices (0–6) remain complete.** **Argos pre-warm landed 2026-08-02** (v0.5.9): background pre-warm warms one shared Argos process/model off the real-caption path, so the first caption drops from ~23–30 s cold start to ~3.8–6.85 s (warm translation ~0.46 s), verified live through the real App (Cases A + B: single process spawn + single model init, no duplicate init, no lost first caption; 260/260 tests). **Slice 7 — caption overlay layout & stable incremental rendering (2026-08-02)**: a layout probe confirmed the caption `TextBlock` already uses the full ~522 px viewport width correctly (short lines stay one line; long text wraps only on width exhaustion — the reported "whole text re-flows" is not a width bug), and the render path now does scope-stable incremental rendering (a Partial only rewrites the live block's text in place; history blocks reused by identity, never rebuilt) with bottom scroll re-anchoring limited to when a new block is inserted and content overflows. **Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) stays deferred per user.**
+**All MVP slices (0–6) remain complete.** **Argos pre-warm landed 2026-08-02** (v0.5.9): background pre-warm warms one shared Argos process/model off the real-caption path, so the first caption drops from ~23–30 s cold start to ~3.8–6.85 s (warm translation ~0.46 s), verified live through the real App (Cases A + B: single process spawn + single model init, no duplicate init, no lost first caption; 260/260 tests). **Slice 7 — caption overlay layout & stable incremental rendering (2026-08-02)**: a layout probe confirmed the caption `TextBlock` already uses the full ~522 px viewport width correctly (short lines stay one line; long text wraps only on width exhaustion — the reported "whole text re-flows" is not a width bug), and the render path now does scope-stable incremental rendering (a Partial only rewrites the live block's text in place; history blocks reused by identity, never rebuilt) with bottom scroll re-anchoring limited to when a new block is inserted and content overflows.
+
+**ADR-0007 Option B — boundary-preserving fallback (2026-08-04, in progress toward acceptance):** the streaming commit path was the last quality gap (premature `At gusto ko` / `Kaya` / `country can do for` fragments). Implemented + unit-tested (**284/284**) and validated live against **JFK (controlled English verification, PASS)** — single + continuous runs through the real App no longer emit the pre-fix `country can do for` interior fragment and Stop drain preserves finals. **The original Tagalog recording scenario (`At gusto ko` / `Kaya` / `artipisyal na katalinuhan`) is the remaining acceptance evidence and is Pending** — the original operator recording is not available in the workspace; per user, no substitute Tagalog sample may be used to claim acceptance. Implementation frozen; ADR-0007 stays `Proposed` until that live evidence exists. **Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) stays deferred per user.**
 
 ## Architecture Status
 
@@ -65,12 +67,12 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Current Blockers
 
-None.
+**Original Tagalog recording for ADR-0007 acceptance** — the live evidence for the `"At gusto ko"` / `"Kaya"` / `"artipisyal na katalinuhan"` regression requires the original operator recording, which is unavailable in the workspace; per user, no substitute sample qualifies. ADR-0007 remains `Proposed` until it is supplied and validated through the real App (fragmentation, duplicates, missing words, Stop drain).
 
 ## Next Milestone
 
-**Slice 6 is complete (close-out 2026-08-01)** (E2E metric, OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, App-level SAPI E2E validation; baseline `base/8/1/st2` promoted to the App default — `StabilityWindow` 3→2, model `ggml-base` unchanged). **All MVP slices (0–6) are complete.** **Argos pre-warm closed out 2026-08-02** (v0.5.9) — first-caption latency ~23–30 s → ~3.8–6.85 s, verified live. **Slice 7 (caption overlay layout & stable incremental rendering) in progress (2026-08-02)**: full-viewport width verified; render path made scope-stable (Partial mutates only the live block; history reused by identity; scroll/re-anchor only on new block + overflow) — tests 267/267. Next work after Slice 7 is from the roadmap Future list and the deferred Phase 2 real-app validation (YouTube/VLC/Zoom) reassessment per user. See `docs/implementation/BUILD_PLAN.md` and `docs/implementation/ROADMAP.md`.
+**Slice 6 is complete (close-out 2026-08-01)** (E2E metric, OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, App-level SAPI E2E validation; baseline `base/8/1/st2` promoted to the App default — `StabilityWindow` 3→2, model `ggml-base` unchanged). **All MVP slices (0–6) are complete.** **Argos pre-warm closed out 2026-08-02** (v0.5.9) — first-caption latency ~23–30 s → ~3.8–6.85 s, verified live. **Slice 7 (caption overlay layout & stable incremental rendering) closed out 2026-08-02** — tests 267/267 (see CHANGELOG v0.5.10). **ADR-0007 Option B implemented + unit-tested (284/284) + live JFK verification passed (2026-08-04); final acceptance gated on the original Tagalog recording (Pending).** Next work after acceptance is from the roadmap Future list and the deferred Phase 2 real-app validation (YouTube/VLC/Zoom) reassessment per user. See `docs/implementation/BUILD_PLAN.md` and `docs/implementation/ROADMAP.md`.
 
 ## Last Build
 
-2026-08-02 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **267/267** (66 Audio + 71 Captions + 45 Speech + 27 Translation + 58 App). `dotnet format --verify-no-changes` clean. `dotnet list package --vulnerable` — no vulnerable packages (all 13 projects). Argos pre-warm closed out 2026-08-02 (first-caption ~23–30 s → ~3.8–6.85 s; v0.5.9). Slice 7 (2026-08-02) caption layout probe + stable incremental rendering added (see CHANGELOG v0.5.10 and TEST_REPORT).
+2026-08-04 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **284/284** (66 Audio + 72 Captions + 59 Speech + 27 Translation + 60 App). ADR-0007 Option B implemented (boundary-preserving fallback + replacement-drop fix; see CHANGELOG v0.5.11 and TEST_REPORT). Live JFK verification (single + continuous) through the real App passed — `country can do for` interior fragment eliminated; Stop drain preserves finals (evidence `artifacts/samples/adv7_optionB_jfk.log`). ADR-0007 stays `Proposed` pending the original Tagalog recording.

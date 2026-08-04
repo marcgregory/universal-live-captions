@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-01
+Last updated: 2026-08-04
 
 ## Metadata
 
@@ -18,6 +18,49 @@ Last updated: 2026-08-01
 ## Summary
 
 Slices 1–5 automated tests pass: **253/253 passed, 0 failed, 0 skipped** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). Solution builds with **0 warnings, 0 errors** (warnings-as-errors). A post-close-out refinement (change-impact Entry 7) adds **live active-line translation** (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded) and a **Chrome-style overlay redesign** (auto-sized translucent pill, white text, target-language badge, expand/collapse chevron, hide button) with a ControlWindow "Show Captions" button; its automated tests are complete (**238/238** for Slice 6 Phase 1a; Entry 7 itself was 224/224) and its **manual verification with real audio + real Argos is complete (2026-08-01)** — the in-progress overlay line reads Tagalog before it commits (see Slice 5 refinement note). **Overlay caption display fixed (2026-08-01):** `CaptionDisplayPolicy` renders the committed history chronologically (oldest at top, newest at the bottom), and the overlay's hard height caps (`HistoryList MaxHeight` + window `MaxHeight`) were removed so the auto-sized pill grows to fit every rendered line — the newest committed caption and the highlighted/current caption are never clipped or covered (the active line occupies its own layout row, separate from the history). Deterministic display-policy tests cover first-caption, chronological ordering, newest-at-bottom, capacity eviction (oldest removed from the top), and partial→final append with no duplication; build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **Slice 6 (Phases 1a–1c) is complete (close-out 2026-08-01)** — E2E latency metric + tests (238/238), OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, and the App-level SAPI E2E validation recorded below (baseline + shortlist configs × 3 runs each through the real App: WASAPI loopback → Whisper → Argos en→tl → overlay, E2E latency row polled via UIA, every run publishing real translated Tagalog). The validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). Phase 2 real-app validation remains deferred per user. Slice 1 manual verification against real system audio succeeded. Slice 2 real-model verification succeeded: `WhisperSpeechToTextEngine` streamed **partial and final transcripts** from four samples through the real ggml-tiny/base models at realtime pacing with a clean stop/dispose (see [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 3 real-Argos verification succeeded: `ArgosTranslationEngine` translated **offline/local** through a real Argos 1.11.0 child process for direct pairs (`en→tl`, `ja→en`, `en→ja`) and a pivot pair (`ja→tl` via `en`), with correct error mapping (see below and [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 4 (complete): `CaptionService`/`CaptionState` verified with deterministic fake translation engines — partial→active→final→committed transitions, translation on/off, translation failure preserving the source caption, ordering, bounded history, and cancellation. Slice 5 (complete): `UniversalCaptions.App` overlay display policy + pipeline wiring verified with deterministic fakes (`CaptionDisplayPolicyTests` 8 + `CaptionPipelineTests` 20 + `AudioSourceLoaderTests` 4 + `TranslationGuardTests` 4) — Q1 display policy resolution (active line = verbatim latest partial; finals = bounded history newest-first; translated text replaces source only when `Completed`), capture→processor→STT→caption-service wiring, error handling, lifecycle, audio-source enumeration (preferred default, failure-surfacing), and translation guard (source-equals-target rejection). **Manual overlay/device verification completed 2026-08-01** (all items Passed — see Slice 5 section below), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog by a real local Argos child process).
+
+## ADR-0007 Option B — boundary-preserving fallback (2026-08-04)
+
+### Automated tests — PASS
+
+Full suite **284/284 passing, 0 failed, 0 skipped**, Release build 0 warnings / 0 errors.
+
+```
+Passed!  - Failed: 0, Passed: 66, Total: 66  - UniversalCaptions.Audio.Tests.dll
+Passed!  - Failed: 0, Passed: 72, Total: 72  - UniversalCaptions.Captions.Tests.dll
+Passed!  - Failed: 0, Passed: 59, Total: 59  - UniversalCaptions.Speech.Tests.dll
+Passed!  - Failed: 0, Passed: 27, Total: 27  - UniversalCaptions.Translation.Tests.dll
+Passed!  - Failed: 0, Passed: 60, Total: 60  - UniversalCaptions.App.Tests.dll
+```
+
+Changes under test: `StreamingTranscriptCommitter` Option B rules 1/3/4 (`LastCompletedBoundaryLength`, `PendingStable`, replacement-drop in `UpdatePendingStable`) — rewritten budget-fallback tests (rule 3 commits last completed boundary + keeps tail; rule 4 never manufactures a word-backed FINAL), `CommittedUntilUtc` snap-to-boundary tests, epoch-rollover timer survival, and `WhisperSpeechToTextEngine` multi-segment `ScriptedSegmentDecoder` migration.
+
+### Live JFK verification — controlled English verification, PASS
+
+**Hardware/real-path:** real App Release build, `ggml-base`, `StabilityWindow=2`, steady 8 s / 0.5 s config, real WASAPI loopback capture of the default render device, `artifacts/samples/jfk_long.wav` played through the loopback device, overlay committed-FINAL lines observed via UI Automation.
+
+**Run A — single 22 s playback:** committed FINALs in order:
+1. `Listening.` (pre-existing Whisper silence hallucination — also present pre-fix)
+2. `Ask what you can do for your country.`
+3. `And so my fellow Americans ask not what your country can do for you, ask what you can do for your country.`
+
+**Run B — continuous ~2 min loop:** committed FINALs in order:
+1. `Listening.`
+2. `you ask what you can do for your country.`
+3. `And so my fellow Americans ask not what your country can do for you, ask what you can do for your country.`
+4. `And so my fellow Americans ask not what your country can do for you,`
+5. `ask what you can do for your country. And so my fellow Americans ... ask what you can do for your country.` (cross-loop sliding-window re-emission — TD-006/007, pre-existing, isolated; not the Option B fallback defect)
+
+**Pass criteria — all met:**
+- ❌ Pre-fix interior-fragment FINAL `country can do for` → **ABSENT in both runs** (pre-fix run committed it with `boundary_found: false, fallback_used: true`; evidence `artifacts/samples/adv7_trace_evidence.log`, gitignored).
+- ✅ Complete boundary-backed JFK sentences present.
+- ✅ Stop drain preserves the final committed captions (POST-STOP == committed set).
+- ✅ No app crash/hang.
+- Notes: `Listening.` is a pre-existing Whisper artifact (present in the pre-fix baseline too); Run B line 5 is the known TD-006/007 overlap re-emission, out of scope for this step (duplicate handling is a separate follow-up per ADR-0007).
+
+**Evidence:** `artifacts/samples/adv7_optionB_jfk.log`; driver script (UI Automation) preserved at the temp harness used for both runs.
+
+**Acceptance gate — PENDING:** the original Tagalog recording scenario (`"At gusto ko"` / `"Kaya"` / `"artipisyal na katalinuhan"`) is the remaining acceptance evidence. The original operator recording is **not available** in the workspace; per user, no substitute Tagalog sample may be used to claim acceptance. ADR-0007 therefore remains **Proposed** until that live evidence exists (fragmentation, duplicates, missing words, Stop drain judged end-to-end through the real App).
 
 ## Environment
 

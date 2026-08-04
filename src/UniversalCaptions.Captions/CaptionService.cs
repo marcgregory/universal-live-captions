@@ -44,10 +44,19 @@ public sealed class CaptionService : ICaptionService
     private readonly object _gate = new();
     private readonly HashSet<Task> _inFlight = new();
     private readonly CaptionState _state;
+    private readonly TimeSpan _stopDrainBudget;
     private CancellationTokenSource? _lifetimeCts;
     private CancellationTokenSource? _retiredCts;
     private Task? _activeLineTranslation;
     private volatile bool _running;
+
+    /// <summary>
+    /// How long <see cref="BeginStopDrain"/> waits for in-flight committed-final translations to
+    /// settle before force-cancelling the remaining work. <see cref="Stop"/> never blocks the caller
+    /// for this long — the drain runs in the background — so a modest budget only bounds how far the
+    /// already-queued finals are allowed to complete, not how long the caller waits.
+    /// </summary>
+    private static readonly TimeSpan DefaultStopDrainBudget = TimeSpan.FromSeconds(8);
 
     private static readonly Regex BracketRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
 
@@ -67,16 +76,30 @@ public sealed class CaptionService : ICaptionService
     /// <param name="options">The caption service options.</param>
     /// <param name="translationEngine">The optional translation engine used when translation is enabled.</param>
     /// <param name="utcNow">An optional clock used to stamp translation start/completion times (defaults to <see cref="DateTime.UtcNow"/>). Inject a deterministic clock in tests.</param>
+    /// <param name="stopDrainBudget">
+    /// How long <see cref="Stop"/> allows already-queued committed-final translations to drain before
+    /// force-cancelling them. Defaults to <see cref="DefaultStopDrainBudget"/>. <see cref="Stop"/>
+    /// returns immediately regardless; this only bounds the background drain.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="stopDrainBudget"/> is not positive.</exception>
     public CaptionService(
         CaptionServiceOptions options,
         ITranslationEngine? translationEngine = null,
-        Func<DateTime>? utcNow = null)
+        Func<DateTime>? utcNow = null,
+        TimeSpan? stopDrainBudget = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _translationEngine = translationEngine;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
         _state = new CaptionState(options.HistoryCapacity);
+        var budget = stopDrainBudget ?? DefaultStopDrainBudget;
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(stopDrainBudget), budget, "StopDrainBudget must be positive.");
+        }
+
+        _stopDrainBudget = budget;
     }
 
     /// <inheritdoc />
@@ -132,6 +155,7 @@ public sealed class CaptionService : ICaptionService
     /// <inheritdoc />
     public void Stop()
     {
+        CancellationTokenSource? lifetime;
         lock (_gate)
         {
             if (!_running)
@@ -141,10 +165,125 @@ public sealed class CaptionService : ICaptionService
 
             _running = false;
             _state.EndSession();
+            lifetime = _lifetimeCts;
         }
 
-        EndLifetime();
+        // Do not cancel in-flight translations yet: already-committed finals must drain and be applied
+        // so captions recognized just before the stop are not dropped. Stop returns immediately and a
+        // bounded background drain finishes them in FIFO order, then force-cancels whatever remains.
+        BeginStopDrain(lifetime);
+
         StateChanged?.Invoke(this, _state);
+    }
+
+    /// <summary>
+    /// Starts a bounded, asynchronous drain of the translations already in flight at the moment
+    /// <see cref="Stop"/> was called. Enabling no new transcripts (session is not running), the drain
+    /// lets any already-committed finals complete their translation and be applied in order. When the
+    /// budget elapses, the session's cancellation source is cancelled and disposed, force-ending any
+    /// remaining request. A session re-started in the meantime owns a different token and is never
+    /// touched, because the drain retires the specific source it captured at stop.
+    /// </summary>
+    private void BeginStopDrain(CancellationTokenSource? lifetime)
+    {
+        if (lifetime is null)
+        {
+            EndLifetime();
+            return;
+        }
+
+        _ = Task.Run(() => DrainThenStopAsync(lifetime));
+    }
+
+    private async Task DrainThenStopAsync(CancellationTokenSource lifetime)
+    {
+        // Wait for the in-flight translations to settle, but never longer than the stop budget. A
+        // request that hangs must not block the drain indefinitely, so the completion wait itself is
+        // bounded by the remaining budget (Task.WhenAny is raced against a delay); once the deadline
+        // passes, RetireStoppedLifetime cancels the token and force-ends whatever still runs.
+        DateTime deadline = _utcNow().Add(_stopDrainBudget);
+        while (true)
+        {
+            Task[] snapshot;
+            lock (_gate)
+            {
+                snapshot = _inFlight.ToArray();
+            }
+
+            if (snapshot.Length == 0)
+            {
+                break;
+            }
+
+            TimeSpan remaining = deadline - _utcNow();
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            Task completion = Task.WhenAll(snapshot);
+            Task timeout = Task.Delay(remaining);
+            if (await Task.WhenAny(completion, timeout).ConfigureAwait(false) == timeout)
+            {
+                break;
+            }
+
+            // completion won; loop re-snapshots (some tasks may have been superseded) until drained.
+        }
+
+        RetireStoppedLifetime(lifetime);
+    }
+
+    /// <summary>
+    /// Cancels and disposes the specific capture-time lifetime token captured at stop, guarded by
+    /// reference identity so a re-created session does not get its token touched. Only when the
+    /// in-flight set is empty, or after the stop budget expired, is cancellation performed; if work
+    /// is still running the token is retired and the last task to finish disposes it.
+    /// </summary>
+    private void RetireStoppedLifetime(CancellationTokenSource lifetime)
+    {
+        CancellationTokenSource? toCancel;
+        CancellationTokenSource? toDispose;
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_lifetimeCts, lifetime))
+            {
+                // A new session has already started (or the service was reset/disposed): it owns a new
+                // token, so this retired token is released without ever touching the current session.
+                // The drain already awaited the in-flight set (or the budget elapsed), so it is safe
+                // to cancel and dispose it here.
+                toCancel = lifetime;
+                toDispose = null;
+            }
+            else if (_inFlight.Count == 0)
+            {
+                // Everything drained during the budget; dispose directly, no cancellation outstanding.
+                _lifetimeCts = null;
+                _retiredCts = null;
+                toCancel = null;
+                toDispose = lifetime;
+            }
+            else
+            {
+                // Budget elapsed with work still running: cancel, and let the last one to finish
+                // dispose it via the retired path so disposal races a live HoweverUse.
+                _lifetimeCts = null;
+                _retiredCts = lifetime;
+                toCancel = lifetime;
+                toDispose = null;
+            }
+        }
+
+        try
+        {
+            toCancel?.Cancel();
+        }
+        catch (AggregateException)
+        {
+            // A subscriber's cancellation callback threw; the session still ends.
+        }
+
+        toDispose?.Dispose();
     }
 
     /// <inheritdoc />

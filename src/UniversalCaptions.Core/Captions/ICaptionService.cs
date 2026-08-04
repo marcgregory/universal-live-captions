@@ -48,7 +48,12 @@ public interface ICaptionService : IDisposable
     /// </summary>
     void Start();
 
-    /// <summary>Stops the session, discards the active line, and cancels in-flight translations. Idempotent.</summary>
+    /// <summary>
+    /// Stops the session and discards the active line. New transcripts are no longer accepted, but
+    /// committed finals already being translated are drained asynchronously and applied (bounded) so
+    /// captions recognized just before the stop are not dropped. Returns immediately; the caller must
+    /// not cancel any translation token afterwards. Idempotent.
+    /// </summary>
     void Stop();
 
     /// <summary>Clears the session, history, and translation configuration, and cancels in-flight translations. Idempotent.</summary>
