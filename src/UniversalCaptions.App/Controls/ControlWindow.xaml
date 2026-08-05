@@ -42,7 +42,8 @@
         <ComboBox x:Name="AudioSourceCombo"
                   Grid.Row="1"
                   Grid.Column="1"
-                  Margin="10,4" />
+                  Margin="10,4"
+                  SelectionChanged="OnAudioSourceChanged" />
 
         <TextBlock Grid.Row="2"
                    Text="Language"
@@ -50,7 +51,8 @@
         <ComboBox x:Name="LanguageCombo"
                   Grid.Row="2"
                   Grid.Column="1"
-                  Margin="10,4" />
+                  Margin="10,4"
+                  SelectionChanged="OnLanguageChanged" />
 
         <TextBlock Grid.Row="3"
                    Text="Translation"

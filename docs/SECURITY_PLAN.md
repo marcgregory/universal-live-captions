@@ -31,7 +31,7 @@ Last updated: 2026-07-31
 
 - **Asset: captured audio** (in-memory, transient). Trust boundary: within the process; never persisted by default.
 - **Asset: transcripts** (in-memory). Same boundary.
-- **Asset: user configuration** (in-process; file persistence is a future milestone and must be documented then).
+- **Asset: user configuration** — now documented and persisted (TD-005, 2026-08-05): per-user JSON at `%LocalAppData%\UniversalCaptions\settings.json` storing only the six UI-preference categories (audio source device id, speech language, translation on/off + target, overlay opacity/font size/click-through, overlay placement, overlay view state). **Never contains raw audio, transcripts, or engine/environment paths.** Writes are atomic (`.tmp` + `File.Move(overwrite)`); a corrupt file yields safe defaults and never blocks startup.
 - The process is trusted; external inputs are limited to the STT engine output and audio device state.
 
 ## Authentication Risks

@@ -17,6 +17,32 @@ Last updated: 2026-08-05
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.16 - 2026-08-05
+
+### Added
+
+- **TD-005 closed — file-based settings persistence (2026-08-05).** User preferences now survive restart.
+  New `UniversalCaptions.App/Settings` types: `UserSettings` (immutable record; nullable = use built-in
+  default; `Version` field for future migration), `ISettingsStore` (injectable seam), `SettingsStore`
+  (file-backed). The **six user-facing categories** persist to per-user JSON at
+  `%LocalAppData%\UniversalCaptions\settings.json`: (1) audio source device id, (2) speech language,
+  (3) translation on/off + target, (4) overlay appearance — opacity/font size/click-through, (5) overlay
+  placement (persisted only after the user drags; otherwise adaptive bottom-anchored default), (6)
+  overlay view state (expanded/collapsed). In-box `System.Text.Json` (camelCase, case-insensitive read,
+  **unknown fields ignored → forward compatible**); missing/malformed/wrong-type file → safe defaults,
+  never fails startup; **atomic write** via same-dir `.tmp` + `File.Move(overwrite: true)` (a failed
+  write preserves the last good file); a store lock serializes writes. `App.xaml.cs` loads settings
+  **before window construction**; `ControlWindow` applies persisted values on load and saves on change
+  (coalesced dispatcher saves + a synchronous flush on close; merges into the persisted file so
+  overlay-owned fields are never clobbered); `CaptionOverlayWindow` seeds opacity/font/click-through/
+  expanded/placement and saves placement + view state on drag/collapse/close. Engine/environment knobs
+  (`UC_STT_*`, Argos/Python paths, model selection) stay env-var-driven and are **not** persisted.
+  New `SettingsStoreTests` (6) — save/load round-trip; missing → defaults; malformed/wrong-type → safe
+  defaults; unknown/new fields ignored; atomic + failed-write preserves last good; concurrent/rapid
+  saves settle without torn state. Full suite now **335/335 passing** (App 76→82), Release build 0
+  warnings/0 errors, `dotnet format --verify-no-changes` clean. No change to TD-002 / ADR-0007 / model
+  selection / the resampler. (Design + impact: Entry 10; TD-005 row + SECURITY_PLAN + TEST_REPORT updated.)
+
 ## v0.5.15 - 2026-08-05
 
 ### Changed / decided

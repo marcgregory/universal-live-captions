@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Core.Captions;
 
 namespace UniversalCaptions.App.Overlay;
@@ -22,6 +23,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 {
     private readonly ICaptionService _captions;
     private readonly string _sourceLanguage;
+    private readonly ISettingsStore _settingsStore;
+    private readonly UserSettings _settings;
     private readonly EventHandler<CaptionLine> _lineChangedHandler;
     private readonly EventHandler<CaptionState> _stateChangedHandler;
 
@@ -41,16 +44,26 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     private TextBlock? _activeBlock;
 
     /// <summary>
-    /// Creates the overlay. Caption state events are consumed on the dispatcher.
+    /// Creates the overlay. Caption state events are consumed on the dispatcher. Persisted settings
+    /// (TD-005) seed appearance, placement, and view state on load.
     /// </summary>
     /// <param name="captions">The caption service whose state this overlay renders.</param>
     /// <param name="options">Caption service options — used to read the source language for the
     /// language badge header.</param>
-    public CaptionOverlayWindow(ICaptionService captions, CaptionServiceOptions options)
+    /// <param name="settingsStore">The settings store this overlay saves placement + view state to (TD-005).</param>
+    /// <param name="settings">The persisted user settings applied to appearance/placement on load (TD-005).</param>
+    public CaptionOverlayWindow(ICaptionService captions, CaptionServiceOptions options, ISettingsStore settingsStore, UserSettings settings)
     {
         _captions = captions ?? throw new ArgumentNullException(nameof(captions));
         ArgumentNullException.ThrowIfNull(options);
         _sourceLanguage = options.SourceLanguage.ToUpperInvariant();
+        _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+
+        _opacity = Math.Clamp(_settings.Opacity ?? 1.0, 0.2, 1.0);
+        _fontSize = Math.Clamp(_settings.FontSize ?? 16, 10, 96);
+        _clickThrough = _settings.ClickThrough == true;
+        _expanded = _settings.OverlayExpanded != false;
 
         _lineChangedHandler = (_, _) => OnCaptionChanged();
         _stateChangedHandler = (_, _) => OnCaptionChanged();
@@ -119,7 +132,19 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        EnsureDefaultPosition();
+        // Restore an explicitly saved placement; otherwise use the adaptive bottom-anchored default.
+        if (_settings.OverlayLeft is double savedLeft && _settings.OverlayTop is double savedTop)
+        {
+            Left = savedLeft;
+            Top = savedTop;
+            _positioned = true;
+            _bottomAnchored = false;
+        }
+        else
+        {
+            EnsureDefaultPosition();
+        }
+
         ApplyClickThrough();
         Render();
     }
@@ -130,6 +155,27 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         _captions.CaptionLineCommitted -= _lineChangedHandler;
         _captions.CaptionLineUpdated -= _lineChangedHandler;
         _captions.StateChanged -= _stateChangedHandler;
+        SaveOverlayState();
+    }
+
+    /// <summary>
+    /// Persists the overlay placement + view state (TD-005) by merging into the currently persisted
+    /// settings, so the control-window-owned categories (device/language/translation/appearance) are
+    /// preserved. Placement is stored only once the user explicitly positioned the overlay (dragged),
+    /// so a never-dragged overlay keeps the adaptive bottom-anchored default placement. Safe to call
+    /// from the <c>Closed</c> handler (a closed window still reports its last <c>Left</c>/<c>Top</c>),
+    /// which flushes any unsaved placement at app exit.
+    /// </summary>
+    private void SaveOverlayState()
+    {
+        UserSettings current = _settingsStore.Load();
+        UserSettings merged = current with { OverlayExpanded = _expanded };
+        if (!_bottomAnchored)
+        {
+            merged = merged with { OverlayLeft = Left, OverlayTop = Top };
+        }
+
+        _settingsStore.Save(merged);
     }
 
     private void OnCaptionChanged()
@@ -316,6 +362,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         _expanded = !_expanded;
         ApplyExpandedState();
         ScheduleBottomAnchor();
+        SaveOverlayState();
     }
 
     private readonly LinearGradientBrush _topFadeMask = new()
@@ -461,6 +508,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
         _bottomAnchored = false;
         DragMove();
+        SaveOverlayState();
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
+using System.IO;
 using System.Reflection;
 using System.Windows.Controls;
 using UniversalCaptions.App.Overlay;
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Speech;
 
@@ -49,7 +51,11 @@ public class CaptionRenderIdentityTests
     /// <summary>Builds a real overlay window on the test's STA thread.</summary>
     private static CaptionDisplayCaller CreateOverlay()
     {
-        var overlay = new CaptionOverlayWindow(new NoopCaptionService(), new CaptionServiceOptions("en"));
+        var overlay = new CaptionOverlayWindow(
+            new NoopCaptionService(),
+            new CaptionServiceOptions("en"),
+            new SettingsStore(Path.Combine(Path.GetTempPath(), "ulc_overlay_" + Guid.NewGuid().ToString("N"))),
+            new UserSettings());
         return new CaptionDisplayCaller(overlay);
     }
 

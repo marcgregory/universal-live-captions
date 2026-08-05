@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using UniversalCaptions.App.Controls;
 using UniversalCaptions.App.Overlay;
 using UniversalCaptions.App.Pipeline;
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Capture;
 using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Captions;
@@ -134,6 +135,17 @@ public partial class App : Application
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
         // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.
         services.AddSingleton<IDeviceChangeMonitor, WasapiDeviceChangeNotifier>();
+
+        // TD-005 settings persistence: the persisted user settings are loaded BEFORE any window is
+        // constructed so the control window and overlay start with the user's last session (audio
+        // source, language, translation, overlay appearance/placement/view state). Only UI preferences
+        // are persisted; engine/environment knobs (UC_STT_*, Argos/Python, model selection) stay
+        // env-var-driven and never appear in the settings file.
+        var settingsStore = new SettingsStore();
+        UserSettings userSettings = settingsStore.Load();
+        services.AddSingleton<ISettingsStore>(settingsStore);
+        services.AddSingleton(userSettings);
+
         services.AddSingleton<CaptionPipeline>();
         services.AddSingleton<CaptionOverlayWindow>();
         services.AddSingleton<IOverlayService>(sp => sp.GetRequiredService<CaptionOverlayWindow>());

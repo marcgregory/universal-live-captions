@@ -14,6 +14,94 @@ Last updated: 2026-08-05
 
 ---
 
+## Entry 10 — TD-005: File-Based Settings Persistence (overlay/caption preferences)
+
+Date: 2026-08-05
+
+### 1. Change Summary
+
+```text
+Change Title: TD-005 — per-user file persistence of the six UI-preference categories (audio source, speech language, translation on/off + target, overlay appearance, overlay placement, overlay view state)
+Change Type:        Feature (user prefs no longer reset on restart)
+Requirement Source: TECHNICAL_DEBT.md TD-005; user TD sprint order (2026-08-04); recorded design (TD-005 row, 2026-08-05)
+Priority:           Low
+Estimated Effort:   Medium (design recorded first; implementation + six deterministic acceptance tests)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.App/Settings` — new `UserSettings` (immutable record, nullable = use default, `Version` for future migration), `ISettingsStore` (injectable seam), `SettingsStore` (file-backed, `%LocalAppData%\UniversalCaptions\settings.json`).
+- `UniversalCaptions.App` — `App.xaml.cs` loads settings **before** window construction and registers `ISettingsStore` + `UserSettings`; `ControlWindow` applies persisted settings on load and saves its categories on change; `CaptionOverlayWindow` applies appearance/placement/view state on load and saves placement + view state on change.
+- Tests — `UniversalCaptions.App.Tests/SettingsStoreTests` (six deterministic acceptance tests).
+
+### 3. Affected APIs
+
+- New `UniversalCaptions.App.Settings.ISettingsStore` (`Load`/`Save`), `SettingsStore` (parameterless = LocalAppData path; `string directory` test seam), `UserSettings` record — **Additive** (new types; no existing API changes).
+- `ControlWindow` and `CaptionOverlayWindow` constructors gain `ISettingsStore` + `UserSettings` parameters (DI-resolved).
+
+**API changes required:** Additive (backward-compatible).
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [ ] Capture behavior change — none.
+- [ ] Audio/transcript handling change — **none: the settings file stores UI preferences only, never raw audio or transcripts** (privacy rule: no raw audio persistence).
+- [x] New external communication — none (local file write to `%LocalAppData%`).
+- [x] Sensitive data handling — settings are per-user plain JSON on the local disk; content is limited to device ids, language codes, and overlay appearance values. `SECURITY_PLAN.md` lists user configuration as a future persistence milestone — this change documents it there.
+- [ ] Security review required: No.
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `SettingsStoreTests` (6): save→load round-trip; missing file → defaults; malformed/wrong-type → safe defaults; unknown/new fields ignored (forward compatibility); atomic write + failed write preserves last good; concurrent/rapid saves settle without torn state.
+- [ ] Integration tests — n/a (file store is deterministic; windows verified manually).
+- [x] Manual/device verification — the persistence wiring is exercised via the real App's normal use (settings survive restart); recorded in `TEST_REPORT.md`.
+
+### 7. Documentation Updates Required
+
+- [ ] `PRD.md` — n/a (TD remediation).
+- [ ] `ARCHITECTURE.md` — n/a (App-local feature; no architecture change).
+- [ ] `TECH_STACK.md` — n/a (in-box `System.Text.Json`, no new dependency).
+- [x] `SECURITY_PLAN.md` — add the settings-file persistence note (T-6 asset: user configuration) when the feature lands.
+- [ ] `QUALITY_ASSURANCE.md` — n/a.
+- [x] ADR required: No (fits ADR-0004 App scope; no stack/privacy change).
+- [x] `CHANGELOG.md`, `TECHNICAL_DEBT.md` (TD-005 close), `TEST_REPORT.md` (evidence), `CHANGE_IMPACT_ANALYSIS.md` (this entry).
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: none.
+- [ ] Blocking: none.
+- [ ] Risks identified:
+  1. Two windows own disjoint persisted categories, so a naive "save my fields" from either could clobber the other's. Mitigation: both windows **merge** into the currently persisted file (`load → with { own fields } → save`), so control-window saves preserve overlay placement/view state and vice versa; all saves originate on the UI dispatcher, so read-modify-write spans are serialized (plus the store lock).
+  2. Chatty saves while dragging the opacity/font sliders. Mitigation: control-window saves are coalesced onto the dispatcher (Background priority) — a burst settles to the last UI state with one write; a synchronous flush on window close guarantees the final state.
+  3. A persisted overlay placement could pin the overlay off-screen if the monitor layout changes. Mitigation: placement is only persisted once the user explicitly drags; a never-dragged overlay keeps the adaptive bottom-anchored default.
+  4. A corrupt settings file must never block startup. Mitigation: `Load` returns defaults on missing/malformed files and never throws; `Save` is atomic (`.tmp` + `File.Move(overwrite)`), so a crash never leaves a partial file.
+- [ ] Mitigation plan: encoded in the six deterministic acceptance tests + the window merge/coalesce design.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | The six user-facing categories are: (1) audio source device, (2) speech language, (3) translation on/off + target, (4) overlay appearance (opacity/font/click-through), (5) overlay placement, (6) overlay view state (expanded). | A category is missed or a non-UI value is persisted. | Discovery in the TD-005 row (2026-08-05); user approval of the recorded design. |
+| 2 | Engine/environment knobs (`UC_STT_*`, Argos/Python paths, model selection) stay env-var-driven and are NOT persisted. | Environment-specific paths leak into user settings and break on another machine. | Recorded design; user instruction ("keep engine/environment knobs out of persistence"). |
+| 3 | Settings file location `%LocalAppData%\UniversalCaptions\settings.json` (per-user, no elevation, no in-repo data). | A different location would need a migration. | Recorded design; `SECURITY_PLAN.md` per-user config model. |
+| 4 | `System.Text.Json` ignores unknown JSON properties by default, giving forward compatibility for fields written by a newer app version. | A newer file's fields would be dropped on an older app (accepted; known fields still load). | .NET 8 `System.Text.Json` behavior; acceptance test 4. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | None. | — | — |
+
+### 11. Close-Out Record
+
+- **Design recorded (2026-08-05):** discovery confirmed no persistence existed (SECURITY_PLAN listed file persistence as a future milestone); the TD-005 row captured the design + failure behavior + six acceptance criteria before any production change.
+- **Implementation complete (2026-08-05).** New `UserSettings`/`ISettingsStore`/`SettingsStore` (camelCase JSON, camelCase→case-insensitive read, unknown fields ignored, atomic `.tmp` → `File.Move(overwrite: true)`, store lock). `App.xaml.cs` loads settings before window construction and registers the store + settings; `ControlWindow` applies persisted device/language/translation/appearance on load and saves on change (coalesced dispatcher saves + close flush, merge-into-file to preserve overlay-owned fields); `CaptionOverlayWindow` seeds opacity/font/click-through/expanded/placement and saves placement + view state on drag/collapse/close. **335/335 tests passing** (App 76→82: 6 new `SettingsStoreTests`), Release build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **No change to TD-002 / ADR-0007 / model selection / the resampler.**
+
+---
+
 ## Entry 9 — TD-002: Device-Change Notifications + Automatic Recovery (contract + tests first)
 
 Date: 2026-08-05

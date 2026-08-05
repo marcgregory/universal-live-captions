@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using UniversalCaptions.App.Overlay;
 using UniversalCaptions.App.Pipeline;
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Capture;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Translation;
@@ -13,7 +14,8 @@ namespace UniversalCaptions.App.Controls;
 /// The minimal control window: selects the audio source and speech language, toggles translation
 /// and its target, starts/stops captions, shows status and latency, and applies overlay appearance
 /// settings (FR-8/FR-9/FR-10/FR-14). It only calls the Core contracts and the pipeline; WPF event
-/// handlers marshal pipeline events onto the dispatcher.
+/// handlers marshal pipeline events onto the dispatcher. Persisted settings (TD-005) are applied on
+/// load and saved on change.
 /// </summary>
 public partial class ControlWindow : Window
 {
@@ -22,6 +24,11 @@ public partial class ControlWindow : Window
     private readonly ICaptionService _captions;
     private readonly ArgosTranslationEngine _translationEngine;
     private readonly string _captionSourceLanguage;
+    private readonly ISettingsStore _settingsStore;
+    private readonly UserSettings _settings;
+
+    private bool _initializing = true;
+    private bool _savePending;
 
     private sealed record LanguageOption(string Label, string? Code);
 
@@ -47,13 +54,17 @@ public partial class ControlWindow : Window
     /// <param name="overlay">The overlay this window configures.</param>
     /// <param name="captions">The caption service this window toggles translation on.</param>
     /// <param name="captionOptions">The caption service options, for the caption source language.</param>
-    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine)
+    /// <param name="settingsStore">The settings store this window saves its user preferences to (TD-005).</param>
+    /// <param name="settings">The persisted user settings applied to the controls on load (TD-005).</param>
+    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine, ISettingsStore settingsStore, UserSettings settings)
     {
         _pipeline = pipeline;
         _overlay = overlay;
         _captions = captions;
         _translationEngine = translationEngine ?? throw new ArgumentNullException(nameof(translationEngine));
         _captionSourceLanguage = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions))).SourceLanguage;
+        _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         InitializeComponent();
 
         Loaded += OnLoaded;
@@ -65,40 +76,102 @@ public partial class ControlWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AudioSourceLoadResult result = AudioSourceLoader.Load(
-            LoopbackDeviceEnumerator.EnumerateRenderDevices,
-            LoopbackDeviceEnumerator.GetDefaultRenderDevice);
-
-        if (!result.Succeeded)
+        _initializing = true;
+        try
         {
-            AudioSourceCombo.IsEnabled = false;
-            StartButton.IsEnabled = false;
-            StatusText.Text = "Could not list audio devices. Check that the Windows audio service is running.";
-            SetIndicator(PipelineStatusKind.Error);
+            AudioSourceLoadResult result = AudioSourceLoader.Load(
+                LoopbackDeviceEnumerator.EnumerateRenderDevices,
+                LoopbackDeviceEnumerator.GetDefaultRenderDevice);
+
+            if (!result.Succeeded)
+            {
+                AudioSourceCombo.IsEnabled = false;
+                StartButton.IsEnabled = false;
+                StatusText.Text = "Could not list audio devices. Check that the Windows audio service is running.";
+                SetIndicator(PipelineStatusKind.Error);
+            }
+            else if (result.Devices.Count == 0)
+            {
+                AudioSourceCombo.IsEnabled = false;
+                StatusText.Text = "No audio output device found. Connect a speaker or headset.";
+                SetIndicator(PipelineStatusKind.Error);
+            }
+            else
+            {
+                AudioSourceCombo.ItemsSource = result.Devices;
+                AudioSourceCombo.DisplayMemberPath = nameof(LoopbackDevice.FriendlyName);
+                AudioSourceCombo.SelectedIndex = ResolveAudioSourceIndex(result.Devices, result.Preferred);
+            }
+
+            LanguageCombo.ItemsSource = SourceLanguages;
+            LanguageCombo.SelectedIndex = FindLanguageIndex(_settings.Language);
+
+            bool translationEnabled = _settings.TranslationEnabled == true;
+            TargetLanguageCombo.ItemsSource = TargetLanguages;
+            TargetLanguageCombo.SelectedIndex = FindTargetIndex(_settings.TargetLanguage);
+            TargetLanguageCombo.IsEnabled = translationEnabled;
+
+            TranslationToggle.IsChecked = translationEnabled;
+            ClickThroughToggle.IsChecked = _settings.ClickThrough == true;
+
+            OpacitySlider.Value = _overlay.Opacity;
+            FontSizeSlider.Value = _overlay.FontSize;
         }
-        else if (result.Devices.Count == 0)
+        finally
         {
-            AudioSourceCombo.IsEnabled = false;
-            StatusText.Text = "No audio output device found. Connect a speaker or headset.";
-            SetIndicator(PipelineStatusKind.Error);
+            _initializing = false;
         }
-        else
+    }
+
+    /// <summary>
+    /// Resolves the audio-source combo index: the persisted device when it is still present, otherwise
+    /// the current default render device, otherwise the first device.
+    /// </summary>
+    private int ResolveAudioSourceIndex(IReadOnlyList<LoopbackDevice> devices, LoopbackDevice? preferred)
+    {
+        if (_settings.DeviceId is string savedId &&
+            devices.Any(d => string.Equals(d.Id, savedId, StringComparison.OrdinalIgnoreCase)))
         {
-            AudioSourceCombo.ItemsSource = result.Devices;
-            AudioSourceCombo.DisplayMemberPath = nameof(LoopbackDevice.FriendlyName);
-            int index = result.Preferred is null ? 0 : FindDeviceIndex(result.Devices, result.Preferred.Id);
-            AudioSourceCombo.SelectedIndex = index;
+            return FindDeviceIndex(devices, savedId);
         }
 
-        LanguageCombo.ItemsSource = SourceLanguages;
-        LanguageCombo.SelectedIndex = 0;
+        return preferred is null ? 0 : FindDeviceIndex(devices, preferred.Id);
+    }
 
-        TargetLanguageCombo.ItemsSource = TargetLanguages;
-        TargetLanguageCombo.SelectedIndex = 0;
-        TargetLanguageCombo.IsEnabled = false;
+    private static int FindLanguageIndex(string? code)
+    {
+        if (code is null)
+        {
+            return 0;
+        }
 
-        OpacitySlider.Value = _overlay.Opacity;
-        FontSizeSlider.Value = _overlay.FontSize;
+        for (int i = 0; i < SourceLanguages.Length; i++)
+        {
+            if (string.Equals(SourceLanguages[i].Code, code, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private static int FindTargetIndex(string? code)
+    {
+        if (code is null)
+        {
+            return 0;
+        }
+
+        for (int i = 0; i < TargetLanguages.Length; i++)
+        {
+            if (string.Equals(TargetLanguages[i].Code, code, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return 0;
     }
 
     private static int FindDeviceIndex(IReadOnlyList<LoopbackDevice> devices, string id)
@@ -119,6 +192,8 @@ public partial class ControlWindow : Window
         _pipeline.StatusChanged -= OnPipelineStatus;
         _pipeline.LatencyUpdated -= OnLatencyUpdated;
         StopPipeline();
+        // Flush any pending coalesced save so the user's final state survives shutdown (TD-005).
+        _settingsStore.Save(ReadCurrentSettings());
     }
 
     private void OnStartClicked(object sender, RoutedEventArgs e)
@@ -153,17 +228,28 @@ public partial class ControlWindow : Window
         _ = Task.Run(() => _pipeline.Stop());
     }
 
+    private void OnAudioSourceChanged(object sender, SelectionChangedEventArgs e) => SaveSettings();
+
+    private void OnLanguageChanged(object sender, SelectionChangedEventArgs e) => SaveSettings();
+
     private void OnTranslationToggled(object sender, RoutedEventArgs e)
     {
         TargetLanguageCombo.IsEnabled = TranslationToggle.IsChecked == true;
+        if (_initializing)
+        {
+            return;
+        }
+
         ApplyTranslationSettings();
+        SaveSettings();
     }
 
     private void OnTargetLanguageChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (IsLoaded)
+        if (IsLoaded && !_initializing)
         {
             ApplyTranslationSettings();
+            SaveSettings();
         }
     }
 
@@ -217,16 +303,59 @@ public partial class ControlWindow : Window
     private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         _overlay.Opacity = e.NewValue;
+        SaveSettings();
     }
 
     private void OnFontSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         _overlay.FontSize = e.NewValue;
+        SaveSettings();
     }
 
     private void OnClickThroughToggled(object sender, RoutedEventArgs e)
     {
         _overlay.ClickThrough = ClickThroughToggle.IsChecked == true;
+        SaveSettings();
+    }
+
+    /// <summary>
+    /// Persists the current control-window state (TD-005). Saves are coalesced onto the dispatcher so
+    /// a burst of changes (e.g. dragging the opacity slider) settles to the last UI state with a
+    /// single write; the store lock additionally serializes file writes. Initial UI population never
+    /// triggers a save.
+    /// </summary>
+    private void SaveSettings()
+    {
+        if (_initializing || !IsLoaded || _savePending)
+        {
+            return;
+        }
+
+        _savePending = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _savePending = false;
+            _settingsStore.Save(ReadCurrentSettings());
+        }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Merges the current control-window state into the persisted settings so the categories owned by
+    /// the overlay (placement + view state) are preserved rather than overwritten with defaults.
+    /// </summary>
+    private UserSettings ReadCurrentSettings()
+    {
+        UserSettings current = _settingsStore.Load();
+        return current with
+        {
+            DeviceId = (AudioSourceCombo.SelectedItem as LoopbackDevice)?.Id,
+            Language = (LanguageCombo.SelectedItem as LanguageOption)?.Code,
+            TranslationEnabled = TranslationToggle.IsChecked,
+            TargetLanguage = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code,
+            Opacity = OpacitySlider.Value,
+            FontSize = FontSizeSlider.Value,
+            ClickThrough = ClickThroughToggle.IsChecked,
+        };
     }
 
     private void OnPipelineStatus(object? sender, PipelineStatus status)

@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Metadata
 
@@ -63,6 +63,17 @@ Status:           Validated baseline for the current release (one authoritative
 
 **Faster-whisper default-selection decision-gate — CLOSED: NOT promoted (2026-08-04).** The promotion candidate was measured against the frozen default on startup + steady-state latency. Worker cold start: spawn 0.006 s + Python import/model load **2.6 s** + first 8 s-window decode 2.5 s. Real-App (same 90 s Tagalog slice, STT `tl`): faster-whisper `small` first caption **16.5–17.4 s** (better than ggml-base's measured 25.0 s) but steady-state STT latency **13.7–15.8 s** vs ggml-base **2.4–3.7 s**. Window/interval tuning does not close the steady-state gap (1.0 s interval ≈ no change; 1.5 s worse at 24.2 s; 4 s window produced no captions) — the frozen 8 s/0.5 s config is already near-optimal for the faster-whisper path. Pre-warm would save only ~2.6 s. **Decision per user: `ggml-base` stays the production default; faster-whisper `small` int8 remains opt-in (`UC_STT_ENGINE=fasterwhisper`) until its steady-state latency can be materially reduced.** Accuracy winner: faster-whisper; responsiveness winner: ggml-base. Clean close: no production change, no forced promotion; the Tagalog accuracy gap on the ggml-base default remains acknowledged as open. Evidence: `artifacts/samples/firstcaption_{fw_small,i1_fw_small,base,w4_fw_small}.log`; findings in `BENCHMARK_REPORT.md` (Slice 9 decision-gate) + `TEST_REPORT.md`.
 
+**TD-005 — settings persistence CLOSED (2026-08-05).** The user-facing preferences now survive restart:
+per-user JSON at `%LocalAppData%\UniversalCaptions\settings.json` (in-box `System.Text.Json`, atomic
+`.tmp` → `File.Move(overwrite)`, unknown fields ignored, missing/malformed → safe defaults). The six
+persisted categories: audio source device, speech language, translation on/off + target, overlay
+appearance (opacity/font/click-through), overlay placement, overlay view state. Engine/env knobs
+(`UC_STT_*`, Argos/Python, model) stay env-driven — never persisted. `App.xaml.cs` loads before window
+construction; `ControlWindow` applies + coalesced-dispatcher-saves (close flush); `CaptionOverlayWindow`
+seeds and saves placement/view state. **335/335 tests passing** (6 new `SettingsStoreTests`), Release
+build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **TD-002 stays frozen/Open** until
+the real hotplug acceptance test can be run; no change to ADR-0007 / model selection / the resampler.
+
 ## Architecture Status
 
 Approved: .NET 8 + WPF + NAudio + local Whisper behind streaming `ISpeechToTextEngine` (ADRs 0001–0005) + Argos Translate behind `ITranslationEngine` (ADR-0006, refined: contracts in Core, `UniversalCaptions.Translation` owns the engine + process seam; pair/protocol selection resolved by Slice 3 benchmark). Pipeline layers per `ARCHITECTURE.md`.
@@ -81,4 +92,4 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Last Build
 
-2026-08-04 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **302/302** (66 Audio + 72 Captions + 77 Speech + 27 Translation + 60 App). **TD-016 closed (2026-08-04):** a deterministic protocol-contract suite (`LineProtocolFasterWhisperProcessProtocolTests`, 9 tests) exercises the real faster-whisper reader against a fake-worker byte stream via an internal injectable-stream seam, guarding the two Slice 9 wire bugs (magic `0x46574355`; 16→20-byte segment header) with no Python/venv/model. Isolated to the opt-in faster-whisper path; `ggml-base` default untouched. See CHANGELOG v0.5.14, TEST_REPORT (TD-016), BENCHMARK_REPORT (Slice 9). ADR-0007 Option B implemented (boundary-preserving fallback + replacement-drop fix; see CHANGELOG v0.5.11 and TEST_REPORT). Live JFK verification (single + continuous) through the real App passed — `country can do for` interior fragment eliminated; Stop drain preserves finals (evidence `artifacts/samples/adv7_optionB_jfk.log`). ADR-0007 stays `Proposed` pending the original Tagalog recording. **Slice 8 (model-selection isolation, 2026-08-04) recorded:** Tagalog defects isolated to the STT layer; real-App base-vs-tiny-vs-small comparison measured; `ggml-base` stays the frozen default (no production change); findings in `BENCHMARK_REPORT.md` Slice 8 + `TEST_REPORT.md` (evidence `artifacts/samples/raw_vs_committed_tagalog.log`, `realapp_{tiny,base,small}_tagalog.log`). **Faster-whisper selectable engine (2026-08-04) added + real-App validated** (STT latency 10.7–11.7 s, no `1.` hallucination, whisper-small-level Tagalog accuracy); default stays `ggml-base` (opt-in via `UC_STT_ENGINE`); evidence `artifacts/samples/realapp_fasterwhisper_small_tagalog.log` (+ `_int1_5_`).
+2026-08-05 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **335/335** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 82 App). **TD-005 closed (2026-08-05):** settings persistence (`UserSettings`/`ISettingsStore`/`SettingsStore`) at `%LocalAppData%\UniversalCaptions\settings.json`; 6 new `SettingsStoreTests`; `App.xaml.cs` loads settings before window construction; ControlWindow/Overlay apply on load + save on change; engine/env knobs not persisted. See CHANGELOG v0.5.16, TEST_REPORT (TD-005), CHANGE_IMPACT_ANALYSIS Entry 10. **TD-002 stays Open** pending the real hotplug acceptance test (contract + production wiring complete 2026-08-05, 329/329 before TD-005). ADR-0007 stays `Proposed` pending the original Tagalog recording; `ggml-base` stays the frozen default; faster-whisper stays opt-in.

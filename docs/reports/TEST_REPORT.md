@@ -17,9 +17,47 @@ Last updated: 2026-08-05
 
 ## Summary
 
+**TD-005 closed - settings persistence (2026-08-05): full suite now 335/335 passing** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 82 App), Release build 0 warnings / 0 errors. New `SettingsStoreTests` (6) deterministically cover save/load round-trip, missing file → defaults, malformed/wrong-type → safe defaults, unknown/new fields ignored (forward compatibility), atomic `.tmp` → `File.Move(overwrite)` with failed-write preserving the last good file, and concurrent/rapid saves settling without torn state. See the TD-005 section below.
+
 **TD-016 closed - `LineProtocolFasterWhisperProcess` protocol-contract suite (2026-08-04): full suite now 302/302 passing** (66 Audio + 72 Captions + 77 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors. A fake-worker fixture emits exactly the production wire format over an in-memory stdout stream (no Python/venv/model); the real production reader is exercised unchanged through a new internal injectable-stream constructor seam (`StartAsync` skips the real spawn; `WriteRequestAsync` no longer requires a live `_process`). New `LineProtocolFasterWhisperProcessProtocolTests` (9) deterministically guard the two Slice 9 wire bugs (magic `0x46574355`; 20-byte segment header) plus: request-header layout/int16 PCM, wrong-magic rejection, 20-byte-header-does-not-consume-payload, two-segment ordering, fragmented pipe reads, truncated segment/response header -> deterministic protocol error, multi-byte UTF-8 payload boundary. Isolated to the opt-in faster-whisper path; `ggml-base` default untouched (see TD-016 section).
 
 **Faster-whisper selectable STT engine (Slice 9, 2026-08-04): full suite now 293/293 passing** (66 Audio + 72 Captions + 68 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors; the whisper.cpp decode was extracted to the `ISTTDecoder` seam with zero behavior change to the frozen `ggml-base` default, and a persistent binary-framed Python worker drives `FasterWhisperDecoder` (`UC_STT_ENGINE=fasterwhisper`). Real-App validation PASS on the 90 s Tagalog slice: faster-whisper `small` int8 gave whisper-small-level accuracy with **no `1.`/`one` hallucination** at STT latency **10.7–11.7 s** (whisper.cpp small was 16.9–21.9 s); two wire-protocol bugs (magic endianness; 16→20-byte segment header) were surfaced only by the real-App run and fixed. **`ggml-base` remains the frozen default; faster-whisper is opt-in** (see Slice 9 section). Slices 1–5 automated tests pass: **253/253 passed, 0 failed, 0 skipped** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). Solution builds with **0 warnings, 0 errors** (warnings-as-errors). A post-close-out refinement (change-impact Entry 7) adds **live active-line translation** (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded) and a **Chrome-style overlay redesign** (auto-sized translucent pill, white text, target-language badge, expand/collapse chevron, hide button) with a ControlWindow "Show Captions" button; its automated tests are complete (**238/238** for Slice 6 Phase 1a; Entry 7 itself was 224/224) and its **manual verification with real audio + real Argos is complete (2026-08-01)** — the in-progress overlay line reads Tagalog before it commits (see Slice 5 refinement note). **Overlay caption display fixed (2026-08-01):** `CaptionDisplayPolicy` renders the committed history chronologically (oldest at top, newest at the bottom), and the overlay's hard height caps (`HistoryList MaxHeight` + window `MaxHeight`) were removed so the auto-sized pill grows to fit every rendered line — the newest committed caption and the highlighted/current caption are never clipped or covered (the active line occupies its own layout row, separate from the history). Deterministic display-policy tests cover first-caption, chronological ordering, newest-at-bottom, capacity eviction (oldest removed from the top), and partial→final append with no duplication; build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **Slice 6 (Phases 1a–1c) is complete (close-out 2026-08-01)** — E2E latency metric + tests (238/238), OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, and the App-level SAPI E2E validation recorded below (baseline + shortlist configs × 3 runs each through the real App: WASAPI loopback → Whisper → Argos en→tl → overlay, E2E latency row polled via UIA, every run publishing real translated Tagalog). The validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). Phase 2 real-app validation remains deferred per user. Slice 1 manual verification against real system audio succeeded. Slice 2 real-model verification succeeded: `WhisperSpeechToTextEngine` streamed **partial and final transcripts** from four samples through the real ggml-tiny/base models at realtime pacing with a clean stop/dispose (see [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 3 real-Argos verification succeeded: `ArgosTranslationEngine` translated **offline/local** through a real Argos 1.11.0 child process for direct pairs (`en→tl`, `ja→en`, `en→ja`) and a pivot pair (`ja→tl` via `en`), with correct error mapping (see below and [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 4 (complete): `CaptionService`/`CaptionState` verified with deterministic fake translation engines — partial→active→final→committed transitions, translation on/off, translation failure preserving the source caption, ordering, bounded history, and cancellation. Slice 5 (complete): `UniversalCaptions.App` overlay display policy + pipeline wiring verified with deterministic fakes (`CaptionDisplayPolicyTests` 8 + `CaptionPipelineTests` 20 + `AudioSourceLoaderTests` 4 + `TranslationGuardTests` 4) — Q1 display policy resolution (active line = verbatim latest partial; finals = bounded history newest-first; translated text replaces source only when `Completed`), capture→processor→STT→caption-service wiring, error handling, lifecycle, audio-source enumeration (preferred default, failure-surfacing), and translation guard (source-equals-target rejection). **Manual overlay/device verification completed 2026-08-01** (all items Passed — see Slice 5 section below), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog by a real local Argos child process).
+
+## TD-005 — Settings persistence (2026-08-05)
+
+### Automated tests — PASS
+
+Full suite **335/335 passing, 0 failed, 0 skipped**, Release build 0 warnings / 0 errors.
+
+```
+Passed!  - Failed: 0, Passed: 77, Total: 77  - UniversalCaptions.Audio.Tests.dll
+Passed!  - Failed: 0, Passed: 72, Total: 72  - UniversalCaptions.Captions.Tests.dll
+Passed!  - Failed: 0, Passed: 77, Total: 77  - UniversalCaptions.Speech.Tests.dll
+Passed!  - Failed: 0, Passed: 27, Total: 27  - UniversalCaptions.Translation.Tests.dll
+Passed!  - Failed: 0, Passed: 82, Total: 82  - UniversalCaptions.App.Tests.dll
+```
+
+`SettingsStoreTests` (6), each run against a unique temp directory so the real `%LocalAppData%` file is
+never touched:
+
+1. **Save→load round-trip** — every persisted field (device id, language, translation on/off + target,
+   opacity, font size, click-through, placement, expanded, version) equals across a save→load cycle.
+2. **Missing file → defaults** — no file yields `new UserSettings()` with no throw.
+3. **Malformed/wrong-type → safe defaults** — invalid JSON and wrong-typed values (`"Opacity": "not-a-number"`)
+   both load as defaults without throwing.
+4. **Unknown/new fields ignored** — a JSON file with `FutureField`/`NewNested` plus known fields loads
+   the known fields (`DeviceId`, `Version`) and drops only the unknown ones (forward compatible).
+5. **Atomic write + failed write preserves last good** — after a save there is no `.tmp` left; blocking
+   the temp path with a directory makes the next save fail silently and the previously saved content
+   survives.
+6. **Concurrent/rapid saves settle** — 25 parallel `Save` calls produce a complete, parseable file whose
+   content is one of the written values (never torn), and a final sequential save is last-write-wins.
+
+### Manual/verification note
+
+The persistence wiring (control-window categories + overlay placement/view state) is exercised through
+normal real-App use — settings are written on change and on exit, and reapplied on the next launch via
+the DI-registered store (`App.xaml.cs` loads before window construction). No device hotplug dependency.
 
 ## ADR-0007 Option B — boundary-preserving fallback (2026-08-04)
 
