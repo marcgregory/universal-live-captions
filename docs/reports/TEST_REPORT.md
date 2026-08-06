@@ -1,6 +1,6 @@
-﻿# Universal Live Captions Test Report
+# Universal Live Captions Test Report
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Metadata
 
@@ -17,11 +17,162 @@ Last updated: 2026-08-05
 
 ## Summary
 
+**Installer & distribution + `UC_FW_MODEL` (2026-08-06): full suite now 384/384 passing** (77 Audio + 72 Captions + 111 Speech + 27 Translation + 97 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. Two new `SpeechEngineFactoryTests` cover the approved additive seam: `NativeModel_Unset_DefaultsToSmall` and `NativeModel_Override_IsRespected` (worker receives `--model <path>`). The frozen v0.5.25 core is otherwise untouched — the rest of this entry is packaging/launcher-only. **Installed-bundle acceptance PASS** (see the Installer section below): clean install exit 0 to `%LocalAppData%\UniversalCaptions` (1,634.5 MB, Setup.exe 795.5 MB); worker cmdlines verified installed-only (`py\python.exe … faster_whisper_worker.py --model <install>\models\faster-whisper-small --compute int8 --threads 4 --beam-size 5`; Argos server on the same bundled python — no `%TEMP%\fwv`/`argosv`, no `huggingface`, no repo refs); real audio via WASAPI loopback produced live partials + committed translated Tagalog (`EN || TL` badge) with first caption ≈4.1–4.7 s warm; settings persist; clean Start/Stop/Exit 0 orphans; **clean uninstall exit 0 leaving only the app's own `settings.json`** (`PYTHONDONTWRITEBYTECODE=1` prevents stdlib `.pyc` leftovers).
+
+**Entry 15 — overlay live-line integration (2026-08-06, ADR-0008 follow-up): full suite now 374/374 passing** (77 Audio + 72 Captions + 109 Speech + 27 Translation + 89 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. The WPF overlay previously painted **committed FINALs only** — commit `7d1c057` ("temporary diagnostic tracer", 2026-08-03) had replaced Slice 7's active-line painting (`_activeBlock` was never assigned; `CaptionRenderIdentityTests` asserted `ActiveBlock() == null`). This slice restores the live active line and feeds it the `fasterwhisper-native` partial stream so the promoted default is actually visible as it happens: `CaptionOverlayWindow.UpdateCaptionItems` creates one mutable `_activeBlock`, rewrites its text in place on later partials, removes it when `model.ActiveLine` is null (committed/stopped/hidden-while-translating); `ReconcileHistory` reuse-by-sequence and the `shouldUpdate` gate (holds during translation-pending so no source-language flash) are unchanged. `CaptionRenderIdentityTests` rewritten 4→6 (partial rewrites same block identity; growing stream paints one block with no history churn; no partial ever enters committed history; FINAL freezes active into history and removes the active block; cleared active line removes block and keeps history; finalized blocks keep text instances and order). **Real-App smoke verification PASS (Entry 14 nine-point checklist + overlay AC-1..AC-8)**: promoted default spawns the faster-whisper worker and paints live partials in the active line (`meeting sum` → `Meeting someone.` → FINAL freeze, single block `n1` throughout); first visible partial ≈5.6 s after capture start; FINALs freeze into history with no churn; POSTSTOP_1..3 probes (1.2 s apart) prove Stop/Dispose clears the active line and leaves no stale partial; tl→en Argos verified as the documented-unsupported direction (stanza SBD, no `tl` processor) with correct graceful degradation to source text, and **en→tl verified as the supported direction end-to-end** — English audio → native STT → Argos en→tl → live-translated Tagalog active line, translation visible on the overlay before commit (T5 first request 3.610 s, T6 first result 6.847 s, first translated caption painted ~11.5 s). App CPU variable (~0–66%, decode-bound spikes), faster-whisper worker CPU ~0% (worker idles between requests). **Both entries now honest in this report — no earlier smoke claim of a translated/captioned overlay without verification.** Decision records: Entry 15, CHANGELOG v0.5.23.
+**Entry 14 — production default promotion (2026-08-05, ADR-0008): full suite now 372/372 passing** (77 Audio + 72 Captions + 109 Speech + 27 Translation + 87 App), Release build 0 warnings / 0 errors. The App's STT engine selection moved into a testable `SpeechEngineFactory`: default / `UC_STT_ENGINE=fasterwhisper-native` → `FasterWhisperNativeStreamingEngine` + live partials (interval 1 s, window 4 s, 8 s segment cap frozen); `UC_STT_ENGINE=ggml-base` → the original local-Whisper engine (explicit fallback); `UC_STT_ENGINE=fasterwhisper` → the unchanged windowed engine. **No automatic runtime fallback** (ADR-0003 no-silent-switch). New `SpeechEngineFactoryTests` (5) verify the selection table deterministically (side-effect-free constructors, no Python/model). Faster-whisper worker protocol, the windowed engine, ADR-0007, TD-002, and TD-005 are untouched. Decision records: ADR-0008, Entry 14, CHANGELOG v0.5.22.
+**Slice 12 — faster-whisper native-streaming live partials (2026-08-05): full suite 367/367 passing** (77 Audio + 72 Captions + 109 Speech + 27 Translation + 82 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. New live-partial layer on the `fasterwhisper-native` engine (bounded trailing-window re-decodes at a configurable cadence, at most one partial decode in flight/queued) — `SpeechSegmentDetector.TryGetPartial` + `FasterWhisperEngineOptions.PartialDecodeInterval` (default 0 = FINAL-only preserved) / `PartialDecodeWindow` (4 s) + `PartialTranscriptAvailable`. 10 new deterministic tests (6 detector + 4 engine, incl. a `BlockingFasterWhisperProcess` fake proving the single-in-flight bound). **Controlled real-audio benchmark PASS:** small int8, tl, hangover 0.7 s, max 8 s, realtime feed, translation OFF, `--partial-interval 1 --partial-window 4` on `uc_video_full_16k.wav` (288.79 s) vs `fil-orig` — first visible partial **5.59 s after speech onset** (vs first FINAL 15.0 s), **19.5 partials/120 s**, active line increments while speaking, FINAL stream **text-identical to Slice 11** (no accuracy regression, WER 33.19% in-harness), FINAL ~6 s after segment close, backlog bounded (plateau ~50 s vs 43 s FINAL-only), realtime-safe 1.18×, nothing dropped/reordered. **Decision: PASS — ggml-base stays the production default; partials default off** (superseded by Entry 14 promotion). See the Slice 12 section below.
+**Slice 11 — native-streaming segment-boundary tuning (2026-08-05): decision recorded — keep `MaxSegmentDuration = 8 s`.** Additive benchmark improvements (`timeBeginPeriod(1)` realtime-feed fix → valid controlled pacing ~1.1×; mid-sentence-split metric). Controlled `sttnative` sweep at max-segment 8/10/12 s (small int8, tl, hangover 0.7 s fixed): WER 32.6%/33.2%/30.0%, cadence 13.3/10.8/9.1 FINALs/120 s, splits 31%/42%/45%, 0 partials. **Longer segments do NOT reduce mid-sentence splits, cost responsiveness, and add end-of-audio cap hallucinations (10 s `Pag-pag-pag…`, 12 s truncated `tunog`); latency/backlog bounded at all three caps. Decision: keep 8 s — no production or knob-default change; worker protocol / ggml-base / windowed engine untouched.** Evidence: `BENCHMARK_REPORT.md` (Slice 11), Entry 12, CHANGELOG v0.5.20. Full suite **357/357 passing** (77 Audio + 72 Captions + 99 Speech + 27 Translation + 82 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean.
+**Slice 10 — faster-whisper native streaming (deterministic phase + benchmark/real-App validation, 2026-08-05): full suite now 357/357 passing** (77 Audio + 72 Captions + 99 Speech + 27 Translation + 82 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. New `FasterWhisperNativeStreamingEngine` (one FINAL per completed speech segment, C#-side VAD, no live partials) + internal `SpeechSegmentDetector` state machine behind `UC_STT_ENGINE=fasterwhisper-native`; the ggml-base default, the windowed `fasterwhisper` engine, the worker wire protocol, and ADR-0007 are all untouched. New `SpeechSegmentDetectorTests` (11) + `FasterWhisperNativeStreamingEngineTests` (11) are fully deterministic (synthetic PCM + scripted VAD/worker process, no Python). Fresh-context review PASSED with fixes (segment-duration accounting across hangover resumes; per-session epoch guard so a decode that outlives Stop cannot bleed a stale FINAL into a restarted session; broadened Start error mapping; option validation; engine-level max-segment cap test). **Benchmark + real-App validation PASSED:** committed WER **32.6%** vs `fil-orig` (ggml-base 51.2%), **0 partials (FINAL-only)**, commit cadence **13.3 FINALs/120 s** (windowed faster-whisper: 2/120 s), first real-App caption **15.2 s**, STT latency ~4 s behind segment end with no growing backlog; accepted with the documented tradeoff that the 8 s segment cap can split sentences mid-word; faster-whisper stays opt-in and the ggml-base default is unchanged. See the Slice 10 section below.
+
 **TD-005 closed - settings persistence (2026-08-05): full suite now 335/335 passing** (77 Audio + 72 Captions + 77 Speech + 27 Translation + 82 App), Release build 0 warnings / 0 errors. New `SettingsStoreTests` (6) deterministically cover save/load round-trip, missing file → defaults, malformed/wrong-type → safe defaults, unknown/new fields ignored (forward compatibility), atomic `.tmp` → `File.Move(overwrite)` with failed-write preserving the last good file, and concurrent/rapid saves settling without torn state. See the TD-005 section below.
 
 **TD-016 closed - `LineProtocolFasterWhisperProcess` protocol-contract suite (2026-08-04): full suite now 302/302 passing** (66 Audio + 72 Captions + 77 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors. A fake-worker fixture emits exactly the production wire format over an in-memory stdout stream (no Python/venv/model); the real production reader is exercised unchanged through a new internal injectable-stream constructor seam (`StartAsync` skips the real spawn; `WriteRequestAsync` no longer requires a live `_process`). New `LineProtocolFasterWhisperProcessProtocolTests` (9) deterministically guard the two Slice 9 wire bugs (magic `0x46574355`; 20-byte segment header) plus: request-header layout/int16 PCM, wrong-magic rejection, 20-byte-header-does-not-consume-payload, two-segment ordering, fragmented pipe reads, truncated segment/response header -> deterministic protocol error, multi-byte UTF-8 payload boundary. Isolated to the opt-in faster-whisper path; `ggml-base` default untouched (see TD-016 section).
 
 **Faster-whisper selectable STT engine (Slice 9, 2026-08-04): full suite now 293/293 passing** (66 Audio + 72 Captions + 68 Speech + 27 Translation + 60 App), Release build 0 warnings / 0 errors; the whisper.cpp decode was extracted to the `ISTTDecoder` seam with zero behavior change to the frozen `ggml-base` default, and a persistent binary-framed Python worker drives `FasterWhisperDecoder` (`UC_STT_ENGINE=fasterwhisper`). Real-App validation PASS on the 90 s Tagalog slice: faster-whisper `small` int8 gave whisper-small-level accuracy with **no `1.`/`one` hallucination** at STT latency **10.7–11.7 s** (whisper.cpp small was 16.9–21.9 s); two wire-protocol bugs (magic endianness; 16→20-byte segment header) were surfaced only by the real-App run and fixed. **`ggml-base` remains the frozen default; faster-whisper is opt-in** (see Slice 9 section). Slices 1–5 automated tests pass: **253/253 passed, 0 failed, 0 skipped** (66 Audio + 71 Captions + 45 Speech + 21 Translation + 50 App). Solution builds with **0 warnings, 0 errors** (warnings-as-errors). A post-close-out refinement (change-impact Entry 7) adds **live active-line translation** (single in-flight slot, instance-identity stale-guard, disabled-mid-flight results discarded) and a **Chrome-style overlay redesign** (auto-sized translucent pill, white text, target-language badge, expand/collapse chevron, hide button) with a ControlWindow "Show Captions" button; its automated tests are complete (**238/238** for Slice 6 Phase 1a; Entry 7 itself was 224/224) and its **manual verification with real audio + real Argos is complete (2026-08-01)** — the in-progress overlay line reads Tagalog before it commits (see Slice 5 refinement note). **Overlay caption display fixed (2026-08-01):** `CaptionDisplayPolicy` renders the committed history chronologically (oldest at top, newest at the bottom), and the overlay's hard height caps (`HistoryList MaxHeight` + window `MaxHeight`) were removed so the auto-sized pill grows to fit every rendered line — the newest committed caption and the highlighted/current caption are never clipped or covered (the active line occupies its own layout row, separate from the history). Deterministic display-policy tests cover first-caption, chronological ordering, newest-at-bottom, capacity eviction (oldest removed from the top), and partial→final append with no duplication; build 0 warnings/0 errors, `dotnet format --verify-no-changes` clean. **Slice 6 (Phases 1a–1c) is complete (close-out 2026-08-01)** — E2E latency metric + tests (238/238), OFAT sweep + shortlist in `BENCHMARK_REPORT.md`, and the App-level SAPI E2E validation recorded below (baseline + shortlist configs × 3 runs each through the real App: WASAPI loopback → Whisper → Argos en→tl → overlay, E2E latency row polled via UIA, every run publishing real translated Tagalog). The validated baseline `base/8/1/st2` is the App default (`StabilityWindow` 3→2, model `ggml-base` unchanged). Phase 2 real-app validation remains deferred per user. Slice 1 manual verification against real system audio succeeded. Slice 2 real-model verification succeeded: `WhisperSpeechToTextEngine` streamed **partial and final transcripts** from four samples through the real ggml-tiny/base models at realtime pacing with a clean stop/dispose (see [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 3 real-Argos verification succeeded: `ArgosTranslationEngine` translated **offline/local** through a real Argos 1.11.0 child process for direct pairs (`en→tl`, `ja→en`, `en→ja`) and a pivot pair (`ja→tl` via `en`), with correct error mapping (see below and [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md)). Slice 4 (complete): `CaptionService`/`CaptionState` verified with deterministic fake translation engines — partial→active→final→committed transitions, translation on/off, translation failure preserving the source caption, ordering, bounded history, and cancellation. Slice 5 (complete): `UniversalCaptions.App` overlay display policy + pipeline wiring verified with deterministic fakes (`CaptionDisplayPolicyTests` 8 + `CaptionPipelineTests` 20 + `AudioSourceLoaderTests` 4 + `TranslationGuardTests` 4) — Q1 display policy resolution (active line = verbatim latest partial; finals = bounded history newest-first; translated text replaces source only when `Completed`), capture→processor→STT→caption-service wiring, error handling, lifecycle, audio-source enumeration (preferred default, failure-surfacing), and translation guard (source-equals-target rejection). **Manual overlay/device verification completed 2026-08-01** (all items Passed — see Slice 5 section below), including the **real-Argos wiring end-to-end through the App** (committed overlay lines translated to Tagalog by a real local Argos child process).
+
+## Installer & distribution (2026-08-06)
+
+### Purpose
+
+Prove the frozen v0.5.25 core deploys to a clean Windows 10 machine with **no repository and no
+network** — Inno Setup (per-user), self-contained .NET 8 win-x64, bundled pruned Python runtime,
+bundled faster-whisper small model, bundled pruned Argos `en→tl` packages, wired by a launcher that
+sets process-scoped env knobs. One approved additive production seam: `UC_FW_MODEL`.
+
+### Automated tests — PASS
+
+Full suite **384/384 passing, 0 failed, 0 skipped**, Release build 0 warnings / 0 errors.
+
+```
+Passed!  - Failed: 0, Passed: 77, Total: 77   - UniversalCaptions.Audio.Tests.dll
+Passed!  - Failed: 0, Passed: 72, Total: 72   - UniversalCaptions.Captions.Tests.dll
+Passed!  - Failed: 0, Passed: 111, Total: 111 - UniversalCaptions.Speech.Tests.dll
+Passed!  - Failed: 0, Passed: 27, Total: 27   - UniversalCaptions.Translation.Tests.dll
+Passed!  - Failed: 0, Passed: 97, Total: 97   - UniversalCaptions.App.Tests.dll
+```
+
+New `SpeechEngineFactoryTests` (2), no Python/model:
+
+1. **`NativeModel_Unset_DefaultsToSmall`** — with `UC_FW_MODEL` unset, the native engine options model
+   is `"small"` (identical to v0.5.25 behavior).
+2. **`NativeModel_Override_IsRespected`** — with `UC_FW_MODEL=<dir>`, the native engine options model is
+   `<dir>`, forwarded verbatim as worker `--model` (faster-whisper accepts a local directory → offline).
+
+### Installed-bundle acceptance — PASS (real audio, real en→tl)
+
+Run via `installer_acceptance.ps1` (untracked) against the app installed at
+`%LocalAppData%\UniversalCaptions`, launched through `launcher.cmd`, English audio looped through VLC
+over WASAPI loopback, overlay sampled by UIAutomation, worker cmdlines captured by CIM:
+
+- **Clean install**: `UniversalCaptions-Setup-0.5.25.exe` (795.5 MB, lzma2/ultra) `/VERYSILENT` exit 0;
+  installed size 1,634.5 MB. No UAC (`asInvoker`, `app.manifest` has no execution level).
+- **Worker paths are installed-only**: STT `py\python.exe -u <install>\Server\faster_whisper_worker.py
+  --model <install>\models\faster-whisper-small --compute int8 --threads 4 --beam-size 5`; Argos
+  `py\python.exe -u <install>\Server\argos_translate_server.py`. Asserted: no `%TEMP%\fwv`,
+  `%TEMP%\argosv`, `huggingface`, `artifacts\`, or repo references in any cmdline.
+- **Captions**: first real caption ≈4.1–4.7 s (warm); live partials grow in place
+  (`Maraming salamat.` → `TAGALOG na grupong nagsasanay.` → committed history); committed translated
+  Tagalog lines with the `EN || TL` badge (`Ang pangalan ko ay Maria.`, `Ano ang pangalan mo?`,
+  `Magandang umaga lahat.`); looped corpus repeats; POSTSTOP keeps history with no stale partial.
+- **Settings persist**: `settings.json` (`language: en`, `translationEnabled: true`, `targetLanguage:
+  tl`) honored across install/uninstall/reinstall cycles.
+- **Lifecycle**: clean Start/Stop/Exit (25 s close budget), **0 orphaned app/worker processes**.
+
+### Clean uninstall — PASS
+
+`unins000.exe /VERYSILENT` exit 0; **only the app's own `settings.json` remains** at
+`%LocalAppData%\UniversalCaptions` (user data preserved), no leftover `py` tree (the launcher sets
+`PYTHONDONTWRITEBYTECODE=1`, so Python never writes stdlib `__pycache__` that Inno cannot track), no
+leftover processes, no registry uninstall entry.
+
+### Evidence
+
+`docs/reports/INSTALLER_DISCOVERY.md` (§8 decisions, §9 build + acceptance), CHANGELOG v0.5.26,
+`packaging/` (`.iss`, `launcher.cmd`, `build-package.ps1`, `output/`), `installer_acceptance*.{ps1,log,
+csv,txt}` (untracked).
+
+## App-by-app validation — Phase 2 (2026-08-06)
+
+### Validation target
+
+- **Build:** UniversalCaptions v0.5.26.
+- **Source:** final `UniversalCaptions-Setup-0.5.25.exe` produced by the completed installer slice
+  (Entry 17).
+- **Location:** installed at `%LocalAppData%\UniversalCaptions`, launched via `launcher.cmd`.
+- **Configuration (fixed):** `fasterwhisper-native` + live partials; small/int8 model; 4 STT threads;
+  normal persisted settings (`language: en`, translation ON → `tl`); real WASAPI loopback; internet
+  allowed **only** for the media sources; **no** repo/venv/model paths injected manually.
+- **Not exercised against:** `dotnet run`, `bin\Release` directly, the development Python environment,
+  the repo's model directory, or a manually configured `UC_FW_MODEL`.
+
+### Network policy
+
+> **Network policy:** Internet access permitted for external media sources (YouTube/Chrome and Zoom).
+> UniversalCaptions itself remains offline/local-only; all speech recognition and translation are
+> performed locally, with system audio captured through WASAPI loopback. Network activity from
+> Chrome/YouTube/Zoom is **test-environment traffic**, not an application dependency.
+
+### Matrix
+
+| App | Status | Notes |
+| --- | --- | --- |
+| Chrome / YouTube | ✅ PASS | Real YouTube playback → live partials + en→tl committed lines, 0 orphans |
+| VLC | ✅ PASS | Fresh + installer/final-acceptance evidence, live partials + en→tl, 0 orphans |
+| Zoom | ⚠️ NOT VALIDATED | Environment-limited (Chromium UI, no automation surface, no meeting available) — see Results |
+| Teams | **N/A** | Desktop Teams client unavailable |
+
+> **Microsoft Teams — N/A:** The Teams desktop application is not installed on the validation machine.
+> Only the Office add-in is present, which does not provide an equivalent Teams audio/capture
+> environment. Therefore no Teams compatibility claim is made. If Teams compatibility becomes a
+> requirement later, install the desktop client and add a separate validation run.
+
+### Method
+
+For each app, in order: **Audio capture → first partial → partial updates → FINAL → translation (if
+enabled) → Stop/Exit → orphan processes.** No core changes during this phase; a failure is recorded
+as a validation failure first and diagnosed separately. Worker command lines are verified to use the
+installed bundle only (same assertions as the installer acceptance).
+
+### Results
+
+**VLC — PASS (2026-08-06).** Fresh run against the installed v0.5.26 bundle (`app_validation.ps1
+-App vlc`, `english_sustained_90s.wav` looped 60 s): worker cmdlines installed-only (PASS), first
+real caption ≈4.6 s, live partials grow in place (`Hello at tanggapin` → `Maligayang pagdating sa
+unang pulong ng ating pag-uusap na Tagalog.` → re-decode to the full line), committed translated
+Tagalog history with the `EN || TL` badge (`Ang pangalan ko ay Maria.`, `Ano ang pangalan mo?`,
+`Magandang umaga lahat.`), loop repeats, POSTSTOP history retained, clean exit 0 orphans.
+Corroborated by the installer acceptance (en→tl) and the final real-world acceptance (Tagalog +
+en→tl legs). Evidence: `appval_vlc_*`, `installer_acceptance_*`.
+
+**Chrome / YouTube — PASS (2026-08-06).** Two phases:
+- **Chrome media playback** (local WAV via `file://`): first caption ≈2.5 s, live partials +
+  committed translated Tagalog — proves Chrome's audio reaches loopback. (An earlier Chrome run
+  passed `--mute-audio=0`, which Chrome parses as **muted** — a harness error, fixed; per-app
+  Volume Mixer state can also mute Chrome, which is not an app issue.)
+- **YouTube playback** (`youtube.com/watch?v=dQw4w9WgXcQ`, network allowed per policy): first real
+  caption ≈14 s after Start (YouTube load/playback latency), live partials translate in place
+  (`Ikaw` → `Bago kami` → full line), `EN || TL` badge, committed translated Tagalog history, clean
+  exit 0 orphans. Worker cmdlines installed-only (PASS). Evidence: `appval_chrome_*`.
+
+**Zoom — NOT VALIDATED (environment-limited, 2026-08-06).** No Zoom PASS/FAIL claim is made. Zoom
+Workplace 7.0.6's client is Chromium-based and exposes **no UIAutomation surface** (no buttons,
+edits, or web content in the accessibility tree), so the join flow cannot be automated:
+`--url=https://zoom.us/test` opened only the embedded calendar webview; a `zoommtg://` join with the
+documented test-meeting ID produced a `zJoinMeetingFailedDlgClass` (invalid/requires interaction);
+no real meeting/account is available to emit speech. This is a **test-environment limitation**, not
+an app defect — the WASAPI capture path under test is identical to the VLC/Chrome legs (both PASS).
+**Optional follow-up:** a manual-assist run (a user joins a Zoom meeting while the caption app is
+sampled and evidence recorded) or a machine with an automatable Zoom client.
+
+**Teams — N/A** (desktop client not installed; recorded above).
+
+| App | Status | Notes |
+| --- | --- | --- |
+| Chrome / YouTube | ✅ PASS | Real YouTube playback → live partials + en→tl committed lines, 0 orphans |
+| VLC | ✅ PASS | Fresh + installer/final-acceptance evidence, live partials + en→tl, 0 orphans |
+| Zoom | ⚠️ NOT VALIDATED | Environment-limited (Chromium UI, no automation surface, no meeting available) — see Results |
+| Teams | **N/A** | Desktop Teams client unavailable |
 
 ## TD-005 — Settings persistence (2026-08-05)
 
@@ -58,6 +209,482 @@ never touched:
 The persistence wiring (control-window categories + overlay placement/view state) is exercised through
 normal real-App use — settings are written on change and on exit, and reapplied on the next launch via
 the DI-registered store (`App.xaml.cs` loads before window construction). No device hotplug dependency.
+
+## Entry 15 — Overlay live-line integration (2026-08-06)
+
+### Purpose
+
+ADR-0008 promoted `fasterwhisper-native` + live partials to the production default, but the WPF overlay
+painted **committed FINALs only** — commit `7d1c057` ("temporary diagnostic tracer", 2026-08-03) had
+replaced Slice 7's active-line painting and `_activeBlock` was never assigned (`CaptionRenderIdentityTests`
+even asserted `ActiveBlock() == null`). Slice 12 proved the *engine* emits partials with Chrome-like timing;
+it never proved the *overlay* displays them. This slice restores the live active line and feeds it the
+native partial stream so the promoted default is actually visible as it happens.
+
+### Acceptance criteria (user-approved 2026-08-06)
+
+1. A partial becomes visible in the active line while the speaker is talking.
+2. Later partials of the same segment replace it in place (same line).
+3. The FINAL freezes that line into history (active line disappears).
+4. Committed history never churns once a line is finalized.
+5. Stop/Dispose leaves no stale partial on the overlay.
+6. No partial ever enters committed history.
+7. First-visible-partial latency and CPU impact are measured.
+8. The `ggml-base` fallback stays functional (no regression).
+
+### Implementation (code-behind only)
+
+`CaptionOverlayWindow.UpdateCaptionItems` now creates **one** mutable `_activeBlock`, rewrites its text in
+place on later partials, and removes it when `model.ActiveLine` is null (committed/stopped/hidden-while-
+translating). `ReconcileHistory` reuse-by-sequence is unchanged; the `shouldUpdate` gate is unchanged
+(holds during translation-pending so no source-language flash). Class + field + `ReconcileHistory` doc
+comments updated; the XAML comment already described this restored design.
+
+### Automated tests — PASS
+
+Full suite **374/374 passing, 0 failed, 0 skipped** (77 Audio + 72 Captions + 109 Speech + 27 Translation +
+89 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. Baseline was
+372/372.
+
+`CaptionRenderIdentityTests` rewritten 4→6, all deterministic (synthetic `CaptionState`, no overlay
+paint/dispatcher dependency):
+
+- partial rewrite keeps the same block identity (one `_activeBlock`, text replaced, no new history);
+- growing partial stream paints a single active block and commits no history until the FINAL;
+- no partial ever enters committed history;
+- FINAL freezes the active line into history and removes the active block;
+- cleared active line removes the block while history is preserved;
+- finalized blocks keep their text instances and order.
+
+### Real-App smoke verification — PASS (Entry 14 checklist + overlay AC-1..AC-8)
+
+Driven by `smoke.ps1` (UIA) against the Release App with the promoted default. Per-sample rows carry
+`app%|wkr%|n` (App Process CPU %, faster-whisper worker CPU %, overlay text-element count); POSTSTOP is
+followed by `POSTSTOP_1..3` samples 1.2 s apart to prove STT actually stopped.
+
+| Run | Verdict | Evidence |
+|---|---|---|
+| `promoted` (Tagalog, tl, translation off) | PASS | FW worker spawned; T3 first Partial 5.035 s / T4 first Final 7.573 s; 18 FINALs; `Salamat. Ikaw.` preserved PRESTOP→POSTSTOP; Tagalog materially better than ggml-base (17.5 s first caption, hallucination at 46.9 s); two `one`-for-`ako` quirks remain (`Ang pangalan ko ay one.`) |
+| `liveoverlay` (promoted default, 250 ms sampling, 105 s) | PASS (AC-1, AC-2, AC-3, AC-4, AC-7) | Active line paints and evolves: `meeting sum` (9.8 s, n1) → `Meeting someone.` (12.2 s, same n1) → FINAL freeze at 15.1 s (n2); 27 lines POSTSTOP (vs 18 when FINAL-only); App CPU ~0–66% variable, worker CPU ~0%; first visible partial ≈5.6 s after capture start |
+| `stopmid` (Stop mid-speech, 18 s) | PASS (AC-3, AC-4, AC-5, AC-6) | POSTSTOP committed 2 drained FINALs (`How are you?`, `Hello!`) then stable at 4 elements across 3 × 1.2 s within 4 s — no stale partial |
+| `transen` (en→tl, translation on, Argos) | PASS (AC-1..AC-8; Entry 14 check 9) | English audio → native STT → Argos en→tl → **live-translated Tagalog active line** (`sa unang pulong ng aming pag - uusap.` at 11.5 s, rewritten in place to `...tungkol sa mga taglog.`, then `Ang pangalan ko ay Maria.`, `Ano ang pangalan mo?`, `Magandang umaga lahat.`); no raw-English flash; T5 first translation request 3.610 s, T6 first result 6.847 s, T4 first Final 9.455 s |
+| `trans` (tl→en, Argos) | PASS (graceful degradation) | Argos tl→en is the **documented-unsupported direction** (stanza has no `tl` SBD processor → `ValueError: No processors to load for language tl`); App degraded correctly to source text (no crash, no fallback) |
+
+Translation diagnostics (en→tl): first Partial 3.604 s, first translation request 3.610 s (6 ms after the
+partial), first translation result 6.847 s (Argos cold-start), first Final 9.455 s, first translated caption
+painted ≈11.5 s. Argos `ja→tl` pivot and `tl`-as-source remain governed by ADR-0006.
+
+### Honesty note (closes the Entry 14 gap)
+
+Entry 14 promoted the partials feature with **no real-App overlay smoke** — this report previously listed
+"overlay live partials visible" as an unverified follow-up. The rows above are actual UIA-driven runs of
+the Release App; no smoke claim here is made without execution evidence. `docs/CHANGE_IMPACT_ANALYSIS.md`
+(Entry 15) records the root cause (7d1c057 tracer regression) and the pre/post implementation state.
+
+### Close-out
+
+Entry 15 complete (2026-08-06). No commit unless requested. Worker protocol, 8 s `MaxSegmentDuration`,
+windowed engine, ADR-0007, TD-002, TD-005 untouched; `ggml-base` fallback preserved (Entry 14 check 8).
+
+## Entry 16 — CPU/resource validation of the promoted production path (2026-08-06)
+
+### Purpose
+
+The promoted default (`fasterwhisper-native` + live partials) had an unresolved 80%+ CPU concern from
+the earlier ggml-base era. This record measures the real CPU footprint of the promoted path across the
+five requested scenarios to decide whether decode threading/scheduling needs optimization. Slice 10–15
+work is **not reopened** — this is measurement-only plus an evidence-based optimization proposal.
+
+### Method
+
+`cpu_probe.ps1` (untracked harness) launches the Release App, clicks Start via UIA, plays the sustained
+English corpus (`artifacts/samples/english_sustained_90s.wav`, ~88 s of SAPI speech) through WASAPI
+loopback, and samples every ~200–500 ms. Per-process CPU% is computed from `TotalProcessorTime`/CIM
+`Win32_Process` deltas (worker matched by command line, not path — the `fwv\Scripts\python.exe` is a venv
+shim; the real inference runs in the sibling uv-python process). Warmup is excluded; single-core % is
+shown alongside system % (÷ 12 logical cores).
+
+### Results (12 logical cores; single-core %, warmup excluded)
+
+| Scenario | App mean / p95 / max | STT worker mean / max (single-core) | STT worker (system) | Argos worker (system) |
+|---|---|---|---|---|
+| 1. App idle | 0.1 / 0 / 7.4 | 0 / 0 | 0% | 0% |
+| 2. Captions, silence | 2.8 / 7.1 / 7.1 | 0 / 0 | 0% | 0% |
+| 3. Speech + partials (interval 1 s) | 12.1 / 31.9 / 38.6 | **929.1 / 1059** | **77.4% mean / 88.2% max** | 0% |
+| 4. Speech + translation (en→tl) | 12.0 / 28.4 / 46.3 | **895.3 / 1026.9** | **74.6% mean / 85.6% max** | 2.8% mean / 19.2% max |
+| 5. Speech, partials disabled (`UC_NATIVE_PARTIAL_INTERVAL=0`) | 10.5 / 24.2 / 37.6 | 679.5 / 1043.3 | 56.6% mean / 86.9% max | 0% |
+
+Series: `cpu_<scenario>.csv`, summary `cpu_summary.csv` (untracked).
+
+### Findings
+
+- **Idle is ~0%.** Silence is cheap (App ~3%, worker 0% — the worker burns CPU only during decodes).
+- **The concern is confirmed and it lives in the STT worker, not the App.** With speech + partials the
+  worker sustains ~9–10 cores = **77.4% of the whole machine** (≥80% single-core 100% of the time), the
+  App itself only ~12% mean. Translation adds ~3% (Argos bursts ≤ ~2.3 cores).
+- **Root cause: every decode uses all 12 cores.** `FasterWhisperEngineOptions.Threads` defaults to
+  `Environment.ProcessorCount` and the App passes it straight to the worker (`--threads 12`). Both partial
+  and FINAL decodes saturate the machine.
+- **Partials cost ~20 points of machine CPU over FINAL-only (77% vs 57%).** Even FINAL-only stays heavy
+  (57%) because 8 s segment FINALs decode back-to-back during continuous speech.
+- **Decode wall is thread-count-invariant for real speech.** Worker round-trip sweep on real video audio
+  (8 s slices, `small` int8): 12 threads 3.48 s (2.30×) vs 4 threads 3.21 s (2.50×) and 2 threads 3.97 s
+  (2.01×) — short-input CTranslate2 decode is fixed-overhead-dominated. A pathological music/no-speech
+  region (0 segments) is 0.42× realtime at both 12 and 4 threads (thread-invariant worst case).
+- **CPU-seconds/audio-second scales ~linearly with threads** (12→4 threads: 5.22→1.60; 2 threads 0.99).
+
+### Conclusion
+
+The promoted path needs the threading optimization the checkpoint anticipated: cap the worker thread
+count (e.g., to 4) so each decode uses ~4 cores instead of all 12, cutting the worker's machine share
+~3× (≈77% → ≈26%) with **no decode-latency change** for real speech (realtime 2.3–2.8× either way).
+Caption behavior (partial visibility, in-place rewrite, FINAL freeze, backlog) is unaffected by the thread
+count; the worst-case music region is also thread-invariant.
+
+### Optimization implemented and close-out (2026-08-06)
+
+**Implementation (user-approved CPU-optimization slice; engine selection, worker wire protocol,
+segmentation/8 s cap, partials, overlay, translation all untouched):** `UC_NATIVE_THREADS` env knob in
+`SpeechEngineFactory.CreateNative` → `FasterWhisperEngineOptions.Threads` (default **4**, clamped to
+[1, ProcessorCount] via `ResolveNativeThreads`); `--threads` remains the single worker decode-thread
+control (`LineProtocolFasterWhisperProcess.BuildWorkerArguments`, extracted for tests); `sttnative`
+benchmark gains `--threads`. `ggml-base`/windowed-engine paths unchanged (they use their own options).
+
+**Tests (8 new → 382/382):** `SpeechEngineFactoryTests` — default `Threads == 4`, override 6 respected,
+invalid/out-of-range (abc/0/-1/99) fall back to 4; `LineProtocolFasterWhisperProcessProtocolTests` —
+`--threads <N>` appears in the worker argument list (4 and 12) with the rest of the contract unchanged.
+Release 0 warnings/0 errors; `dotnet format` clean. Pre-existing flaky race hardened
+(`CaptionPipelineTests` recovery test: `List<PipelineStatus>` → `ConcurrentQueue`).
+
+**Formal `sttnative` gate (same Slice 12 config: real video audio 288.79 s, `small` int8, tl, hangover
+0.7 s, max segment 8 s, partials interval 1 s / window 4 s, realtime feed):**
+
+| Metric | threads=12 (baseline) | threads=4 (production default) |
+|---|---|---|
+| first FINAL | 17.98 s | 18.12 s |
+| FINALs | 32 (32 feed / 0 flush) | 32 (31 feed / 1 flush) |
+| WER (committed, vs `fil-orig`) | **33.2%** | **33.2%** |
+| wall vs audio | 1.18× | 1.18× |
+| first partial | 13.27 s | 13.30 s |
+| emit-lag vs segStart (min/med/max) | 14.38 / 39.95 / 58.64 s | 14.51 / 41.27 / 59.67 s |
+| mid-sentence splits | 10/32 | 10/32 (same split points) |
+| short fragments | 0 | 0 |
+
+**FINAL transcript text is 100% identical between 4t and 12t across all 32 FINALs (0 textual diffs).**
+No caption regression; decode wall and realtime factor are unchanged — the thread-invariance the decode
+sweep predicted, confirmed end-to-end through the real worker.
+
+**Real-App CPU probe at the new default (speech + partials, translation OFF, `english_sustained_90s.wav`,
+75 s, warmup 12 s excluded):**
+
+| Metric | Pre-fix (Threads=12) | Post-fix (Threads=4) |
+|---|---|---|
+| STT worker single-core mean / max | 929.1 / 1059% | **379.6 / 451.7%** |
+| STT worker (system) mean / max | 77.4 / 88.2% | **31.6 / 37.6%** |
+| App (system) mean | 1.0% | 1.1% |
+| first caption | 3.49 s | 3.72 s |
+| overlay max lines | 15 | 16 |
+
+A second post-fix run with translation ON (settings left by the prior probe) measured STT 26.6% + Argos
+3.4% system mean ≈ 30% total vs 74.6% + 2.8% pre-fix. Captions still flow (first caption ~3.7 s, live
+partials visible, overlay producing lines).
+
+**Decision: PASS — production default `Threads` capped at 4.** Sustained STT CPU drops ~77% → ~32% of the
+machine (2.4×; ~26% is the theoretical thread-proportional floor and is where the benchmark-predicted
+~318% single-core would land under idle-machine conditions) with a text-identical caption stream, no
+latency/backlog change, and the knob preserved for machines that want more cores. Series:
+`cpu_speech.csv` (post-fix rows), `cpu_gate_t12/t4.log/.csv`, summary `cpu_summary.csv` (untracked).
+
+## Final real-world acceptance — continuous media playback at production default (2026-08-06)
+
+### Purpose
+
+Per user direction ("stop optimizing CPU; run the final real-world acceptance session"), confirm the
+production default (`fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`) behaves acceptably in
+**continuous normal daily use**: long-duration media playback through the default device, live partials
+on the overlay, optional local translation, stable CPU across several minutes, clean Stop/Exit, no
+orphaned workers.
+
+### Method
+
+`acceptance.ps1` (untracked harness): launches the Release App, clicks Start via UIA, plays media through
+**VLC** (`C:\Program Files\VideoLAN\VLC\vlc.exe`, `--intf dummy --no-video --volume 256`, real WASAPI
+loopback on the default device), samples per-poll CPU from CIM `Win32_Process` deltas (workers matched by
+command line — the `fwv\Scripts\python.exe` is a venv shim; real inference is in the sibling uv-python
+process), snapshots the overlay text via UIA, clicks Stop, then closes via `CloseMainWindow` and waits up
+to 25 s for clean exit (post-final-flush), counting orphaned workers. Warmup 12 s excluded. Rows in
+`acceptance_summary.csv` (untracked).
+
+### Leg 1 — Tagalog YouTube-style content, translation OFF
+
+Media: `uc_video_full.m4a` (real Tagalog video audio, 288.79 s, single pass), 300 s sampling, 374
+samples.
+
+| Metric | Result |
+|---|---|
+| STT worker (system) mean / max | **31.8% / 37.6%** |
+| App (system) mean / max | 0.9% / 3.4% |
+| Argos worker (system) | 0% (translation OFF) |
+| first caption | 3.27 s |
+| caption snapshots | 95 |
+| overlay max lines | 33 |
+| clean exit (within 25 s) | **True** |
+| orphaned workers | 0 |
+
+### Leg 2 — English content + en→tl translation ON
+
+Media: `artifacts/samples/english_sustained_90s.wav` (SAPI English corpus, 90 s, **looped** for 300 s
+continuous), 352 samples.
+
+| Metric | Result |
+|---|---|
+| STT worker (system) mean / max | **33.5% / 37.1%** |
+| Argos worker (system) mean / max | 4.2% / 21.6% (bursty — single in-flight slot) |
+| App (system) mean / max | 1.3% / 3.2% |
+| first caption | 3.23 s |
+| caption snapshots | 129 |
+| overlay max lines | 54 |
+| clean exit (within 25 s) | **True** |
+| orphaned workers | 0 |
+
+### Findings
+
+- **CPU stays flat across minutes of continuous captions.** Both legs sustained the Entry 16 numbers
+  (STT ~32% of the machine, App ~1%, Argos bursts ≤ ~21%) with no drift, no growing backlog, no worker
+  churn over 300 s of non-stop media.
+- **Live partials + live translation verified end-to-end.** Overlay snapshots show a growing active
+  partial that increments while the speaker talks (`Hello at malugod na tanggapin ang` → full line) and
+  FINALs freeze into bounded history with the `EN || TL` badge; committed lines are real Tagalog
+  (`Ano ang pangalan mo?`, `Magandang umaga lahat.`), and the looped corpus repeats correctly.
+- **Clean Stop/Exit is real.** Both legs stopped on the Stop button (history retained, no stale partial)
+  and the app exited on `WM_CLOSE` within the budget (0 orphans). The earlier 10 s-timeout flake was the
+  harness close budget being too tight while the 289 s video's final flush was in flight — the app exits
+  on its own in ~5 s (measured separately) and the harness budget was raised to 25 s.
+
+### Decision — PASS
+
+The production default behaves acceptably in continuous real-world use on this machine (Windows 10,
+12 logical cores): stable ~32–33% STT + ~1% App CPU, first caption ~3.2 s, live partials on the overlay,
+live en→tl translation, bounded history, clean exit, 0 orphaned workers. **The project is core-done per
+the user's criterion** (no further CPU optimization; remaining product work is feature-level, not
+core-architecture). Raw series: `acceptance_tl.csv`, `acceptance_en2tl.csv`, captions
+`acceptance_tl_captions.txt`, `acceptance_en2tl_captions.txt` (untracked).
+
+## Slice 10 — Faster-Whisper Native Streaming (deterministic phase, 2026-08-05)
+
+### Purpose
+
+Close the Slice 9 stale-caption gap (windowed faster-whisper committed only ~2 FINALs in 120 s, ~40 s
+apart) by replacing the sliding-window re-decode with segment-based streaming: C# owns VAD speech-segment
+detection, and each completed segment is decoded **once** through the existing faster-whisper worker wire
+protocol, yielding one coherent FINAL per segment. Isolated experiment behind
+`UC_STT_ENGINE=fasterwhisper-native`. This record covers only the **deterministic phase** (no Python,
+no model); real-App/benchmark validation is the next, still-open gate.
+
+### Automated tests — PASS (deterministic phase)
+
+Full suite **357/357 passing, 0 failed, 0 skipped**, Release build 0 warnings / 0 errors.
+
+New tests (21 total, all deterministic):
+
+- `SpeechSegmentDetectorTests` (11) — the C# segment state machine driven directly by scripted
+  voice-activity decisions on synthetic PCM: speech→silence emits one segment covering both; speech
+  resumed within the hangover is one segment; two bursts produce two segments in order with correct
+  `CapturedAtUtc`; continuous speech caps at `MaxSegmentDuration` then keeps buffering; a blip shorter
+  than `MinSpeechDuration` is discarded; `Flush` emits the in-progress segment (and discards a too-short
+  one / returns null when idle); `Reset` clears state; resumed speech counts toward `MinSpeechDuration`.
+- `FasterWhisperNativeStreamingEngineTests` (11) — the engine against a scripted VAD + scripted
+  `IFasterWhisperProcess`: one FINAL per completed segment with no live partials and the exact buffered
+  PCM + language passed through; float→int16 clamping; Stop flushes the in-progress segment and drains
+  already-queued segments (nothing dropped); decode failure raises `EngineFailed` and stops recognizing;
+  start failure raises `ModelLoadFailed`; restart after Stop resets session state (two sessions, two
+  FINALs, worker started once per session); invalid (non-mono) format raises `InvalidAudioFormat` once;
+  empty decoded text emits no FINAL; Process before Start / after Stop is ignored; Start is idempotent;
+  continuous speech emits FINALs at the max-segment cap (no stale monologue).
+
+### Fresh-context review — PASS with fixes (2026-08-05)
+
+Independent review of the new engine + detector found the concurrency core sound (no lost-segment or
+post-Stop-write path; `_gate` serialization correct under Process-on-capture-thread vs Stop-on-teardown
+thread). Fixes applied before this record: **M1** resumed speech now counts toward `_speechDuration`
+(was undercounting `MaxSegmentDuration`/`MinSpeechDuration` across hangover resumes); **M2** per-session
+epoch guard — a decode that outlives the Stop drain budget cannot raise a stale FINAL into a restarted
+session (plus a Stop-timeout cancellation backstop); **M3** `Start` now maps any start exception to
+`ModelLoadFailed` (was catching only `FasterWhisperProcessException`); **M5** detector options reject
+negative/zero `MinSpeechDuration`/`SilenceHangover`/`MaxSegmentDuration`; **M4** removed the unreachable
+multichannel downmix (the engine already gates mono). Accepted nits: `FloatToInt16` is duplicated from
+`FasterWhisperDecoder` to keep the frozen windowed path byte-identical; `_cts` is not disposed (matches
+baseline).
+
+### Benchmark + real-App validation — PASS (2026-08-05)
+
+Controlled benchmark + real-App run with `UC_STT_ENGINE=fasterwhisper-native` (model `small` int8,
+language `tl`) on the actual video audio (`uc_video_full.m4a` / `uc_video_full_16k.wav`, 288.79 s) vs the
+`fil-orig` reference. New additive benchmark mode `sttnative` in `UniversalCaptions.Benchmarks`
+(`NativeStreamingBenchmark.cs`) drives the real engine exactly as the App composes it (same
+`EnergyVad(0.008, 1, 2)`, same segment knobs 0.3 s / 0.7 s / 8 s). Raw logs: `artifacts/samples/realapp_native_streaming.log`,
+`%TEMP%\opencode\sttnative_small_realtime.log` (+ `.csv`, `hyp_sttnative_small.txt`).
+
+**Controlled benchmark (realtime feed, 10 ms chunks):** 0 partials (**FINAL-only**), 32 FINALs + 0 on
+Stop flush (final sentence already committed via hangover; trailing audio is music → no in-progress
+segment), commit cadence **13.3 FINALs/120 s** (vs windowed faster-whisper's 2 FINALs/120 s ~40 s
+apart). **Committed WER 32.6%** vs `fil-orig` (same `stt_compare.py` normalization; ggml-base full-file
+51.2%, faster-whisper full-file 31.1%) — the faster-whisper accuracy advantage is preserved on the
+committed stream. Absolute latency numbers from the controlled run are **not** meaningful: the feed
+loop's `Thread.Sleep(10)` ≈ 15.6 ms on Windows (timer granularity) paced audio at ~1.57× wall, so the
+run's "backlog" was a feed artifact, not engine behavior. The App run (true realtime via WASAPI) is the
+authoritative latency measurement.
+
+**Real-App run (ffplay → WASAPI loopback → App, realtime):** first caption **15.2 s** after playback
+start (vs ggml-base 14.8–21.0 s, windowed faster-whisper 27.1 s); **~30 committed captions / 289 s
+(≈12.5 FINALs/120 s)**, one caption every ~8.2 s during continuous speech (segment-cap cadence); STT
+latency rows **11.6–12.9 s** from segment start = **~4 s behind the segment's speech end** (decode-bound,
+no growing backlog); 0 partial rows (FINAL-only, captions appear atomically). **Acceptance criteria
+met:** accuracy ≫ 51.2% baseline (32.6%); responsive first caption, no 20–40 s stale backlog (fresh
+commit every ~8.2 s, ~4 s behind segment end); one FINAL per segment, no duplicate/re-emitted segments;
+no dropped final at Stop (last sentence "…maliit na unit ng tunog." committed at 285 s before the 289 s
+audio end); no recurring `(Song)`/`(Subscribe)` hallucinations (music gaps produce no captions; the
+"Paano kung…" repetition is in the source audio, not a hallucination).
+
+**Known tradeoffs (documented, not blocking):** the 8 s `MaxSegmentDuration` cap can split a sentence
+mid-word (e.g. "…instruction ng wea" / "Ang Filipino…") — inherent to segment-based streaming and
+tunable via `UC_NATIVE_MAX_SEGMENT`; rare small fragments/hallucinations (`ba ba i?`, `Usa atin!`);
+faster-whisper's ~12 s STT latency is governed by segment duration + decode (~4 s behind segment end),
+on par with the windowed path's 13–16 s but with a ~6× better commit cadence. One first segment decoded
+empty in the controlled run (dropped) but not in the App run.
+
+**Decision (2026-08-05):** Slice 10 answered its research question — segment-based native streaming
+**preserves faster-whisper small's accuracy advantage (32.6% vs 51.2%) while eliminating the stale
+20–40 s commit backlog** (one fresh FINAL per ~8.2 s segment, ~4 s behind segment end, FINAL-only).
+faster-whisper stays **opt-in** (`UC_STT_ENGINE=fasterwhisper-native`); the ggml-base production default
+is unchanged (frozen). The Tagalog-accuracy gap on `ggml-base` now has a validated opt-in remedy with a
+sentence-fragmentation tradeoff at the segment cap.
+
+## Slice 11 — Native-Streaming Segment-Boundary Tuning (2026-08-05)
+
+**Purpose:** tune the opt-in `fasterwhisper-native` segment boundaries (per user, after the Slice 10
+PASS) — test `MaxSegmentDuration` 8/10/12 s, measure whether longer segments reduce mid-sentence
+splits, confirm latency/backlog stays bounded, keep `SilenceHangover = 0.7 s` fixed, and change no
+worker protocol / ggml-base / windowed-engine path. Goal: **accurate + natural sentence boundaries +
+bounded live latency** as the basis for any future default-selection decision.
+
+### Benchmark tooling improvements (additive, benchmark-only)
+
+- **Timer-resolution fix:** `timeBeginPeriod(1)`/`timeEndPeriod(1)` around the `sttnative` realtime
+  feed so `Thread.Sleep(10)` paces ~10 ms/chunk — controlled-run pacing is now valid (~1.1× realtime
+  instead of the ~1.57× Slice 10 artifact).
+- **Mid-sentence-split metric:** the gate table + CSV now count FINALs ending without terminal
+  punctuation (`unterminated`, with split-point indices) and short fragments (≤2 words and
+  unterminated).
+
+### Controlled sweep — PASS
+
+Hardware/real-path: Release `UniversalCaptions.Benchmarks.exe sttnative` driving the real
+`FasterWhisperNativeStreamingEngine` (same composition as the App: `EnergyVad(0.008, 1, 2)`, min
+speech 0.3 s, hangover 0.7 s, small int8, `tl`) on `uc_video_full_16k.wav` (288.79 s) vs the
+`fil-orig` reference, realtime feed, three runs at max-segment 8/10/12 s. Logs:
+`%TEMP%\opencode\sttnative_max{8,10,12}.log` + `hyp_sttnative_max{8,10,12}.txt` + `.csv`.
+
+| MaxSegment | FINALs | Cadence | WER (norm) | Mid-sentence splits | Short fragments | Stop flush | End-of-audio cap behavior |
+|---|---|---|---|---|---|---|---|
+| 8 s | 32 | 13.3/120 s | 32.6% | 10/32 (31%) | 0 | none (last speech seg committed before music tail) | clean |
+| 10 s | 26 | 10.8/120 s | 33.2% | 11/26 (42%) | 1 | 1 | capped segment spanning the music tail decoded as `Pag-pag-pag…` stutter |
+| 12 s | 22 | 9.1/120 s | 30.0% | 10/22 (45%) | 1 | 1 | capped segment decoded as truncated `tunog` fragment |
+
+- **FINAL-only in all three runs (0 partials).** 8 s reproduces the Slice 10 WER exactly (32.6%),
+  confirming the timer fix did not alter accuracy.
+- **Latency/backlog bounded at all three caps:** emit stays ~5 s behind each segment's speech end
+  throughout (no growth); the worst decode was ~8 s for a capped 12 s segment — still < segment
+  length, so the pipeline keeps up.
+
+### Decision — keep 8 s (PASS, no change)
+
+- **Longer segments do NOT reduce mid-sentence splits.** The split *fraction* worsens 31% → 42% →
+  45%: the cap still force-closes mid-sentence; it just happens less often while each forced cut now
+  discards more in-flight content (e.g. at 12 s: "…pagpapahapag-" mid-word, a sentence cut across
+  FINAL 21/22 into a bare "tunog").
+- **10 s/12 s add end-of-audio cap risk:** a segment force-closed at the cap that spans into the
+  music tail produced a `Pag-pag-pag…` stutter (10 s) and a truncated `tunog` (12 s); at 8 s the last
+  speech segment commits before the tail.
+- **12 s costs ~46% responsiveness** (9.1 vs 13.3 FINALs/120 s — captions every ~13 s instead of
+  ~9 s). Its small WER gain (30.0% vs 32.6%) is a boundary artifact (fewer force-close boundaries),
+  not a decoding-quality gain.
+- **Result: keep `MaxSegmentDuration = 8 s`** as the native engine's default — no production or
+  knob-default change. The kept default's real-App latency/backlog evidence is the Slice 10 real-App
+  run (`artifacts/samples/realapp_native_streaming.log`); a redundant re-run was not needed.
+  Decision recorded in `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 12, `BENCHMARK_REPORT.md` (Slice 11),
+  CHANGELOG v0.5.20.
+
+## Slice 12 — Faster-Whisper Native-Streaming Live Partials (Chrome-Live-Caption-style, 2026-08-05)
+
+**Purpose:** deliver the Chrome-Live-Caption-style experience on the opt-in `fasterwhisper-native`
+engine — incremental live partial text while the speaker is still talking, one FINAL per completed
+segment (unchanged), no wire-protocol change, translation OFF, ggml-base untouched.
+
+### Implementation (additive, opt-in)
+
+- `SpeechSegmentDetector.TryGetPartial(maxSamples, out samples, out capturedAtUtc)` — bounded
+  trailing-window snapshot of the in-progress segment (refused while idle / during hangover / after
+  the segment completes).
+- `FasterWhisperEngineOptions.PartialDecodeInterval` (default 0 = disabled → Slice 10/11 FINAL-only
+  preserved) + `PartialDecodeWindow` (default 4 s, bounds each partial decode).
+- `FasterWhisperNativeStreamingEngine` cadence dispatch with at most one partial decode in
+  flight/queued (no backlog; ticks deferred, not queued), partials cleared on FINAL, shared session
+  guard, `PartialTranscriptAvailable` event. Partials flow through the existing CaptionService
+  (active-line replace) + overlay path (existing `CaptionDisplayPolicy` strips overlap).
+- App knobs `UC_NATIVE_PARTIAL_INTERVAL` (default 1 s) / `UC_NATIVE_PARTIAL_WINDOW` (default 4 s);
+  interval 0 restores FINAL-only. Benchmark `sttnative` gains `--partial-interval`/`--partial-window`
+  + partial metrics.
+
+### Automated tests — PASS
+
+10 new deterministic tests (6 `SpeechSegmentDetector.TryGetPartial` + 4 engine partial tests incl. a
+`BlockingFasterWhisperProcess` fake proving the single-in-flight bound). Full suite **367/367**
+(109 Speech + 82 App + 72 Captions + 77 Audio + 27 Translation), Release build 0 warnings / 0 errors,
+`dotnet format --verify-no-changes` clean.
+
+### Controlled benchmark — PASS (2026-08-05)
+
+One real-audio run, identical composition to Slice 10/11 (Release `sttnative`, real
+`FasterWhisperNativeStreamingEngine`, `EnergyVad(0.008, 1, 2)`, min speech 0.3 s, hangover 0.7 s,
+max segment 8 s, small int8, `tl`, realtime feed) on `uc_video_full_16k.wav` (288.79 s) vs the
+`fil-orig` reference, with `--partial-interval 1 --partial-window 4`. Translation OFF.
+Log: `%TEMP%\opencode\sttnative_partials_slice12.log` + `.csv`.
+
+| Metric | Result |
+|---|---|
+| First visible partial (from audio feed start) | 9.19 s (speech onset 3.60 s) |
+| **First caption lag T4 (onset → first partial)** | **5.59 s** (vs first FINAL 15.0 s) |
+| Partial update cadence | 47 partials → 19.5/120 s (~3 s apart during speech) |
+| Active-line changes while speaking | yes — text increments across partials ("Magandang" → "ang buhay, ako sigino…" → full sentence) |
+| FINALs | 32 — **text-identical to Slice 11** (no accuracy regression) |
+| WER (in-harness, vs fil-orig) | 33.2% (= Slice 11's 33.19%; the report's 32.6% uses `stt_compare.py` normalization) |
+| FINAL latency after speech end | ~6 s after segment close (decode-bound, same as Slice 10/11) |
+| Backlog | bounded: FINAL emit-lag plateau ~50 s (Slice 11 FINAL-only ~43 s); one 17.5 s decode spike (machine contention); flat, not growing |
+| Realtime factor | 1.18× (Slice 11 1.13×; partial decodes add ~5 % wall) |
+| Dropped/reordered captions | none (32/32 in order); stop flush none (clean end) |
+| Hallucination/repetition | no new artifacts — identical FINAL stream (the "Paano kong?" repetition exists in the Slice 11 baseline; it is in the audio) |
+| Process CPU | 1.2 s (worker Python does the heavy lifting) |
+
+### Gate — PASS
+
+speech → partial caption appears quickly (5.59 s) → incremental updates (19.5/120 s) → stable FINAL
+at/near speech end, no accuracy regression (identical FINAL stream), no growing backlog (elevated
+but bounded plateau ~50 s vs 43 s FINAL-only, realtime-safe 1.18×). Caveat recorded: partial decodes
+add ~5 % wall and ~8 s to the tail emit-lag plateau; the 4 s window means the active line shows a
+rolling 4 s of the segment and the FINAL reveals the sentence's earlier words not shown by the last
+partial (expected Chrome-style rolling-window tradeoff). `ggml-base` remains the production default;
+this benchmark does not constitute promotion. Recorded: Entry 13, CHANGELOG v0.5.21.
+
+### Promotion (Entry 14, 2026-08-05 — ADR-0008)
+
+The "production default" statement above was superseded by the user-approved promotion (Entry 14 /
+ADR-0008): `fasterwhisper-native` + live partials (interval 1 s, window 4 s) is now the production
+STT default via the new `SpeechEngineFactory`; `ggml-base` is the explicit fallback
+(`UC_STT_ENGINE=ggml-base`). The deterministic factory-selection tests landed with it
+(`SpeechEngineFactoryTests`, 5 new — App tests now 87, suite 372/372). The production path is exactly
+the engine + knobs validated in this controlled benchmark and in the Slice 10 real-App run; no new
+benchmark runs were required. Recorded: Entry 14, ADR-0008, CHANGELOG v0.5.22.
 
 ## ADR-0007 Option B — boundary-preserving fallback (2026-08-04)
 

@@ -1,6 +1,6 @@
 # Benchmark Report
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Metadata
 
@@ -473,6 +473,247 @@ until its steady-state latency can be materially reduced.** No further window/in
 planned for this gate — it is already near-optimal. This is a clean close: no production change, no
 forced promotion; the Tagalog accuracy gap on the ggml-base default is acknowledged as open.
 
+# Slice 10 — Faster-Whisper Native Streaming (segment-based, VAD-gated) — controlled benchmark + real-App validation (2026-08-05)
+
+## Purpose
+
+Answer the Slice 8/9 decision-gate follow-up: does replacing the sliding-window re-decode with
+**segment-based streaming** (C#-side VAD; one FINAL per completed speech segment decoded once through the
+existing worker protocol; `UC_STT_ENGINE=fasterwhisper-native`) preserve faster-whisper `small` int8's
+accuracy advantage (~31% WER) while eliminating the stale ~40 s commit cadence (2 FINALs/120 s)?
+
+## Method
+
+- **Controlled benchmark** — new additive `sttnative` mode (`NativeStreamingBenchmark.cs`) drives the real
+  `FasterWhisperNativeStreamingEngine` exactly as the App composes it (`EnergyVad(0.008, 1, 2)`,
+  0.3 s / 0.7 s / 8 s segment knobs, `small` int8, `tl`, default `ProcessorCount` threads) from
+  `uc_video_full_16k.wav` (288.79 s), realtime feed at 10 ms chunks.
+- **Real-App run** — Release App with `UC_STT_ENGINE=fasterwhisper-native`, ffplay → WASAPI loopback,
+  STT language `tl` (UIA-driven), the same video audio.
+- **Reference** — `fil-orig` auto-captions (`uc_subs_json.fil-orig.json3`); WER via the shared
+  `stt_compare.py` normalization. Baselines: ggml-base full-file 51.2%, faster-whisper full-file 31.1%.
+
+## Results
+
+| Metric | faster-whisper native streaming | ggml-base (default) | windowed faster-whisper |
+|---|---|---|---|
+| Committed WER vs fil-orig | **32.6%** (≈ full-file 31.1%) | 51.2% (full-file) | — |
+| Partials | **0 (FINAL-only)** | many | many |
+| Commit cadence | **13.3 FINALs/120 s** (one per ~8.2 s segment) | ~12 | **2 FINALs/120 s (~40 s)** |
+| First real-App caption | **15.2 s** | 14.8–21.0 s | 27.1 s |
+| STT latency (segment start → emit) | 11.6–12.9 s | 2.4–3.7 s | 13.7–15.8 s |
+| Behind segment end (staleness at commit) | **~4 s** (decode-bound) | — | stale audio re-committed |
+| Recurring `(Song)`/`(Subscribe)` hallucinations | none (music gaps produce no captions) | n/a | n/a |
+
+Decode round-trips measured ~3.5–5.0 s per 8 s segment (≈0.5× realtime) — the worker keeps up at true
+realtime, so the commit lag is bounded by segment duration + decode, with **no growing backlog**.
+
+## Controlled-run note
+
+The controlled run's absolute emit-lags (median ~100 s) and 1.59× wall are a **measurement artifact**:
+the feed loop's `Thread.Sleep(10)` sleeps ≈15.6 ms on Windows (OS timer granularity), pacing audio at
+~1.57× wall. It is not engine behavior; the real-App run (true WASAPI realtime) is the authoritative
+latency and shows ~4 s staleness at commit with no backlog.
+
+## Decision (recorded 2026-08-05)
+
+**Slice 10 answered its research question:** segment-based native streaming preserves faster-whisper
+`small`'s accuracy advantage (32.6% vs 51.2%) while eliminating the stale 20–40 s commit backlog — one
+fresh FINAL per ~8.2 s segment, ~4 s behind segment end, FINAL-only. faster-whisper stays **opt-in**
+(`UC_STT_ENGINE=fasterwhisper-native`); the **ggml-base production default is unchanged (frozen)**.
+Documented tradeoff: the 8 s `MaxSegmentDuration` cap can split a sentence mid-word (tunable via
+`UC_NATIVE_MAX_SEGMENT`). Promotion to default is out of scope (freeze) and would be a separate decision.
+Evidence: `TEST_REPORT.md` (Slice 10), CHANGELOG v0.5.19; raw logs
+`artifacts/samples/realapp_native_streaming.log`, `%TEMP%\opencode\sttnative_small_realtime.log` (+ `.csv`,
+`hyp_sttnative_small.txt`).
+
+# Slice 11 — Native-Streaming Segment-Boundary Tuning: max-segment 8/10/12 s sweep (2026-08-05)
+
+## Purpose
+
+Per user after the Slice 10 PASS: tune the opt-in `fasterwhisper-native` segment boundaries. Test
+`MaxSegmentDuration` around 8/10/12 s; measure whether longer segments reduce mid-sentence splits;
+confirm latency/backlog stays bounded; keep `SilenceHangover = 0.7 s` fixed; change no worker
+protocol / ggml-base / windowed-engine path. Goal is **accurate + natural sentence boundaries + bounded
+live latency**, the legitimate basis for any future default-selection decision — not WER alone.
+
+## Method
+
+- Additive `sttnative` benchmark improvements: `timeBeginPeriod(1)`/`timeEndPeriod(1)` around the
+  realtime feed (fixes the Slice 10 `Thread.Sleep(10)` ≈ 15.6 ms timer-granularity pacing artifact →
+  controlled pacing now ~1.1× realtime) and a mid-sentence-split metric (FINALs ending without
+  terminal punctuation = forced boundary cuts; short fragments ≤2 words and unterminated).
+- Three runs on `uc_video_full_16k.wav` (288.79 s) vs the `fil-orig` reference, small int8, `tl`,
+  realtime feed, `--max-segment 8/10/12`, hangover fixed 0.7 s. WER via the shared `stt_compare.py`
+  normalization. Logs: `%TEMP%\opencode\sttnative_max{8,10,12}.log`/`.csv`/`hyp_sttnative_max{8,10,12}.txt`.
+
+## Results
+
+| Metric | max 8 s | max 10 s | max 12 s |
+|---|---|---|---|
+| FINALs | 32 | 26 | 22 |
+| Commit cadence | **13.3 FINALs/120 s** (~9 s/caption) | 10.8 (~11 s) | 9.1 (~13 s) |
+| WER vs fil-orig (norm) | 32.6% | 33.2% | **30.0%** |
+| Partials | 0 | 0 | 0 |
+| Mid-sentence splits (unterminated FINALs) | **10/32 (31%)** | 11/26 (42%) | 10/22 (45%) |
+| Short fragments (≤2 words, unterminated) | 0 | 1 | 1 |
+| Stop flush | none (last speech seg committed before music tail) | 1 | 1 |
+| End-of-audio cap behavior | clean | `Pag-pag-pag…` stutter on capped segment spanning the music tail | truncated `tunog` fragment |
+| Realtime factor (wall/audio) | 1.13× | 1.11× | 1.14× |
+| Emit lag behind segment end | ~5 s (steady, no growth) | ~5 s (steady) | ~5 s (steady) |
+
+## Findings
+
+1. **Longer segments do NOT reduce mid-sentence splits.** The split *fraction* worsens 31% → 42% →
+   45%. The cap still force-closes mid-sentence during continuous speech; a longer cap just does it
+   less often while each forced cut now discards more in-flight content (e.g. at 12 s: FINAL 14 ends
+   mid-word "…pagpapahapag-", and the final sentence is cut across FINAL 21/22 into a bare `tunog`).
+   The 8 s default has the lowest split fraction.
+2. **Latency/backlog is bounded at all three caps.** Emit stays ~5 s behind each segment's speech end
+   with no growth; worst decode ~8 s for a capped 12 s segment — still < segment length, so the worker
+   keeps up at realtime (all runs 1.11–1.14× wall).
+3. **Longer caps add end-of-audio cap risk.** A segment force-closed at the cap that spans into the
+   music tail decoded as a `Pag-pag-pag…` stutter (10 s) and a truncated `tunog` (12 s); at 8 s the
+   last speech segment commits before the tail (clean). This is the Entry 12 §8 flagged risk (longer
+   segments bridging non-speech).
+4. **12 s WER gain is a boundary artifact, not a decoding gain.** 30.0% vs 32.6% comes from fewer
+   force-close boundaries; it costs ~46% responsiveness (9.1 vs 13.3 FINALs/120 s, captions every
+   ~13 s instead of ~9 s).
+5. **8 s reproducibility:** the 8 s run reproduces Slice 10's WER exactly (32.6%), confirming the
+   timer fix did not alter accuracy and the controlled run is now a valid pacing baseline.
+
+## Decision (recorded 2026-08-05)
+
+**Keep `MaxSegmentDuration = 8 s`** as the native engine's default — no production or knob-default
+change. The sweep shows the 8 s cap is the best balance of boundary naturalness (lowest split fraction),
+responsiveness (highest cadence), and robustness (no end-of-audio cap hallucinations). The kept default's
+real-App latency/backlog evidence is the Slice 10 real-App run
+(`artifacts/samples/realapp_native_streaming.log`); no redundant re-run was needed. Worker protocol /
+ggml-base / windowed-engine paths untouched. Evidence: `TEST_REPORT.md` (Slice 11), Entry 12,
+  CHANGELOG v0.5.20; raw logs `%TEMP%\opencode\sttnative_max{8,10,12}.log` (+ `.csv`, `hyp_sttnative_max{8,10,12}.txt`).
+
+# Slice 12 — Faster-Whisper Native-Streaming Live Partials: Chrome-Live-Caption-style on the opt-in engine (2026-08-05)
+
+## Purpose
+
+After the Slice 10/11 gate closed with the "one FINAL per completed segment, 0 live partials"
+tradeoff, the goal is the Chrome-Live-Caption-style experience on `fasterwhisper-native` only:
+incremental live partial text while the speaker is still talking, a stable FINAL at/near speech end,
+no wire-protocol change, translation OFF, ggml-base untouched. The key measurement is **first
+visible partial latency** (T4 = speech onset → first partial), not first FINAL.
+
+## Method
+
+Additive implementation: `SpeechSegmentDetector.TryGetPartial` (bounded trailing-window snapshot of
+the in-progress segment; refused while idle/hangover/after close; capture time = window start),
+`FasterWhisperEngineOptions.PartialDecodeInterval` (default 0 = disabled) + `PartialDecodeWindow`
+(4 s), and `FasterWhisperNativeStreamingEngine` cadence dispatch with at most one partial decode in
+flight/queued (ticks deferred, not queued). Benchmark `sttnative` gains `--partial-interval` /
+`--partial-window`, a first-partial/first-caption-lag/partial-cadence/lag-distribution metric block,
+and a CSV partial table + summary columns. FINAL-only behavior (Slice 10/11) is byte-for-byte
+preserved when the interval knob is left at 0.
+
+One controlled run, identical composition to Slice 10/11 (small int8, tl, hangover 0.7 s, max
+segment 8 s, realtime feed) on `uc_video_full_16k.wav` (288.79 s) vs the `fil-orig` reference, with
+`--partial-interval 1 --partial-window 4`. Translation OFF.
+
+## Results (vs the Slice 11 FINAL-only 8 s baseline)
+
+| Metric | Slice 11 (FINAL-only) | Slice 12 (partials ON) |
+|---|---|---|
+| First visible caption | 18.85 s (first FINAL) | **9.19 s (first partial)** |
+| First caption lag (onset → caption) | n/a | **5.59 s (T4)** |
+| Caption cadence | 13.3 FINALs/120 s | 19.5 partials/120 s (+ 13.3 FINALs/120 s) |
+| Active-line updates while speaking | none (FINAL-only) | ~3 s apart during speech |
+| FINALs | 32 | 32 (**text-identical**) |
+| WER (in-harness) | 33.19% | 33.19% (identical stream; no regression) |
+| Max FINAL emit-lag | 43.7 s | 56.7 s (one 17.5 s decode spike; plateau ~50 s) |
+| Realtime factor | 1.13× | 1.18× (partial decodes add ~5 % wall) |
+| Dropped/reordered captions | none | none |
+| Stop flush | none | none |
+| Hallucination/repetition | baseline | no new artifacts |
+
+Live partial behavior (first segment): `PARTIAL "Magandang"` (9.19 s) → `"ang buhay, ako sigino
+ang galbes, ang gurun nyo para sa asignot…"` (12.26 s) → `"pabun nyo para sasignoturong instruksyon
+ng Wicang Filipino."` (15.26 s) → `FINAL[1]` full sentence (18.62 s). The active overlay line
+replaces with each partial, then the FINAL.
+
+## Findings
+
+1. **First-visible-partial is the win:** the first partial appears 5.59 s after speech onset — ~13 s
+   earlier than the FINAL-only first caption — and updates every ~3 s while the speaker continues.
+   This is the Chrome-like behavior.
+2. **No accuracy regression:** the FINAL stream is text-identical to the Slice 11 8 s run (32/32);
+   in-harness WER 33.19% both (the report's 32.6% is the `stt_compare.py` normalization, not used
+   here).
+3. **Bounded but elevated latency:** partial decodes add ~5 % wall (1.13× → 1.18×) and push the tail
+   FINAL emit-lag plateau to ~50 s (vs ~43 s FINAL-only); one 17.5 s decode spike (machine
+   contention) produced the 56.7 s max. The plateau is flat — no growing backlog; nothing dropped;
+   the last FINAL emitted before the feed completed.
+4. **Rolling-window tradeoff (expected):** the 4 s partial window shows a rolling 4 s of the segment;
+   the FINAL then reveals the earlier words not shown by the last partial. Chrome Live Caption shows a
+   similar rolling window; a wider window would raise partial decode cost.
+5. **Partials inherit the baseline's ASR quirks** (e.g. the "Paano kong?" repetition) — they are
+   re-decodes of the same audio, not new artifacts.
+
+## Decision (recorded 2026-08-05)
+
+**PASS** — Slice 12 closes out. `ggml-base` remains the production default; faster-whisper stays
+opt-in; this benchmark does not constitute promotion. The partial knobs default off
+(`PartialDecodeInterval = 0`), so production behavior is unchanged unless a user opts in via
+`UC_STT_ENGINE=fasterwhisper-native` + `UC_NATIVE_PARTIAL_INTERVAL=1`. Evidence:
+`TEST_REPORT.md` (Slice 12), Entry 13, CHANGELOG v0.5.21; raw log
+`%TEMP%\opencode\sttnative_partials_slice12.log` (+ `.csv`).
+
+## Promotion (Entry 14, 2026-08-05 — ADR-0008)
+
+**The Slice 12 decision above was superseded by the user-approved production promotion (Entry 14 /
+ADR-0008):** `fasterwhisper-native` + live partials (interval 1 s, window 4 s) is now the production
+STT default via `SpeechEngineFactory`; `ggml-base` is the explicit fallback
+(`UC_STT_ENGINE=ggml-base`). This benchmark is the validation evidence behind the promotion (first
+visible partial 5.59 s, FINAL stream text-identical to Slice 11, WER 33.19% in-harness, backlog
+bounded). No new benchmark runs were required for the promotion — the selected configuration is
+exactly the one measured above.
+
+# Entry 16 — CPU-thread gate: `--threads 12` vs `--threads 4` (2026-08-06)
+
+## Purpose
+
+The promoted path sustained ~77% of the machine (STT worker, all 12 cores per decode). Decision:
+cap decode threads at 4 (CPU optimization slice). Gate: prove the cap causes **no caption regression**
+— decode wall, realtime factor, FINAL stream, and WER must be unchanged.
+
+## Method
+
+`sttnative` (now with `--threads`) run twice on `uc_video_full_16k.wav` (288.79 s) vs the `fil-orig`
+reference, identical Slice 12 composition (small int8, tl, hangover 0.7 s, max segment 8 s, partials
+interval 1 s / window 4 s, realtime feed): once at `--threads 12` (pre-fix baseline) and once at
+`--threads 4` (the new production default).
+
+## Results
+
+| Metric | threads=12 | threads=4 |
+|---|---|---|
+| first FINAL | 17.98 s | 18.12 s |
+| FINALs | 32 (32 feed / 0 flush) | 32 (31 feed / 1 flush) |
+| **WER (committed, vs `fil-orig`)** | **33.2%** | **33.2%** |
+| **wall vs audio (realtime)** | **1.18×** | **1.18×** |
+| first partial | 13.27 s | 13.30 s |
+| emit-lag vs segStart (min/med/max) | 14.38 / 39.95 / 58.64 s | 14.51 / 41.27 / 59.67 s |
+| mid-sentence splits | 10/32 | 10/32 (same split points) |
+| short fragments | 0 | 0 |
+
+**FINAL transcript text is 100% identical between the two runs (0 textual diffs across all 32 FINALs).**
+
+## Decision
+
+**PASS — cap the production default at `Threads = 4`** (`UC_NATIVE_THREADS`, default 4, clamped).
+Decode wall is thread-count-invariant for real speech (consistent with the Entry 16 decode sweep);
+capping at 4 cuts sustained STT worker CPU from ~77% to ~32% of the machine (2.4×) with an identical
+caption stream and no latency/backlog change. Real-App CPU evidence + full 382/382 test suite in
+`TEST_REPORT.md` (Entry 16); raw logs `%TEMP%\opencode\cpu_gate_t12.log/.csv` and
+`cpu_gate_t4.log/.csv`.
+
 # TD-001 — Resampler benchmark: windowed-sinc vs NAudio `WdlResampler` (2026-08-05)
 
 ## Purpose
@@ -565,3 +806,208 @@ algorithm choice — not a reason to switch.
 
 Execution evidence: resample runs on `jfk.wav` + `jfk_noisy.wav`, both listed in
 `docs/reports/TEST_REPORT.md` (TD-001). Full suite 302/302, Release build 0 warnings/0 errors.
+
+# Post-core — Tagalog model sweep: does a bigger faster-whisper model beat production? (2026-08-06)
+
+## Purpose
+
+Post-core product experiment (production frozen at v0.5.25). The remaining product gap is Tagalog
+accuracy (~33% committed WER on the lecture corpus). Answer: is there a faster-whisper model that
+materially beats the production `small` int8 without sacrificing the Chrome-like live-caption behavior
+(first caption ~3 s, live partials, bounded backlog, realtime-safe)?
+
+## Method
+
+Identical production composition for every run: `sttnative` (NativeStreamingBenchmark) on
+`uc_video_full_16k.wav` (288.79 s real Tagalog lecture) vs the `fil-orig` reference, `tl`, hangover
+0.7 s, max segment 8 s, partials interval 1 s / window 4 s, realtime feed, 10 ms chunks, `--threads 4`,
+int8. Candidates: `small` (production baseline), `base`, `tiny` (all cached locally), then `medium`
+(downloaded, ~1.5 GB) per user decision. Decode-cost side-by-side via the Entry 16 worker round-trip
+sweep (8 s speech slice, 4 threads, tl). Logs: `%TEMP%\opencode\tl_sweep_{small,base,tiny,medium}.log/.csv`.
+
+## Results
+
+| Metric | **small (PROD)** | base | tiny | medium |
+|---|---|---|---|---|
+| **WER (committed, vs `fil-orig`)** | **33.2%** | 54.1% | 76.2% | **29.4%** |
+| first FINAL | 16.5 s | 14.1 s | 13.1 s | 28.3 s |
+| first partial | 8.2 s | 6.9 s | 6.5 s | 20.2 s |
+| partials per 120 s | 28.3 | 72.3 | 64.8 | **3.7** |
+| FINALs per 120 s | 13.3 | 13.3 | 9.6 | 12.1 |
+| wall vs audio | 1.12× | 1.10× | 1.09× | 1.15× |
+| emit-lag vs segStart (med / max) | 27.7 / 39.9 s | 23.4 / 37.2 s | 22.3 / 34.4 s | **59.9 / 85.6 s** |
+| mid-sentence splits | 10/32 | 4/32 | 6/23 | 6/29 |
+| short fragments | 0 | 0 | 1 | 0 |
+| decode cost (8 s slice, 4 thr) | 2.86 s wall, **1.43 cpu-s/s** | — | — | 8.87 s wall, **4.43 cpu-s/s** |
+| single-slice realtime | 2.79× | — | — | **0.90×** (below realtime) |
+
+## Findings
+
+- **Within the cached family, accuracy scales with model size and `small` is best.** base (+21 pts WER)
+  and tiny (+43 pts) are decisively worse; their only advantages are faster first captions and fewer
+  splits (sentence coherence), which do not compensate.
+- **`medium` is an accuracy-only candidate, not a production candidate.** It improves WER ~4 pts
+  (33.2% → 29.4%) but the live-caption behavior degrades sharply: decode cost is **3.1×** (1.43 → 4.43
+  CPU-seconds per audio-second), single-slice decode drops **below realtime (0.90×)** — a continuous
+  lecture therefore backlogs: emit-lag median roughly doubles (27.7 → 59.9 s, max 39.9 → 85.6 s), first
+  partial slips 8.2 → 20.2 s, and partial cadence collapses 28.3 → 3.7 per 120 s (partials barely flow).
+  2 FINALs were still in the queue at Stop (flushed). This fails the user's promotion rule ("must not
+  sacrifice the Chrome-like live-caption behavior").
+- **Hallucination/repetition is input-driven, not model-size-driven.** All models stutter the same
+  `Paano kong?`/`Paano kung?` ×6 on the same segment (FINAL 2) — a corpus/audio artifact, present in
+  small, base, and medium identically. `tiny` adds 1 short fragment. No model produces extra
+  end-of-audio cap stutter at the 8 s cap (Slice 11 finding unchanged).
+- **CPU-only is the fundamental blocker for Tagalog accuracy.** The accuracy lever is model size, and
+  the only sizes that beat `small` (medium +~4 pts, large-v3 ~+10–15 pts expected) decode too slowly on
+  this 12-core CPU machine to stay realtime for continuous speech. A materially better Tagalog WER
+  requires a GPU/accelerated STT path — out of scope for the frozen core.
+
+## Decision
+
+**No promotion. Production default stays `fasterwhisper-native` + `small` int8 (v0.5.25 frozen).**
+`base`/`tiny` rejected on accuracy; `medium` recorded as an **accuracy-only candidate** (WER 29.4%)
+with documented live-caption cost (below-realtime decode, ~2× backlog, collapsed partial cadence) — a
+candidate only for a future hardware-accelerated or offline-batch path. `large-v3` was **not
+benchmarked** (per user; ~3 GB download, and CPU decode is projected to be ~2–3× realtime, i.e. it
+would fail the same live-caption gate by a wider margin). Tagalog accuracy improvement is closed as a
+CPU-feasibility dead end for the frozen core; it remains an open product item pending a hardware path
+or a user verdict that the accuracy gap is unacceptable.
+
+# Translation provider benchmark: Argos vs OPUS-MT vs NLLB (2026-08-06)
+
+## Purpose
+
+Post-core product experiment (production frozen at v0.5.26). The Phase 2 diagnosis (Chrome vs
+UniversalCaptions divergence) isolated the remaining product gap to **translation quality** — the STT,
+capture, committer, and overlay boundaries were all proven clean (A/B/E in the diagnosis). The App
+ships Argos Translate (`translate-en_tl-1_9`) for en→tl. Answer: is there a local, offline, fast
+enough translation provider that produces materially more natural Filipino than the shipped Argos
+engine, while staying within the live-caption CPU budget?
+
+## Method
+
+- **Input corpus is fixed and identical for every candidate**: the exact 11-line English STT transcript
+  (`english_corpus.txt`, repo root, untracked) extracted from the real practice-group audio
+  (`english_sustained_90s.wav` looped in the Phase 2 VLC leg). Translation-only — no STT contamination.
+- **Argos (baseline)**: drives the real bundled `argos_translate_server.py` over line protocol (same
+  process + model the App uses), `source=en`, `target=tl`, exactly as `ArgosTranslationEngine` does.
+- **OPUS-MT**: the official `Helsinki-NLP/opus-mt-en-tl` converted to CTranslate2 int8 via
+  `ct2-transformers-converter` (the `gaudi/opus-mt-en-tl-ctranslate2` HF repo is **broken** — it has no
+  `model.bin`; `manancode/opus-mt-en-tl-ctranslate2-android` failed HF download with a 500). Runs
+  CTranslate2 + sentencepiece in the installed bundle python.
+- **NLLB-200-distilled-600M**: `JustFrederik/nllb-200-distilled-600M-ct2-int8` (pre-converted CT2,
+  622 MB int8) in the bundle python. Tokenized with the `tokenizers` lib only (`tokenizer.json`, no
+  transformers dependency), `eng_Latn` source prefix + `tgl_Latn` target prefix.
+- Decode params kept equal across the CT2 candidates (`beam_size=4`, `max_decoding_length=256`,
+  `repetition_penalty=1.3`). Per-line wall-clock latency, model load time, first-translation latency,
+  peak working set (CT2 in-process via psapi; Argos via CIM command-line match).
+- Harness: `%TEMP%\opencode\txbench\harness_txbench.py`; outputs in
+  `%TEMP%\opencode\txbench\out\{argos,opus-mt,nllb}.txt`.
+
+## Results
+
+| Metric | **Argos (PROD)** | OPUS-MT | NLLB |
+|---|---|---|---|
+| **model load** | 3.7 s (process+model) | 275 ms | 1.8 s |
+| **first translation** | 2.5 s | 128 ms | 782 ms |
+| **avg / line** | 311 ms | 344 ms | 577 ms |
+| **max / line** | 2.5 s | 2.8 s | 930 ms |
+| **peak RSS** | 500 MB | 316 MB | 1.14 GB |
+| **same-model lineage?** | **yes — this IS OPUS-MT** | (baseline) | no |
+| **repetition loops** | 0/11 | **2/11** (lines 3, 4) | 0/11 |
+| **license** | MIT (Argos) + OPUS-MT | **Apache-2.0** | **CC-BY-NC-4.0** |
+
+Line-by-line output (Argos → OPUS-MT → NLLB), selected lines:
+
+| # | EN source | Argos (PROD) | OPUS-MT | **NLLB** |
+|---|---|---|---|---|
+| 1 | Hello and welcome to the first meeting of our Conversational Tagalog Practice Group. | `...malugod na tanggapin sa unang pulong ng aming Conversional Tagalog Practice Group.` | `...tanggapin ... ating Conversional Tagalog Tagalog Practice Group.` | `Hello at welcome sa unang pagpupulong ng aming Talking Tagalog Practice Group.` |
+| 2 | My name is Maria. | `Ang pangalan ko ay Maria.` | `Ang pangalan ko po ay Maria.` | `Si Maria ang pangalan ko.` |
+| 3 | What is your name? | `Ano ang pangalan mo?` | **loop** (`at ano ang pangalan mo?` ×40+) | `Ano ang pangalan mo?` |
+| 4 | Good morning everyone. | `Magandang umaga lahat.` | **loop** (`Magandang umaga bawa't isa, maganda kayong lahat ng lahat…`) | `Maligayang umaga sa lahat.` |
+| 9 | …speak slowly and clearly, and to listen carefully to each other. | `…magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa.` | `…makinig na mabuti.` (drops the tail) | `…magsalita nang mabagal at malinaw, at pakinggan ang isa't-isa.` |
+| 11 | Great work everyone, that is the end of today's practice session. | `Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay.` | `Malaking gawain ang lahat, iyan ang katapusan ng sesyon ng pagsasanay sa ngayon.` | `Maganda na trabaho lahat, iyon ang pagtatapos ng sesyon sa pagsasanay ngayon.` |
+
+## Findings
+
+- **Argos en→tl IS Helsinki-NLP OPUS-MT en→tl.** The shipped `translate-en_tl-1_9` package contains
+  `sentencepiece.model` (826,681 B) and `model/shared_vocabulary.json` (1,106,323 B) — **byte-identical
+  to the official OPUS-MT files** (verified by SHA-256); `model.bin` differs only by Argos's export
+  format (`add_source_eos=true`, `decoder_start_token=<s>`). So "Argos vs OPUS-MT" is **the same
+  translation model**; switching to a raw OPUS-MT CTranslate2 model is not a quality change.
+- **Raw OPUS-MT alone is worse, not better**: without Argos's stanza SBD + post-processing it
+  degrades into long repetition loops (2/11 lines) and drops tails (line 9). This confirms Argos's
+  wrapper adds real value on top of the model — and that the ceiling of the whole OPUS-MT family is
+  the register/quality ceiling of the same model.
+- **The real differentiator is NLLB, and it is materially more natural.** `pagpupulong` (meeting) vs
+  `pulong`; `Maligayang umaga sa lahat` vs `Magandang umaga lahat`; `Si Maria ang pangalan ko` vs
+  `Ang pangalan ko ay Maria`; `Maganda na trabaho` vs `Dakilang gawa`; `pakinggan` vs `makinig na
+  mabuti`; no `Conversional` false-friend. NLLB reads like spoken Tagalog, not model-ese, and has
+  **zero repetition loops**. This is the direction the Chrome-comparison gap points to.
+- **Argos has a rare first-call hallucination**: under some process states it prepends a spurious
+  `Eksistensiyal` and shifts to `tinanggap/ating` on line 1 (observed repeatedly in the corpus run,
+  absent when line 1 is translated first in a fresh process). A reliability note, not the main driver.
+- **NLLB costs are real but live-caption-compatible**: avg 577 ms/line (vs 311 ms Argos) — both far
+  under the caption cadence budget (FINALs flow every few seconds, partials every ~1–3 s); peak RSS
+  1.14 GB vs 500 MB (fits the machine easily); model load 1.8 s on cold start. No offline-violating
+  dependency (tokenizers-only, no transformers).
+- **License is the blocking decision (Must-Not-Decide, AGENT_DECISION_POLICY):** OPUS-MT is
+  Apache-2.0 (commercial OK); NLLB-200 is **CC-BY-NC-4.0 (non-commercial)** as published by Facebook
+  — using it in a distributed commercial product requires a license verdict from the user (or a
+  commercially-licensed NLLB variant, e.g. Meta's `nllb-200-distilled-600M` under commercial terms or
+  an Apache/MIT conversion).
+
+## Decision
+
+**No provider change made — docs-only benchmark.** The evidence shows the product gap is translation
+register, and NLLB is the strongest local, offline, CPU-feasible candidate (natural Filipino, no
+loops, fits the live budget) with one open blocker: **CC-BY-NC-4.0 licensing is a user decision, not
+an agent decision.** OPUS-MT is dismissed as a separate candidate because Argos already ships it
+(same model, better wrapper). Presentation to the user with license facts is the next step; any
+provider swap would be a user-approved product change (ADR + implementation), not an agent default.
+
+## User verdict (2026-08-06) — NLLB NOT promoted
+
+User decision (directive, not agent-decided): **do not promote NLLB.** The CC-BY-NC-4.0
+(non-commercial) license makes it **unsuitable as the production provider** if the app may be
+distributed commercially. Standing decisions:
+
+1. **Argos en→tl stays the production baseline** — no core changes.
+2. **NLLB is an experimental/reference result only** — documented for its better naturalness but
+   explicitly **not production-eligible because of CC-BY-NC-4.0**.
+3. **Continue searching for a commercially usable local EN→TL model/provider**, prioritizing in
+   order: permissive commercial license (Apache/MIT/BSD or equivalent) → offline operation →
+   reasonable CPU latency → good Filipino naturalness → small enough for the existing installer.
+4. **Benchmark every next candidate against the exact same transcript** (`english_corpus.txt`) that
+   exposed the Argos problem.
+5. **Promotion rule (user-specified):**
+
+   > Better Filipino than Argos + commercially usable license + live-caption latency acceptable on
+   > this machine.
+
+6. **Do not sacrifice the licensing requirement just because NLLB sounds substantially better.** If
+   no qualifying replacement is found, **Argos remains the production provider** and NLLB stays an
+   experimental benchmark result.
+
+## Candidate 3 — MADLAD-400-3B-MT (Apache-2.0): DISQUALIFIED (2026-08-06)
+
+Follow-up per the user's directive to keep searching for a commercially usable local EN→TL model.
+**`google/madlad400-3b-mt`** (Google, **Apache-2.0** — commercial OK, offline-capable) is the strongest
+permissively-licensed multilingual MT (covers `tgl` as `<2fil>`). Tested via the pre-converted CT2
+int8 (`Heng666/madlad400-3b-mt-ct2-int8`, 2.8 GB) in the bundle python, T5-style
+(`<2eng>` source prefix → `<2fil>` target prefix).
+
+**Results on the same corpus:**
+
+| Metric | **Argos (PROD)** | MADLAD-400-3B-MT |
+|---|---|---|
+| **avg / line** | 311 ms | **2.8 s** (beam4+no-rep2) to **22.7 s** (beam4+rep-penalty) |
+| **max / line** | 2.5 s | 22.7 s |
+| **quality** | stilted but on-topic | **verbose/hallucinating** (`My name is Maria.` → `narito ka na, Maria…`; line 1 → a rambling paragraph) |
+| **model size** | 500 MB process | **2.8 GB int8** (~3× the STT model) |
+| **license** | MIT (Argos) + OPUS-MT | Apache-2.0 ✓ |
+
+**Verdict: fails the user's promotion rule on both latency and quality.** The 3B-parameter T5 decoder
+is far too slow on this 12-core CPU for live captions (8.5–73× Argos per line), its output on short
+caption lines is verbose and off-target, and 2.8 GB blows the installer budget. Even at 12 threads
+and aggressive decoding the floor is ~2.8 s/line. **Not a production candidate on this machine.**

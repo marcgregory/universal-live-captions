@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using UniversalCaptions.App.Pipeline;
 using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Captions;
@@ -794,7 +795,9 @@ public class CaptionPipelineTests
         int captureCalls = 0;
         var captures = new List<FakeAudioCapture>();
         var stt = new FakeSpeechToTextEngine();
-        var statuses = new List<PipelineStatus>();
+        // Thread-safe so the poll below never races with the StatusChanged handler firing on the
+        // pipeline's own thread while the test enumerates (pre-existing flaky race, hardened).
+        var statuses = new ConcurrentQueue<PipelineStatus>();
         using var pipeline = new CaptionPipeline(
             _ =>
             {
@@ -813,7 +816,7 @@ public class CaptionPipelineTests
             _ => stt,
             new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
             monitor);
-        pipeline.StatusChanged += (_, s) => statuses.Add(s);
+        pipeline.StatusChanged += (_, s) => statuses.Enqueue(s);
 
         pipeline.Start(null, null);
 
@@ -824,8 +827,8 @@ public class CaptionPipelineTests
 
         Assert.Single(captures);
         Assert.False(pipeline.IsRunning);
-        Assert.False(stt.IsRecognizing);
         await pipeline.StopAsync();
+        Assert.False(stt.IsRecognizing);
         Assert.True(stt.IsDisposed);
     }
 }

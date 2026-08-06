@@ -9,11 +9,12 @@ using UniversalCaptions.Core.Speech;
 namespace UniversalCaptions.App.Tests;
 
 /// <summary>
-/// Slice 7 render-path tests: proves the overlay's <c>UpdateCaptionItems</c>/<c>ReconcileHistory</c>
-/// reuse TextBlock instances by identity and that the overlay is committed-FINAL-only — the live/
-/// partial active line is never painted, so Partial updates can never churn the caption panel, and a
-/// Final appends a fresh block. Runs on a dedicated STA thread because WPF element construction
-/// requires STA.
+/// Slice 7 render-path tests (updated for the Entry 15 overlay integration): proves the overlay's
+/// <c>UpdateCaptionItems</c>/<c>ReconcileHistory</c> reuse TextBlock instances by identity, paint the
+/// live/partial active line as a single mutable block that partials rewrite in place, and freeze a
+/// Final into history while removing the active block — so partials never churn the caption panel and
+/// never leak into the committed history. Runs on a dedicated STA thread because WPF element
+/// construction requires STA.
 /// </summary>
 public class CaptionRenderIdentityTests
 {
@@ -60,7 +61,7 @@ public class CaptionRenderIdentityTests
     }
 
     [Fact]
-    public void Partial_churn_never_paints_an_active_block_and_history_is_unaffected()
+    public void Partial_churn_paints_and_rewrites_the_same_active_block_and_history_is_unaffected()
     {
         RunOnSta(() =>
         {
@@ -71,6 +72,8 @@ public class CaptionRenderIdentityTests
                 History: new[] { D("hello world", 1), D("how are you", 2) }));
 
             TextBlock[] before = caller.HistoryBlocks().ToArray();
+            TextBlock activeBefore = Assert.IsType<TextBlock>(caller.ActiveBlock());
+            Assert.Equal("hell", activeBefore.Text);
 
             // A newer partial for the same in-flight utterance arrives.
             caller.Update(new CaptionDisplayModel(
@@ -85,13 +88,14 @@ public class CaptionRenderIdentityTests
                 Assert.Same(before[i], after[i]);
             }
 
-            // The live/partial line is never painted: no active block exists.
-            Assert.Null(caller.ActiveBlock());
+            // The active line is painted and rewritten in place: same block instance, new text.
+            Assert.Same(activeBefore, caller.ActiveBlock());
+            Assert.Equal("hello", caller.ActiveText());
         });
     }
 
     [Fact]
-    public void Partial_stream_never_renders_an_active_block()
+    public void Growing_partial_stream_paints_one_live_block_with_no_history_churn()
     {
         RunOnSta(() =>
         {
@@ -100,30 +104,83 @@ public class CaptionRenderIdentityTests
                 ActiveLine: D("the quick", 0),
                 History: Array.Empty<CaptionDisplayLine>()));
 
+            TextBlock active = Assert.IsType<TextBlock>(caller.ActiveBlock());
+            Assert.Equal("the quick", active.Text);
+
             caller.Update(new CaptionDisplayModel(
                 ActiveLine: D("the quick brown", 0),
                 History: Array.Empty<CaptionDisplayLine>()));
 
-            // Growing partials produce no display update at all.
-            Assert.Null(caller.ActiveBlock());
+            // The partial stream paints one live block and mutates it in place; no history is born.
+            Assert.Same(active, caller.ActiveBlock());
+            Assert.Equal("the quick brown", caller.ActiveText());
             Assert.Empty(caller.HistoryBlocks());
         });
     }
 
     [Fact]
-    public void Final_commits_a_fresh_block_and_never_paints_active()
+    public void No_partial_is_ever_written_into_committed_history()
     {
         RunOnSta(() =>
         {
             var caller = CreateOverlay();
-            // The spoken utterance finalizes into history; its live active counterpart is not rendered.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            // The live partial is only ever the active block, never a committed history block.
+            Assert.NotNull(caller.ActiveBlock());
+            Assert.Empty(caller.HistoryBlocks());
+            Assert.DoesNotContain(caller.ActiveBlock(), caller.HistoryBlocks());
+        });
+    }
+
+    [Fact]
+    public void Final_freezes_active_into_history_and_removes_the_active_block()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            // The live partial is painted while the utterance is in flight.
             caller.Update(new CaptionDisplayModel(
                 ActiveLine: D("the quick brown fox", 1),
+                History: Array.Empty<CaptionDisplayLine>()));
+            Assert.NotNull(caller.ActiveBlock());
+
+            // The utterance finalizes: the active line freezes into history and the active block
+            // is removed so the same text is never shown twice.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: null,
                 History: new[] { D("the quick brown fox", 1) }));
 
             Assert.Single(caller.HistoryBlocks());
             Assert.Equal("the quick brown fox", caller.HistoryBlocks()[0].Text);
             Assert.Null(caller.ActiveBlock());
+        });
+    }
+
+    [Fact]
+    public void Cleared_active_line_removes_the_active_block_and_keeps_history()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("partial text", 7),
+                History: new[] { D("committed line", 1) }));
+            Assert.NotNull(caller.ActiveBlock());
+
+            // Stop/session end clears the active line; the committed history stays intact.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: null,
+                History: new[] { D("committed line", 1) }));
+
+            Assert.Null(caller.ActiveBlock());
+            Assert.Single(caller.HistoryBlocks());
+            Assert.Equal("committed line", caller.HistoryBlocks()[0].Text);
         });
     }
 

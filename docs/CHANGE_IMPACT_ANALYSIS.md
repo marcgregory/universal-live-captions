@@ -1,6 +1,6 @@
 # Universal Live Captions Change Impact Analysis
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Metadata
 
@@ -11,6 +11,762 @@ Last updated: 2026-08-05
 | Audience | Engineering, reviewers |
 | Owner | Engineering |
 | Status | Active |
+
+---
+
+## Entry 16 - CPU Optimization: Cap Faster-Whisper Decode Threads at 4 (UC_NATIVE_THREADS)
+
+Date: 2026-08-06
+
+> **Implementation status (2026-08-06): COMPLETE - production default `Threads` capped at 4.**
+> The promoted path sustained ~77% of the machine in the STT worker (every partial and FINAL decode
+> used all 12 cores via `FasterWhisperEngineOptions.Threads` = `Environment.ProcessorCount`). The
+> `UC_NATIVE_THREADS` env knob (default 4, clamped to [1, ProcessorCount]) is wired through
+> `SpeechEngineFactory.CreateNative` to the existing `--threads` worker arg. Formal `sttnative` gate:
+> FINAL stream 100% text-identical at 4t vs 12t (WER 33.2% both, 1.18x realtime both, same split
+> points), no latency/backlog change. Real-App CPU probe: STT worker system mean **77.4% -> 31.6%**
+> (max 88.2% -> 37.6%), App ~1%, first caption 3.72 s, overlay still producing. Full suite **382/382**
+> (8 new tests), Release 0 warnings/0 errors, `dotnet format` clean. Out of scope (unchanged): STT
+> engine selection, worker wire protocol, segmentation/8 s cap, partial behavior, overlay, Argos,
+> TD-001/002/005/016.
+
+### 1. Change Summary
+
+```text
+Change Title: Entry 16 - CPU optimization: cap faster-whisper decode threads at 4
+Change Type:        Performance tuning of the promoted production path (no behavior change; caption
+                    stream text-identical)
+Requirement Source: User decision (2026-08-06): proceed with UC_NATIVE_THREADS knob + production
+                    default Threads=4, isolated as a CPU optimization slice
+Priority:           High
+Estimated Effort:   Low (factory knob + worker-arg wiring + benchmark knob + tests)
+```
+
+### 2. Affected Modules
+
+- `src/UniversalCaptions.App/SpeechEngineFactory.cs` - `CreateNative` sets `FasterWhisperEngineOptions
+  .Threads = ResolveNativeThreads()` (new `UC_NATIVE_THREADS` knob: default 4, unparseable or
+  out-of-range [1, ProcessorCount] falls back to 4). ggml-base and windowed-fasterwhisper paths
+  untouched.
+- `src/UniversalCaptions.Speech/LineProtocolFasterWhisperProcess.cs` - worker arguments extracted into
+  `BuildWorkerArguments()` (behavior identical); `--threads` remains the single decode-thread control.
+- `src/UniversalCaptions.Benchmarks/NativeStreamingBenchmark.cs` - `sttnative` gains `--threads`
+  (default 4) so the gate can sweep decode threads.
+- Tests - `SpeechEngineFactoryTests` (default 4 / override / invalid fallback) and
+  `LineProtocolFasterWhisperProcessProtocolTests` (worker args carry `--threads`). The engine gains an
+  internal `Options` seam + `InternalsVisibleTo("UniversalCaptions.App.Tests")` for factory assertions.
+  Pre-existing flaky `CaptionPipelineTests` race hardened (`List` -> `ConcurrentQueue`).
+
+### 3. Impact Analysis
+
+- **Behavioral impact:** none - decode wall is thread-count-invariant for real speech; the FINAL stream
+  is text-identical (0 textual diffs across 32 FINALs), WER/realtime factor unchanged. Sustained STT
+  worker CPU drops ~2.4x (77.4% -> 31.6% system mean).
+- **Data/privacy:** none.
+- **Testability:** worker-arg propagation now asserted directly; factory defaults unit-tested; full
+  formal benchmark gate + real-App CPU probe repeated.
+- **Performance:** intended positive (the machine-share cut); a low-core machine keeps the default
+  clamped to its own ProcessorCount.
+- **Risks/mitigations:** knob preserved for machines that want more decode cores; no automatic engine
+  fallback added (ADR-0003 untouched).
+
+### 4. Verification Evidence
+
+- Full suite **382/382** (Release, 0 warnings/0 errors), `dotnet format` clean.
+- `sttnative` gate threads=12 vs 4 on `uc_video_full_16k.wav` vs `fil-orig` (logs
+  `%TEMP%\opencode\cpu_gate_t12.log/.csv`, `cpu_gate_t4.log/.csv`): WER 33.2% both, 1.18x both,
+  first FINAL 17.98 vs 18.12 s, emit-lag comparable, FINAL text identical.
+- Real-App CPU probe (speech + partials, translation OFF, default Threads=4): STT worker
+  379.6% single-core mean = **31.6% system** (was 77.4%); first caption 3.72 s; overlay max 16 lines
+  (`cpu_speech.csv` post-fix row, `cpu_summary.csv`).
+
+### 5. Decision
+
+**Approved and closed out (2026-08-06).** Production default `Threads = 4` via `UC_NATIVE_THREADS`.
+Docs updated (TEST_REPORT Entry 16 close-out, BENCHMARK_REPORT Entry 16 gate, CHANGELOG v0.5.24,
+PROJECT_STATUS/BUILD_PLAN/ROADMAP, CLAUDE.md).
+
+---
+
+## Entry 15 — Overlay Integration: Paint the Live Partial Active Line (Chrome-Like Live Partials Visible)
+
+Date: 2026-08-06
+
+> **Implementation status (2026-08-06): COMPLETE — overlay integration applied.**
+> The WPF overlay now paints the live/partial active line as a single mutable block that partials
+> rewrite in place, and freezes it into committed history on FINAL. This restores the Entry 7 display
+> policy (active line = latest partial) that commit `7d1c057` switched off in favour of
+> committed-FINAL-only. The change was driven by the real-App smoke test on the Entry 14 promoted
+> default (2026-08-06), which showed the engine emits partials but the overlay never displayed them —
+> so "Chrome-like live partials" was engine-level only. Slice 12 proved the engine's partial timing;
+> Entry 15 proves the WPF overlay displays those partials. Display-model policy (Tagalog-only display
+> while a translation is pending, leading-overlap strip, hide-until-translated) is unchanged. Full
+> suite **374/374** (2 new overlay render tests), Release 0 warnings/0 errors, `dotnet format` clean.
+
+### 1. Change Summary
+
+```text
+Change Title: Entry 15 — overlay integration: paint the live partial active line (replaces the
+              committed-FINAL-only display layer)
+Change Type:        Display-layer fix surfaced by the Entry 14 real-App smoke test (no STT / engine /
+                    workflow changes; ADR-0008 promotion untouched)
+Requirement Source: User decision (2026-08-06): do not undo ADR-0008; do not call the product
+                    Chrome-like until the overlay actually displays partials; smoke checks 2-3 stay
+                    N/A until the overlay paints partials
+Priority:           High
+Estimated Effort:   Low (restore Slice 7 active-block painting; keep the display-model policy)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.App/Overlay/CaptionOverlayWindow.xaml.cs` — `UpdateCaptionItems` now paints the
+  active line as a single mutable `TextBlock` (created on first appearance, text rewritten in place
+  on later partials, removed when `model.ActiveLine` is null: committed, stopped, or hidden while its
+  translation is pending). History reconciliation is unchanged (identity reuse by sequence); a Partial
+  never inserts or removes a history block; scroll fires only on a new-block insertion (the active
+  line's first appearance or a FINAL freeze). The `shouldUpdate` gate is unchanged (it already holds
+  the display while a translation-enabled partial is hidden, so no source-language flash). Class and
+  comment text updated from committed-FINAL-only to live-line painting.
+- Tests — `CaptionRenderIdentityTests` rewritten (4 → 6): partial paints and rewrites the same block
+  (identity preserved), a growing partial stream paints one block with no history churn, no partial
+  ever enters committed history, a FINAL freezes the active line into history and removes the active
+  block, a cleared active line (Stop) removes the block and keeps history, finalized blocks keep their
+  text instances and order.
+- Docs — Entry 15, CHANGELOG v0.5.23, PROJECT_STATUS, ROADMAP, BUILD_PLAN, CLAUDE.md, TEST_REPORT
+  (smoke honesty + overlay verification), ADR-0007 display-clause supersession note.
+
+### 3. Affected APIs
+
+- None public. Internal: `CaptionOverlayWindow.UpdateCaptionItems` now paints `model.ActiveLine` and
+  `_activeBlock` is populated (it was only ever null). **API changes required: none.**
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — none (same WASAPI loopback path; display layer only).
+- [x] Audio/transcript handling change — none (local, in-memory; same CaptionService/engine path).
+- [ ] New external communication — none.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; no new boundaries).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `CaptionRenderIdentityTests` rewritten (6 tests; 2 new: no-partial-in-history,
+  cleared-active-line-removes-block). `CaptionDisplayPolicyTests` and all caption-service tests are
+  unchanged and still pass (the display model already carried the active line). Full suite **374/374**
+  (App 89, Speech 109, Captions 72, Audio 77, Translation 27), Release 0 warnings/0 errors.
+- [ ] Integration tests — n/a (no boundary change).
+- [x] Manual/device verification — real-App smoke re-run on the promoted default (see TEST_REPORT
+  Entry 15): first visible partial on the overlay, active line updates, FINAL freeze, history does not
+  churn, Stop clears the partial, first-visible-partial latency + CPU impact measured.
+
+### 7. Documentation Updates Required
+
+- [x] `CHANGELOG.md` (v0.5.23), `PROJECT_STATUS.md`, `ROADMAP.md`, `BUILD_PLAN.md`, `CLAUDE.md`,
+  `TEST_REPORT.md`, `ADR-0007.md` (display-clause note).
+- [ ] `PRD.md` — n/a (PRD already requires streaming captions; this realizes it).
+- [ ] `ARCHITECTURE.md` — n/a (no architecture change; same caption events → overlay path).
+- [ ] `ADR-0008.md` — n/a (promotion unchanged; partials were already the default engine behavior).
+
+### 8. Dependencies and Risks
+
+- [x] Blocked by: none — the promoted default (Entry 14) already emits partials into CaptionService.
+- [ ] Blocking: nothing downstream.
+- [ ] Risks identified: (1) re-enables per-partial overlay updates — mitigated by the single mutable
+  block (no rebuild), identity reuse, and no scroll on text mutation; (2) a translation-enabled active
+  line is still hidden until its translation completes (no source flash) — display-model policy
+  unchanged; (3) the overlap strip keeps the active line from repeating the previous FINAL's words.
+- [x] Mitigation plan: `CaptionDisplayPolicyTests` (unchanged) pin the display-model policy; the
+  rewritten render tests pin identity / no-churn / no-partials-in-history; the real-App smoke re-run
+  confirms the visible behavior.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | `CaptionDisplayPolicy` is the single source of the active-line text (translation-gated, overlap-stripped); the overlay paints it verbatim. | Overlay would show untranslated source or duplicate words. | CaptionDisplayPolicyTests; ADR-0007 Tagalog-only display. |
+| 2 | Painting the active line is the intended UX the promotion described ("Chrome-like live partials"); committed-FINAL-only (`7d1c057`) was an investigation-era freeze, not the product decision. | ADR-0007's "display proven stable (FINAL-only)" clause is superseded by this entry. | User decision 2026-08-06; Entry 7 close-out; smoke evidence. |
+| 3 | No STT / engine / workflow change is needed — partials already reach CaptionService and the active line. | None — engine cadence unchanged. | Entry 14; Slice 12. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Should the active line auto-scroll to keep the newest text visible when it grows past the fixed viewport (vs. holding the offset until the FINAL)? | User | Low — the smoke run will show whether clipping is observable. |
+
+### 11. Close-Out Record
+
+- **Status: Completed (2026-08-06).** Overlay integration applied: the live partial active line is
+  painted and updated in place; FINALs freeze it into stable history; the display-model policy is
+  unchanged. `CaptionRenderIdentityTests` rewritten to pin the behavior (2 new tests). Full suite
+  **374/374**, Release 0 warnings/0 errors, `dotnet format` clean. Real-App overlay verification
+  recorded in `TEST_REPORT.md` (Entry 15). ADR-0007's "display proven stable (FINAL-only)" clause
+  noted superseded. No commit made unless requested.
+
+---
+
+## Entry 14 — Production Default Promotion: Faster-Whisper Native Streaming + Live Partials
+
+Date: 2026-08-05
+
+> **Implementation status (2026-08-05): COMPLETE — promotion applied (ADR-0008).**
+> Product decision (user-approved 2026-08-05): the production STT default is now
+> `FasterWhisperNativeStreamingEngine` with live partials enabled; ggml-base is preserved as the
+> explicit fallback (`UC_STT_ENGINE=ggml-base`). Engine selection moved into a testable
+> `SpeechEngineFactory` seam (5 new App tests, full suite **372/372**), Release 0 warnings/0 errors.
+> Faster-whisper worker protocol, the 8 s `MaxSegmentDuration` cap, the windowed engine, ADR-0007,
+> TD-002, and TD-005 are all untouched.
+
+### 1. Change Summary
+
+```text
+Change Title: Entry 14 — promote faster-whisper native streaming + live partials to the production
+              STT default (ggml-base becomes the explicit fallback)
+Change Type:        Production-default decision (product decision, user-approved) + small App refactor
+                    (engine selection extracted to SpeechEngineFactory for testability)
+Requirement Source: User decision (2026-08-05) after the Slice 12 PASS — the Chrome-like partial
+                    behavior and the better Tagalog accuracy are both measured; the goal is to use
+                    them, not to keep tuning
+Priority:           High
+Estimated Effort:   Low (default flip + fallback branch + selection tests + decision records)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.App` — `App.xaml.cs`: the STT engine factory lambda now delegates to the new
+  `SpeechEngineFactory` (the inline ggml-base/windowed/native selection and the resolve helpers moved
+  there). `SpeechEngineFactory.cs` (new): default → native + partials; `UC_STT_ENGINE=ggml-base` →
+  original local Whisper; `UC_STT_ENGINE=fasterwhisper` → windowed; `UC_STT_ENGINE=fasterwhisper-native`
+  → same native path. Partials default ON via `UC_NATIVE_PARTIAL_INTERVAL` (1 s) /
+  `UC_NATIVE_PARTIAL_WINDOW` (4 s); `MaxSegmentDuration` stays 8 s (frozen). No automatic runtime
+  fallback (deliberate — silent engine switches violate ADR-0003).
+- `UniversalCaptions.Speech` — untouched (the production path reuses the Slice 10–12 native engine).
+- Tests — new `SpeechEngineFactoryTests` (5): default/fasterwhisper-native → native; ggml-base →
+  Whisper; fasterwhisper → windowed; interval-0 still native (FINAL-only is a knob, not a selection).
+- Docs — ADR-0008 (new decision, supersedes ADR-0003's default-model clause), Entry 14, CHANGELOG,
+  PROJECT_STATUS, ROADMAP, BUILD_PLAN, CLAUDE.md, BENCHMARK/TEST reports.
+
+### 3. Affected APIs
+
+- New: `UniversalCaptions.App.SpeechEngineFactory` (static: `Create(string? language)` /
+  `CreateNative(string? language)`).
+- Changed: none to the frozen public surface (`ISpeechToTextEngine`, worker protocol,
+  `LineProtocolFasterWhisperProcess`, ADR-0007 all untouched). **API changes required:** none.
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — none (same WASAPI loopback path; engine selection only).
+- [x] Audio/transcript handling change — none (local, in-memory; faster-whisper is local).
+- [ ] New external communication — none (same local worker process model).
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; no new boundaries).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — 5 new `SpeechEngineFactoryTests` (default selection, ggml-base fallback, windowed
+  opt-in, explicit native, interval-0 knob). Constructors are side-effect-free (worker/model load on
+  `Start`), so no Python/model needed. Full suite **372/372** (App 87, Speech 109, Captions 72,
+  Audio 77, Translation 27).
+- [ ] Integration tests — n/a (worker protocol unchanged).
+- [x] Manual/device verification — the production path is exactly the engine + knobs validated by the
+  Slice 12 controlled benchmark and the Slice 10 real-App run; a fresh real-App run is the remaining
+  manual confirmation (optional, records to be added to TEST_REPORT when run).
+
+### 7. Documentation Updates Required
+
+- [x] `ADR-0008.md` (new) + `ADR-0003.md` supersession note + `ADR README.md` index.
+- [ ] `PRD.md` — n/a (implementation detail; PRD already requires streaming captions).
+- [ ] `ARCHITECTURE.md` — n/a (no architecture change; same engine abstraction).
+- [ ] `TECH_STACK.md` — n/a.
+- [x] `CHANGELOG.md` (v0.5.22), `PROJECT_STATUS.md`, `ROADMAP.md`, `BUILD_PLAN.md`, `CLAUDE.md`,
+  `BENCHMARK_REPORT.md`, `TEST_REPORT.md`.
+
+### 8. Dependencies and Risks
+
+- [x] Blocked by: none — Slice 12 PASS provides the validated path; the faster-whisper worker is
+  auto-discovered (`%TEMP%\fwv` or `UC_FW_PYTHON`).
+- [ ] Blocking: nothing downstream.
+- [ ] Risks identified: (1) operational dependency on the Python worker + `small` int8 model for the
+  default path (ggml-base was self-contained) — mitigated by the explicit ggml-base fallback and the
+  documented auto-discovery; (2) partials' ~5 % wall / ~8 s tail-latency cost becomes the default
+  experience — documented and measured (Slice 12), and the interval knob still allows FINAL-only;
+  (3) a worker failure now surfaces on the default path — it stops the session with a caption error
+  (no silent fallback by design); (4) first FINAL still ~15 s (partials mitigate the perceived
+  latency) — documented.
+- [x] Mitigation plan: keep ggml-base reachable via `UC_STT_ENGINE=ggml-base`; keep the worker
+  protocol unchanged; record the cost/tradeoffs explicitly; no tuning changes introduced.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | The default faster-whisper worker/model is present on target machines (venv or `UC_FW_PYTHON`); ggml-base is the documented escape hatch. | Worker missing → the default path errors at Start; user switches to `UC_STT_ENGINE=ggml-base`. | Auto-discovery pattern (Argos precedent). |
+| 2 | Promoting partials (1 s/4 s) as the default is the right product tradeoff given the measured ~5 % wall / ~8 s tail cost. | Interval is env-tunable back to 0 (FINAL-only) without code change. | Slice 12 benchmark. |
+| 3 | No automatic runtime fallback is correct (ADR-0003 no-silent-switch). | A user on a broken worker must manually restart with ggml-base. | ADR-0003. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Fresh real-App visual run on the promoted default (native + partials) to confirm the overlay behavior end-to-end? | User | Optional manual confirmation — can be recorded later. |
+
+### 11. Close-Out Record
+
+- **Status: Completed (2026-08-05).** Product decision applied (ADR-0008). `SpeechEngineFactory` is
+  the single selection point; the default is native + partials (interval 1 s, window 4 s, 8 s segment
+  cap frozen), `UC_STT_ENGINE=ggml-base` restores the original local-Whisper path, `fasterwhisper`
+  keeps the windowed engine, and the worker protocol is unchanged. 5 new App selection tests; full
+  suite **372/372**, Release 0 warnings/0 errors, `dotnet format` clean. No automatic fallback (by
+  design, ADR-0003). No commit made unless requested.
+
+---
+
+## Entry 13 — Slice 12: Faster-Whisper Native-Streaming Live Partials (Chrome-Live-Caption-style)
+
+Date: 2026-08-05
+
+> **Implementation status (2026-08-05): COMPLETE — benchmark PASS (close-out 2026-08-05).**
+> Implementation + deterministic tests (367/367, Release 0 warnings/0 errors, `dotnet format` clean) and
+> the controlled real-audio benchmark with partials on are all done: first visible partial 5.59 s after
+> speech onset (vs first FINAL 15.0 s), 19.5 partials/120 s (~3 s updates during speech), FINAL stream
+> text-identical to Slice 11 (no accuracy regression, WER 33.19% in-harness), backlog bounded (plateau
+> ~50 s vs 43 s FINAL-only, realtime-safe 1.18×). Additive live-partial emission on
+> `fasterwhisper-native`: bounded trailing-window re-decodes of the in-progress segment at a
+> configurable cadence raise `PartialTranscriptAvailable`, giving the Chrome-Live-Caption-style
+> "text appears while the speaker is still talking" experience. Partials replace the active overlay
+> line through the existing `CaptionService`/overlay path (the existing `CaptionDisplayPolicy` strips
+> overlap); one FINAL per completed speech segment is unchanged. FINAL-only behavior (Slice 10/11) is
+> exactly preserved when the interval knob is left at 0 (default). The worker wire protocol, ggml-base
+> default, windowed engine, and ADR-0007 are untouched; faster-whisper stays opt-in
+> (`UC_STT_ENGINE=fasterwhisper-native`); translation stays OFF for this slice.
+
+### 1. Change Summary
+
+```text
+Change Title: Slice 12 — live partial transcripts for the faster-whisper native-streaming engine via
+              bounded trailing-window re-decodes (no wire-protocol change)
+Change Type:        Additive feature (opt-in native engine only; default behavior unchanged)
+Requirement Source: User scope decision (2026-08-05); Slice 10/11 gate closed with the tradeoff that
+                    the native engine emits one FINAL per completed segment (~9 s cadence) with 0
+                    live partials; goal is Chrome-Live-Caption-style incremental text during speech
+Priority:           High
+Estimated Effort:   Medium (detector snapshot + engine cadence dispatch + deterministic tests +
+                    optional real benchmark)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Speech` — additive: `SpeechSegmentDetector.TryGetPartial(maxSamples, out samples,
+  out capturedAtUtc)` (trailing-window snapshot over the in-progress segment; refused while idle, during
+  hangover, or after the segment completes; capture time = window start). `FasterWhisperEngineOptions`:
+  new `PartialDecodeInterval` (default `TimeSpan.Zero` = disabled → Slice 10/11 FINAL-only preserved)
+  and `PartialDecodeWindow` (default 4 s, bounds each partial decode). `FasterWhisperNativeStreamingEngine`:
+  cadence dispatch with at most one partial decode in flight/queued (no growing backlog), partials cleared
+  on FINAL, shared session guard, new `PartialTranscriptAvailable` event (replaces the CS0067 pragma),
+  internal `Segment` → `WorkItem(..., IsPartial)` rename, static `ToPcm` helper.
+- `UniversalCaptions.App` — the `fasterwhisper-native` branch default knobs `UC_NATIVE_PARTIAL_INTERVAL`
+  (default 1 s) and `UC_NATIVE_PARTIAL_WINDOW` (default 4 s) via `ResolveDoubleEnv`; interval 0 restores
+  FINAL-only. `ggml-base`, windowed `fasterwhisper`, worker protocol untouched.
+- `UniversalCaptions.Benchmarks` — `sttnative` mode: `--partial-interval`/`--partial-window` args, live
+  partial metrics (first partial, first-caption lag T4 = emit − window start, partial cadence, min/median/
+  max partial lag, LIVE PARTIAL STREAM printout) and CSV partial table + summary columns. Existing
+  `stt`/`translate`/`resample` modes untouched.
+- Docs — `TEST_REPORT.md`, `BENCHMARK_REPORT.md`, `CHANGELOG.md`, `BUILD_PLAN.md`, `PROJECT_STATUS.md`,
+  `ROADMAP.md`, `CLAUDE.md`.
+
+### 3. Affected APIs
+
+- New (additive, all opt-in): `SpeechSegmentDetector.TryGetPartial`; `FasterWhisperEngineOptions.
+  PartialDecodeInterval` / `PartialDecodeWindow` (defaults preserve existing behavior); `PartialTranscript`
+  + `FasterWhisperNativeStreamingEngine.PartialTranscriptAvailable`; internal `WorkItem`/`ToPcm`.
+  **API changes required:** none to the frozen public surface (engine interface, worker protocol,
+  `LineProtocolFasterWhisperProcess`, ADR-0007 untouched).
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — none (same WASAPI loopback path; opt-in engine only).
+- [x] Audio/transcript handling change — none (local, in-memory; windows decoded locally; nothing
+  persisted).
+- [ ] New external communication — none.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; worker protocol unchanged).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — 10 new deterministic tests (6 `SpeechSegmentDetector.TryGetPartial` + 4 engine
+  partial tests incl. a `BlockingFasterWhisperProcess` fake proving single-in-flight bounding). Full
+  suite 367/367 (Speech 109, App 82, Captions 72, Audio 77, Translation 27).
+- [ ] Integration tests — n/a (worker protocol unchanged).
+- [x] Manual/device verification — controlled `sttnative` run with `--partial-interval 1
+  --partial-window 4` on the actual video audio vs the `fil-orig` reference (Pending), then optionally a
+  real-App visual run (live partials on the overlay while audio plays).
+
+### 7. Documentation Updates Required
+
+- [ ] `PRD.md` — n/a (opt-in experiment; not a product requirement change).
+- [ ] `ARCHITECTURE.md` — n/a (no architecture change; partials ride the existing active-line path).
+- [ ] `TECH_STACK.md` — n/a.
+- [x] `BENCHMARK_REPORT.md` — Slice 12 section (first-caption lag T4, partial cadence, lag distribution).
+- [x] `TEST_REPORT.md` — Slice 12 evidence.
+- [x] `CHANGELOG.md`, `PROJECT_STATUS.md`, `BUILD_PLAN.md`, `ROADMAP.md`, `CLAUDE.md`.
+
+### 8. Dependencies and Risks
+
+- [x] Blocked by: none — Slice 10/11 provide the engine + harness; the new knobs are env-tunable.
+- [ ] Blocking: nothing downstream (no promotion decision; faster-whisper stays opt-in).
+- [ ] Risks identified: (1) partial decode latency lands on the critical path — mitigated by the 1-decode
+  in-flight/queued bound so the loop can never accumulate a backlog (verified by the blocking-fake test);
+  (2) partials overlap the FINAL text — mitigated by the existing `CaptionDisplayPolicy` overlap strip on
+  the overlay and by FINAL replacing the active line; (3) extra decode load on a busy machine — the window
+  is bounded (default 4 s) and cadence is 1/s; (4) stale partial windows if decode is slow — each partial
+  is tagged with its window capture time (freshness visible in the benchmark lag metric).
+- [x] Mitigation plan: bound in-flight/queued partials to one (test-verified); measure first-caption lag
+  and partial-lag distribution in the real controlled run; validate visually in one real-App run if
+  requested.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | The existing `CaptionService` (partials replace the active line, finals commit) and the overlay `CaptionDisplayPolicy` overlap strip need no changes for live partials. | Would require overlay/service changes, expanding scope. | Slice 4/5 behavior; Entry 7 live active-line translation. |
+| 2 | A 1 s cadence with a 4 s window gives a visible incremental experience (partial every ~1 s, window advances after ~4 s of speech) without unacceptable decode load. | Lag distribution from the controlled run will confirm; knobs are env-tunable. | Slice 10/11 decode round-trips. |
+| 3 | At-most-one-in-flight/queued partial keeps latency bounded even under slow decode (ticks dropped, not queued). | Unbounded backlog would regress live latency. | Tested with `BlockingFasterWhisperProcess`. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Should the real controlled run (and/or a real-App visual run) be executed now to close out, or is the deterministic suite sufficient for this slice? | User | Pending — knobs default off, so no production exposure either way. |
+| 2 | Should partial cadence/window defaults (1 s / 4 s) be tuned after real evidence? | Engineering (measured) | Depends on Q1 run. |
+
+### 11. Close-Out Record
+
+- **Status: Completed (close-out 2026-08-05) — benchmark PASS.**
+  Deterministic suite **367/367**, Release build 0 warnings/0 errors, `dotnet format` clean. 10 new
+  tests (6 detector + 4 engine incl. the blocking-fake backlog bound). Controlled real-audio run
+  (Release `sttnative`, small int8, `tl`, hangover 0.7 s, max segment 8 s, realtime feed, translation
+  OFF) on `uc_video_full_16k.wav` (288.79 s) vs the `fil-orig` reference with
+  `--partial-interval 1 --partial-window 4`:
+
+  | Gate metric | Result |
+  |---|---|
+  | First visible partial (from feed start) | 9.19 s (speech onset 3.60 s) |
+  | **First caption lag T4 (onset → first partial)** | **5.59 s** (vs first FINAL 15.0 s) |
+  | Partial update cadence | 19.5 partials/120 s (~3 s apart during speech) |
+  | Active-line changes while speaking | yes — text increments ("Magandang" → … → full sentence) |
+  | FINALs | 32 — text-identical to the Slice 11 8 s run (no accuracy regression) |
+  | WER (in-harness) | 33.19% (= Slice 11's 33.19%; the report 32.6% uses `stt_compare.py` normalization) |
+  | FINAL latency after speech end | ~6 s after segment close (decode-bound, same as Slice 10/11) |
+  | Backlog | bounded: plateau ~50 s (Slice 11 FINAL-only ~43 s), flat, not growing; one 17.5 s decode spike (machine contention); nothing dropped/reordered |
+  | Realtime factor | 1.18× (Slice 11 1.13×; partial decodes add ~5 % wall) |
+  | Hallucination/repetition | no new artifacts (the "Paano kong?" repetition is in the Slice 11 baseline and the audio) |
+
+  **Gate PASS:** speech → partial caption appears quickly (5.59 s) → incremental updates → stable
+  FINAL at/near speech end, with no growing backlog (elevated-but-bounded plateau, realtime-safe) and
+  no accuracy regression (identical FINAL stream). Caveats recorded in the reports: ~5 % wall + ~8 s
+  tail-latency cost of partial decodes, and the expected rolling-4 s-window tradeoff (the FINAL reveals
+  the earlier words not shown by the last partial). `ggml-base` stays the production default; the
+  partial knobs default off (`PartialDecodeInterval = 0`), so production behavior is unchanged. This
+  benchmark does not constitute promotion. No worker protocol / ggml-base / windowed-engine changes.
+  Evidence: `BENCHMARK_REPORT.md` (Slice 12), `TEST_REPORT.md` (Slice 12), CHANGELOG v0.5.21; raw log
+  `%TEMP%\opencode\sttnative_partials_slice12.log` (+ `.csv`).
+
+---
+
+## Entry 12 — Slice 11: Native-Streaming Segment-Boundary Tuning (max-segment sweep)
+
+Date: 2026-08-05
+
+> **Implementation status (2026-08-05): complete — decision recorded: keep `MaxSegmentDuration = 8 s`.**
+> Additive benchmark-only improvements (timer-granularity pacing fix + mid-sentence-split metric) +
+> controlled 8/10/12 s sweep on the actual video audio vs the `fil-orig` reference (WER 32.6%/33.2%/30.0%,
+> cadence 13.3/10.8/9.1 FINALs/120 s, splits 31%/42%/45%, 0 partials, bounded latency/backlog). No worker
+> protocol / ggml-base / windowed-engine changes; no production or knob-default change.
+
+### 1. Change Summary
+
+```text
+Change Title: Slice 11 — tune faster-whisper native streaming segment boundaries
+              (UC_NATIVE_MAX_SEGMENT 8/10/12 s sweep; hangover fixed at 0.7 s)
+Change Type:        Tuning / experiment (benchmark + real-App measurement; optional knob-default
+                    change to the OPT-IN native engine only)
+Requirement Source: User scope decision (2026-08-05) after the Slice 10 PASS — goal is not "lower WER"
+                    but "accurate + natural sentence boundaries + bounded live latency", which is the
+                    legitimate basis for a future default-selection decision
+Priority:           High
+Estimated Effort:   Medium (sweep runs + boundary metric + real-App validation + decision record)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Benchmarks` — additive: fix the realtime-feed pacing artifact in `sttnative`
+  (`Thread.Sleep(10)` ≈ 15.6 ms Windows timer granularity paced audio at ~1.57× wall; raise the timer
+  resolution around the feed via `timeBeginPeriod(1)` so controlled latencies are valid) and add a
+  mid-sentence-split (continuation) counter so the sweep has a quantified boundary metric. Existing
+  `stt`/`translate`/`resample` modes untouched.
+- `UniversalCaptions.Speech` — the native engine's `SpeechSegmentDetectorOptions.MaxSegmentDuration`
+  default **may** change to the sweep winner (8/10/12 s) as a knob-default tuning of the opt-in engine;
+  no behavioral code change.
+- `UniversalCaptions.App` — the `fasterwhisper-native` branch default for `UC_NATIVE_MAX_SEGMENT`
+  **may** follow the same winner. `ggml-base`, the windowed `fasterwhisper` engine, the worker wire
+  protocol, and ADR-0007 are untouched.
+- Docs — `TEST_REPORT.md`, `BENCHMARK_REPORT.md` (Slice 11 sweep), `CHANGELOG.md`, `BUILD_PLAN.md`,
+  `PROJECT_STATUS.md`, `ROADMAP.md`, `CLAUDE.md`.
+
+### 3. Affected APIs
+
+- New: none (benchmark-only metric + timer-resolution fix). Possible additive knob-default change to
+  `SpeechSegmentDetectorOptions.MaxSegmentDuration` (default 8 s → winner). **API changes required:**
+  None — existing public surface unchanged.
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — none (same WASAPI loopback path; opt-in engine only).
+- [x] Audio/transcript handling change — none (local, in-memory; segments decoded locally).
+- [ ] New external communication — none.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; worker protocol unchanged).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — none required (no engine behavior change unless the knob default changes; if it
+  does, the detector tests assert the cap behavior and only the default value assertion updates).
+- [ ] Integration tests — n/a (worker protocol unchanged).
+- [x] Manual/device verification — controlled `sttnative` sweep at max-segment 8/10/12 s on the actual
+  video audio vs the `fil-orig` reference, then a real-App validation run on the winner.
+
+### 7. Documentation Updates Required
+
+- [ ] `PRD.md` — n/a (opt-in experiment; not a product requirement change).
+- [ ] `ARCHITECTURE.md` — n/a (no architecture change).
+- [ ] `TECH_STACK.md` — n/a.
+- [x] `BENCHMARK_REPORT.md` — Slice 11 sweep section (splits/WER/cadence/latency by cap; decision).
+- [x] `TEST_REPORT.md` — Slice 11 validation evidence.
+- [x] `CHANGELOG.md`, `PROJECT_STATUS.md`, `BUILD_PLAN.md`, `ROADMAP.md`, `CLAUDE.md`.
+
+### 8. Dependencies and Risks
+
+- [x] Blocked by: none — Slice 10 PASS provides the engine + harness; `UC_NATIVE_MAX_SEGMENT` is
+  already env-tunable.
+- [ ] Blocking: nothing downstream (no promotion decision yet; the sweep informs a future
+  default-selection decision only).
+- [ ] Risks identified: (1) longer segments raise the displayed STT latency (segment duration + decode)
+  even though staleness-at-commit stays ~decode time — the decision must weigh splits-vs-latency; (2)
+  music/pause boundaries interact with a longer cap (longer segments could span a music break with
+  silence padding — hangover is fixed at 0.7 s and will cut those, but the cap interplay is measured);
+  (3) controlled-run latency validity depends on the timer-resolution fix being effective.
+- [x] Mitigation plan: run the full sweep at 8/10/12 s; quantify splits (continuation counter) AND
+  latency (emit-lag vs segment end, bounded check); validate the winner with one real-App run; record
+  the decision with the split-vs-latency tradeoff explicit.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | Longer `MaxSegmentDuration` (10/12 s) reduces mid-sentence splits without unboundedly growing latency or backlog, because decode stays well below realtime (~0.5×) and the cap only bounds segment length. | Longer segments could still split at the cap or bridge a music gap with silence, degrading naturalness. | Slice 10 decode round-trips (~3.5–5 s per 8 s segment); user tuning direction. |
+| 2 | `SilenceHangover = 0.7 s` is the right baseline and is not swept (per user). | A different hangover might matter more; noted as future work if the sweep is inconclusive. | User (2026-08-05). |
+| 3 | The winner is applied as the native engine's knob default (opt-in engine only); ggml-base production default and the windowed path stay frozen. | Applying a default to the opt-in engine does not affect production behavior. | Freeze rules; Entry 11 decision. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | At what max-segment does the split/latency tradeoff favor a default (8/10/12 s)? | Engineering (measured) | Sweep pending. |
+| 2 | Should the native engine's default cap be updated to the winner now, or left at 8 s with a documented recommendation? | Engineering (this slice) | Decide from sweep data. |
+
+### 11. Close-Out Record
+
+- **Status: Completed (close-out 2026-08-05) — decision recorded: keep `MaxSegmentDuration = 8 s`.**
+  **Frozen by user 2026-08-05 — no further `MaxSegmentDuration` tuning; Slice 11 is closed.**
+  Controlled `sttnative` sweep on the actual video audio vs the `fil-orig` reference (small int8, tl,
+  realtime feed with the timer-granularity fix, hangover 0.7 s fixed):
+
+  | MaxSegment | FINALs | Cadence | WER (norm) | Mid-sentence splits | Fragments | End-of-audio cap |
+  |---|---|---|---|---|---|---|
+  | 8 s | 32 | 13.3/120 s | 32.6% | 10/32 (31%) | 0 | clean (last speech segment committed before the music tail) |
+  | 10 s | 26 | 10.8/120 s | 33.2% | 11/26 (42%) | 1 | capped segment spanning the music tail decoded as a `Pag-pag-pag…` stutter |
+  | 12 s | 22 | 9.1/120 s | 30.0% | 10/22 (45%) | 1 | capped segment decoded as a truncated `tunog` fragment |
+
+  Findings: longer segments do **not** reduce mid-sentence splits (fraction worsens 31% → 42% → 45%;
+  the cap still force-closes mid-sentence, just less often while each cut discards more in-flight
+  content). The 12 s WER gain (30.0% vs 32.6%) is a boundary-artifact effect but costs ~46%
+  responsiveness (9.1 vs 13.3 FINALs/120 s) and adds end-of-audio cap risk (music-tail hallucinations
+  at 10 s/12 s). Latency/backlog stays bounded at all three caps (emit ~5 s behind segment end; worst
+  decode ~8 s for a capped 12 s segment < segment length). **Decision: keep 8 s as the native engine's
+  `MaxSegmentDuration` default — no production or knob-default change.** 8 s reproduces the Slice 10
+  WER exactly (32.6%), confirming the timer fix did not alter accuracy and the controlled run is now a
+  valid pacing baseline (1.13× realtime). Real-App latency/backlog evidence for the kept default is the
+  Slice 10 real-App run (`realapp_native_streaming.log`); no redundant re-run was needed. No worker
+  protocol / ggml-base / windowed-engine changes. Evidence: `BENCHMARK_REPORT.md` (Slice 11),
+  `TEST_REPORT.md` (Slice 11), CHANGELOG v0.5.20.
+
+---
+
+## Entry 11 — Slice 10: Faster-Whisper Native Streaming (C# VAD segment commit)
+
+Date: 2026-08-05
+
+> **Implementation status (2026-08-05):** complete — deterministic phase + benchmark/real-App
+> validation PASSED. `FasterWhisperNativeStreamingEngine` + internal `SpeechSegmentDetector` behind
+> `UC_STT_ENGINE=fasterwhisper-native`; 21 new deterministic tests (no Python), full suite **357/357**,
+> Release build 0 warnings/0 errors, format clean; fresh-context review PASSED with fixes. Validation
+> (additive `sttnative` benchmark mode + real-App run on the actual video audio vs the `fil-orig`
+> reference): committed WER **32.6%** (ggml-base 51.2%), **0 partials (FINAL-only)**, commit cadence
+> **13.3 FINALs/120 s** (windowed faster-whisper 2/120 s), first real-App caption **15.2 s**, STT latency
+> ~4 s behind segment end, no growing backlog — the stale 20–40 s commit problem is eliminated while
+> faster-whisper accuracy is preserved. Decision gate: faster-whisper stays **opt-in**, ggml-base default
+> unchanged (frozen); documented tradeoff = 8 s segment cap can split sentences mid-word. Evidence:
+> `TEST_REPORT.md` (Slice 10), CHANGELOG v0.5.19, BUILD_PLAN Slice 10.
+
+### 1. Change Summary
+
+```text
+Change Title: Slice 10 — FasterWhisperNativeStreamingEngine: C#-side VAD speech-segment detection
+              drives one FINAL per completed speech segment through the EXISTING faster-whisper
+              worker wire protocol (no protocol change, no base-engine change)
+Change Type:        Feature (new experimental engine behind UC_STT_ENGINE=fasterwhisper-native)
+Requirement Source: User scope decision (2026-08-05); Slice 8/9 findings (faster-whisper small int8
+                    WER 31.1% vs ggml-base 51.2% but stale 1-FINAL-per-40s cadence under the
+                    ggml-base-oriented sliding-window loop); user acceptance targets (accuracy,
+                    responsiveness, streaming behavior)
+Priority:           High
+Estimated Effort:   Medium (new engine + segment detector + deterministic tests, then benchmark +
+                    real-App validation)
+```
+
+### 2. Affected Modules
+
+- `UniversalCaptions.Speech` — new `FasterWhisperNativeStreamingEngine` (`ISpeechToTextEngine`); new
+  internal segment-buffer/detector state machine (`SpeechSegmentDetector` — name TBD); **reuses**
+  `FasterWhisperDecoder`/`ISTTDecoder` → `LineProtocolFasterWhisperProcess`/`IFasterWhisperProcess`
+  unchanged. `WhisperSpeechToTextEngine`, `StreamingTranscriptCommitter`, `FasterWhisperSpeechToTextEngine`,
+  `faster_whisper_worker.py` are all **untouched**.
+- `UniversalCaptions.Core.Processing` — reuse existing `IVoiceActivityDetector` contract (no change).
+- `UniversalCaptions.Audio` — reuse existing `EnergyVad` impl (no change).
+- `UniversalCaptions.App` — `App.xaml.cs` STT factory gains a `fasterwhisper-native` branch (additive);
+  ggml-base default and `fasterwhisper` (windowed) branches unchanged.
+- Tests — `UniversalCaptions.Speech.Tests` (segment detector + native engine), `UniversalCaptions.App.Tests`
+  (selector maps `fasterwhisper-native` → new engine type); optionally extend the benchmark `stt` mode
+  with a segment-commit measurement path.
+
+### 3. Affected APIs
+
+- New: `FasterWhisperNativeStreamingEngine` (public, `ISpeechToTextEngine`), internal `SpeechSegmentDetector`
+  state machine, internal ctor seam for scripted VAD + scripted decoder (mirrors the
+  `FasterWhisperSpeechToTextEngine` internal ctor pattern). New option surface reuses
+  `FasterWhisperEngineOptions` for process/model fields plus segment knobs (recommended defaults, provisional):
+  `MinSpeechDuration` (~0.3 s), `SilenceHangover` (~0.6–1.0 s), `MaxSegmentDuration` (~8 s hard latency cap),
+  trailing-silence policy (include a short pad vs cut exactly).
+- **API changes required:** Additive (new engine + selector value; no existing API or behavior modified).
+
+### 4. Database Changes
+
+Not applicable — this application has no database.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — none (same WASAPI loopback path; new engine is selectable only).
+- [x] Audio/transcript handling change — none (faster-whisper already local/offline; segments are
+  decoded locally via the existing worker; no persistence).
+- [ ] New external communication — none.
+- [ ] Sensitive data handling — in-memory only.
+- [x] Security review required: No (local-only; worker protocol unchanged).
+
+### 6. Test Updates Required
+
+- [x] Unit tests — `SpeechSegmentDetector` state machine (deterministic, synthetic PCM): speech starts;
+  speech continues; short silence does not prematurely cut; sustained silence closes a segment; minimum
+  speech duration; maximum segment duration (hard cap force-close); trailing silence; Stop flushes an
+  in-progress segment. `FasterWhisperNativeStreamingEngine` (scripted VAD + scripted decoder): exactly one
+  FINAL per completed segment, no partials emitted, no duplicate/re-emitted segments, Stop flush emits a
+  FINAL for the in-progress segment, decode-failure → `RecognitionFailed`, restart resets segment state,
+  `CapturedAtUtc` = segment start (E2E latency metric intact).
+- [ ] Integration tests — n/a (worker protocol unchanged; fake-boundary tests only).
+- [x] Manual/device verification — real-App run through the existing `diag_capture.ps1`-style harness with
+  `UC_STT_ENGINE=fasterwhisper-native`, actual video audio + fil-orig reference, **after** all deterministic
+  tests pass (benchmark/test first per user).
+
+### 7. Documentation Updates Required
+
+- [ ] `PRD.md` — n/a (experiment; not a product requirement change).
+- [x] `ARCHITECTURE.md` — optional add-only note when the engine lands (new selectable engine under
+  `ISpeechToTextEngine`; no architecture change).
+- [ ] `TECH_STACK.md` — n/a (reuses existing faster-whisper runtime).
+- [ ] `SECURITY_PLAN.md` — n/a.
+- [ ] `QUALITY_ASSURANCE.md` — n/a.
+- [x] ADR required: No (fits ADR-0003/0005 engine abstraction; faster-whisper already ADR-covered; no
+  model/pair/stack change). **No ADR-0007 changes** (this is engine-level streaming policy, not the
+  ggml-base committer).
+- [x] `CHANGELOG.md`, `ROADMAP.md` (Sprint Queue), `PROJECT_STATUS.md` (current sprint), `BENCHMARK_REPORT.md`
+  (findings + decision-gate), `TEST_REPORT.md` (evidence), `CHANGE_IMPACT_ANALYSIS.md` (this entry).
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: faster-whisper dev venv per TD-011 (`%TEMP%\fwv`); the worker + `small` int8 model
+  (already used by the existing faster-whisper path).
+- [ ] Blocking: none.
+- [ ] Risks identified:
+  1. **EnergyVad (RMS) vs speech/noise discrimination.** The `(Song)`/`(Subscribe)` hallucinations were
+     ggml-base transcribing music/UI bleeps; with C# VAD gating segments to speech-only, non-speech never
+     reaches the worker. But RMS VAD may not reject music/background as well as Silero VAD. Mitigation:
+     threshold tuning in deterministic tests; if music rejection proves inadequate, follow up with the
+     worker's built-in `vad_filter` as a separate decision (protocol unchanged, worker flag only).
+  2. **Segment decode cost.** A max-segment ~8 s at faster-whisper 5.85× realtime ≈ 1.4 s decode — bounded
+     and well under the old 20–40 s backlog; `MaxSegmentDuration` is the hard latency cap (no indefinite
+     wait). Risk: cutting mid-word at the cap. Mitigation: word-boundary/trim at decode, recorded as an
+     acceptance observation (one coherent FINAL per segment).
+  3. **Segments straddle sentence boundaries.** FINAL-only per segment may still split a sentence when
+     silence is brief. Mitigation: this is the experiment's explicit target — measure inter-FINAL cadence
+     and coherence; live partials are explicitly a follow-up, not mixed in.
+  4. **FINAL-only UX regression risk.** No active-line partials during a segment means the overlay shows
+     nothing until the segment ends — accepted per user decision; measured against the responsiveness
+     acceptance target (first caption close to natural cadence).
+- [x] Mitigation plan: deterministic tests first (no Python), then benchmark/real-App validation; production
+  default untouched; rollback = unset `UC_STT_ENGINE`.
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | Selector is `UC_STT_ENGINE=fasterwhisper-native` (new, additive); `fasterwhisper` keeps the windowed engine; unset/`whisper` = ggml-base production default. | Old faster-whisper benchmarks would be unreproducible or the default could silently change. | User decision (2026-08-05). |
+| 2 | VAD/segment detection lives in the C# engine (Speech), consuming the existing Core `IVoiceActivityDetector` with `EnergyVad` composed in via the App (Speech must not reference Audio per REPOSITORY_STANDARDS). | Boundary rule would be violated; test seam harder. | User decision (VAD in C# engine); REPOSITORY_STANDARDS dependency table. |
+| 3 | One FINAL per completed speech segment; no live partials in this experiment. | Perceived cadence is coarser than today's active-line UX. | User decision (FINAL-only). |
+| 4 | Segment knob defaults are provisional (~0.3 s min speech, ~0.6–1.0 s hangover, ~8 s max duration) and are tuned via the deterministic tests + benchmark, not accepted as final. | Wrong defaults would show as cadence/coherence defects in validation. | Provisional; re-derivation planned. |
+| 5 | The worker wire protocol (magic `UCWF`, version 1, request/response) is unchanged; `IFasterWhisperProcess`/`LineProtocolFasterWhisperProcess` and `faster_whisper_worker.py` are untouched. | A protocol change would expand the slice and break TD-016 contract tests. | User decision ("existing worker wire protocol does not need to change"). |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Whether the benchmark `stt` mode should gain a native-streaming measurement path, or real-App validation alone is sufficient evidence. | User | Deferred — decide at the deterministic-tests gate. |
+| 2 | Whether the final accepted engine (if the experiment passes) repoints `fasterwhisper` or keeps `fasterwhisper-native`. | User | Deferred — decision-gate at the end of the slice. |
+
+### 11. Scope Record (2026-08-05)
+
+- **Decision:** Scope the slice as an **isolated experiment** — new `FasterWhisperNativeStreamingEngine`
+  behind `UC_STT_ENGINE=fasterwhisper-native`; **ggml-base path untouched, windowed faster-whisper path
+  untouched, worker protocol untouched, ADR-0007 untouched, no default promotion.** Acceptance is NOT
+  "WER improved" alone; it must demonstrate (a) accuracy substantially better than base with no recurring
+  `(Song)`/`(Subscribe)` hallucinations, (b) first caption close to natural cadence with no 20–40 s stale
+  backlog, (c) one coherent FINAL per speech segment, no duplicate/re-emitted segments, no dropped final
+  at Stop, and the existing translation path still works. If the experiment fails any target, faster-whisper
+  stays opt-in and production stays exactly as it is. Test/benchmark first; real-App validation only after
+  deterministic tests pass.
 
 ---
 

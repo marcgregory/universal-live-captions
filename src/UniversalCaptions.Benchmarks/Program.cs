@@ -42,6 +42,11 @@ if (args.Length > 0 && args[0] == "resample")
     return await ResamplerBenchmark.RunAsync(args[1..], CancellationToken.None);
 }
 
+if (args.Length > 0 && args[0] == "sttnative")
+{
+    return await NativeStreamingBenchmark.RunAsync(args[1..], CancellationToken.None);
+}
+
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])

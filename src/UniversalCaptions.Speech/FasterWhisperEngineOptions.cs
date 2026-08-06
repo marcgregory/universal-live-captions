@@ -58,4 +58,19 @@ public sealed class FasterWhisperEngineOptions
 
     /// <summary>Maximum extra time a stable prefix waits for a segment boundary before the bounded fallback commits it.</summary>
     public TimeSpan BoundaryWaitBudget { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// How much in-progress speech must accumulate before the native streaming engine decodes the
+    /// current segment buffer and raises a live <c>PartialTranscriptAvailable</c> while the speaker
+    /// is still talking. Zero disables live partials (the Slice 10/11 FINAL-only behavior). The
+    /// App enables a 1 s cadence for the <c>fasterwhisper-native</c> path.
+    /// </summary>
+    public TimeSpan PartialDecodeInterval { get; init; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Maximum tail of the in-progress segment handed to a partial decode. Bounds the partial decode
+    /// cost so a live partial never delays the FINAL for the segment by more than one short decode.
+    /// Ignored when <see cref="PartialDecodeInterval"/> is zero.
+    /// </summary>
+    public TimeSpan PartialDecodeWindow { get; init; } = TimeSpan.FromSeconds(4);
 }

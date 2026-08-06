@@ -13,11 +13,11 @@ namespace UniversalCaptions.App.Overlay;
 /// <summary>
 /// The always-on-top caption overlay styled after Google Chrome's Live Caption panel: a dark
 /// semi-transparent rectangle with a header row showing the session language badge, a fixed-height
-/// scrolling text area that renders each committed FINAL caption as its own stable item (newest text
-/// always at the bottom), and a collapse/expand chevron at the footer. The live/partial active line
-/// is deliberately not painted, so the overlay shows only stable translated FINAL captions. Implements
-/// <see cref="IOverlayService"/> so the control window can configure appearance and placement without
-/// touching caption state (ADR-0004).
+/// scrolling text area, and a collapse/expand chevron at the footer. The text area renders the
+/// live/partial active line as a single mutable block at the bottom (rewritten in place on each
+/// partial, never rebuilt) above the committed FINAL history — each final freezes the active line
+/// into a stable history block. Implements <see cref="IOverlayService"/> so the control window can
+/// configure appearance and placement without touching caption state (ADR-0004).
 /// </summary>
 public partial class CaptionOverlayWindow : Window, IOverlayService
 {
@@ -38,8 +38,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
     // Stable visual items: one TextBlock per committed FINAL caption line, kept in display order and
     // reused by sequence so a new forwarded caption never rebuilds the caption visual tree. The
-    // live in-progress line is never painted (_activeBlock stays null), so partials do not churn the
-    // panel — the overlay is committed-FINAL-only.
+    // live in-progress line is a single mutable TextBlock (_activeBlock) that partials rewrite in
+    // place and a Final freezes into history — partials never churn the committed blocks.
     private readonly List<TextBlock> _historyBlocks = new();
     private TextBlock? _activeBlock;
 
@@ -197,10 +197,12 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         CaptionSnapshot snapshot = _captions.GetSnapshot();
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(snapshot);
 
-        // The overlay is committed-FINAL-only: the live/partial active line is never rendered. While
-        // the active line is in flight we hold the existing history on screen (no re-render), so the
-        // overlay never churns on ASR partials, never flashes a blank, and never shows the source
-        // language. Reconciliation happens when a NEW FINAL is available (snapshot.ActiveLine is null).
+        // Render whenever there is something new to paint: a visible live active line (a partial, or
+        // its completed live translation), translation disabled (the active line is always shown), or
+        // a FINAL that just committed (snapshot.ActiveLine is null — the active line froze into
+        // history). While translation is enabled and a partial is still being translated the display
+        // model hides the active line, so we hold the existing captions on screen (no re-render, no
+        // source-language flash) until the translation completes or the FINAL commits.
         bool shouldUpdate = model.ActiveLine is not null
             || !model.TranslationEnabled
             || snapshot.ActiveLine is null;
@@ -208,9 +210,10 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         bool newBlockAdded = false;
         if (shouldUpdate)
         {
-            // Returns true only when a brand-new caption block (a committed Final) was inserted —
-            // the one event that legitimately requires a bottom scroll. Live active-line mutations
-            // are never painted, so they never touch the block list and never force a scroll.
+            // Returns true only when a brand-new caption block was inserted (the live active line
+            // first appears, or a committed Final freezes into history) — the events that
+            // legitimately warrant a bottom scroll. In-place active-line text rewrites never insert
+            // a block and never force a scroll.
             newBlockAdded = UpdateCaptionItems(model);
         }
 
@@ -242,25 +245,39 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     /// <summary>
     /// Reconciles the caption panel against the display model by mutating only the items that
     /// changed: committed history lines are reused by sequence (a new final simply appends a fresh
-    /// block above the live line) and only the live in-progress line's text is rewritten in place.
-    /// Existing finalized items keep their TextBlock instance and are never rebuilt. A Partial that
-    /// only rewrites the active line's text returns false; only a freshly inserted block (a Final or
-    /// the first ever line) returns true, so the caller knows a bottom scroll is warranted.
+    /// block) and the live in-progress line's text is rewritten in place on the single mutable block.
+    /// Existing finalized items keep their TextBlock instance and are never rebuilt; a Partial never
+    /// inserts or removes a history block. Returns true only when a brand-new block was inserted (a
+    /// Final freeze or the active line's first appearance), so the caller knows a bottom scroll is
+    /// warranted.
     /// </summary>
     private bool UpdateCaptionItems(CaptionDisplayModel model)
     {
         bool newBlockAdded = ReconcileHistory(model.History);
 
-        // The overlay displays committed FINAL translated captions only. The live/partial active line
-        // is intentionally never painted, so the display is stable instead of churning on every ASR
-        // partial. Remove any block that may already exist (e.g. from an earlier full-window render).
-        if (_activeBlock is not null)
+        // Paint the live in-progress line as a single mutable block at the bottom of the panel. A
+        // partial rewrites that block's text in place (identity preserved — no rebuild); a null
+        // active line (committed, stopped, or hidden while its translation is pending) removes it.
+        if (model.ActiveLine is { } active)
+        {
+            if (_activeBlock is null)
+            {
+                _activeBlock = CreateCaptionBlock(active.Text, active.Sequence);
+                CaptionPanel.Children.Add(_activeBlock);
+                newBlockAdded = true;
+            }
+            else if (!string.Equals(_activeBlock.Text, active.Text, StringComparison.Ordinal))
+            {
+                _activeBlock.Text = active.Text;
+            }
+        }
+        else if (_activeBlock is not null)
         {
             CaptionPanel.Children.Remove(_activeBlock);
             _activeBlock = null;
         }
 
-        bool hasContent = model.History.Count > 0;
+        bool hasContent = model.History.Count > 0 || _activeBlock is not null;
         CaptionPanel.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
         HintText.Visibility = hasContent ? Visibility.Collapsed : Visibility.Visible;
         return newBlockAdded;
@@ -271,7 +288,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     /// TextBlock instances by sequence. Blocks that already match are left untouched; new finals get
     /// a fresh block inserted in chronological position; a block whose text changed (e.g. a completed
     /// translation replaces source on an already-visible line) is updated in place; stale blocks are
-    /// removed. The overlay never paints a live active line, so the history blocks are the only children.
+    /// removed. History blocks are the committed lines only — the live active line is a separate
+    /// block handled by <see cref="UpdateCaptionItems"/> and never appears here.
     /// </summary>
     private bool ReconcileHistory(IReadOnlyList<CaptionDisplayLine> history)
     {

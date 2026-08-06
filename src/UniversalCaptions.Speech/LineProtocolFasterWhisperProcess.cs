@@ -144,18 +144,13 @@ internal sealed class LineProtocolFasterWhisperProcess : IFasterWhisperProcess
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        startInfo.ArgumentList.Add("-u");
-        startInfo.ArgumentList.Add(_scriptPath);
-        startInfo.ArgumentList.Add("--model");
-        startInfo.ArgumentList.Add(_options.Model);
-        startInfo.ArgumentList.Add("--compute");
-        startInfo.ArgumentList.Add(_options.ComputeType);
-        startInfo.ArgumentList.Add("--threads");
-        startInfo.ArgumentList.Add(_options.Threads.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("--beam-size");
-        startInfo.ArgumentList.Add(_options.BeamSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
         startInfo.Environment["PYTHONIOENCODING"] = "utf-8";
         startInfo.Environment["PYTHONUTF8"] = "1";
+
+        foreach (var argument in BuildWorkerArguments())
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
 
         try
         {
@@ -172,6 +167,28 @@ internal sealed class LineProtocolFasterWhisperProcess : IFasterWhisperProcess
         _stdin = _process.StandardInput.BaseStream;
         _stdout = _process.StandardOutput.BaseStream;
         _ = Task.Run(() => DrainStderrAsync(_process.StandardError));
+    }
+
+    /// <summary>
+    /// Builds the worker command-line arguments. Exposed for tests so knob propagation (for example
+    /// the <see cref="FasterWhisperEngineOptions.Threads"/> decode-thread cap) can be asserted
+    /// without spawning a real Python child. <c>--threads</c> is the single decode-thread control.
+    /// </summary>
+    internal IReadOnlyList<string> BuildWorkerArguments()
+    {
+        return new List<string>
+        {
+            "-u",
+            _scriptPath,
+            "--model",
+            _options.Model,
+            "--compute",
+            _options.ComputeType,
+            "--threads",
+            _options.Threads.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--beam-size",
+            _options.BeamSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
     }
 
     /// <summary>

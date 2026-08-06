@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Globalization;
+using System.Linq;
 using System.Text;
 
 namespace UniversalCaptions.Speech.Tests;
@@ -338,6 +340,23 @@ public sealed class LineProtocolFasterWhisperProcessProtocolTests
         public override void SetLength(long value) => throw new NotSupportedException();
 
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(12)]
+    public void BuildWorkerArguments_IncludesThreadsKnob_InContractPosition(int threads)
+    {
+        var process = new LineProtocolFasterWhisperProcess(
+            new FasterWhisperEngineOptions { ServerScriptPath = "fake_worker.py", Threads = threads });
+
+        var args = process.BuildWorkerArguments();
+
+        Assert.Equal(10, args.Count);
+        Assert.Equal(new[] { "-u", "fake_worker.py", "--model", "small", "--compute", "int8" }, args.Take(6).ToArray());
+        Assert.Equal("--threads", args[6]);
+        Assert.Equal(threads.ToString(CultureInfo.InvariantCulture), args[7]);
+        Assert.Equal(new[] { "--beam-size", "5" }, args.Skip(8).ToArray());
     }
 
     /// <summary>

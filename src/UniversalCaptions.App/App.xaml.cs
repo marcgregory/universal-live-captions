@@ -14,7 +14,6 @@ using UniversalCaptions.Core.Capture;
 using UniversalCaptions.Core.Processing;
 using UniversalCaptions.Core.Speech;
 using UniversalCaptions.Core.Translation;
-using UniversalCaptions.Speech;
 using UniversalCaptions.Translation;
 using UniversalCaptions.Translation.Argos;
 
@@ -100,36 +99,11 @@ public partial class App : Application
 
         services.AddSingleton<Func<string?, ISpeechToTextEngine>>(_ => language =>
         {
-            string engine = Environment.GetEnvironmentVariable("UC_STT_ENGINE")?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (engine == "fasterwhisper")
-            {
-                return new FasterWhisperSpeechToTextEngine(new FasterWhisperEngineOptions
-                {
-                    PythonExecutablePath = ResolveFasterWhisperPython(),
-                    Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim().ToLowerInvariant(),
-                    WindowDuration = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_WINDOW", 8)),
-                    DecodeInterval = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_INTERVAL", 0.5)),
-                    MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_MIN_AUDIO", 0.5)),
-                    StabilityWindow = ResolveIntEnv("UC_STT_STABILITY", 2),
-                });
-            }
-
-            var options = new WhisperEngineOptions
-            {
-                ModelPath = ResolveModelPath(),
-                Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim().ToLowerInvariant(),
-                WindowDuration = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_WINDOW", 8)),
-                // 0.5 s interval: decodes 2× per second so partials appear as the speaker talks
-                // without triggering epoch boundary transitions too frequently (was 0.3 s, which
-                // caused rapid duplicate caption replay due to Whisper sliding-window resets).
-                DecodeInterval = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_INTERVAL", 0.5)),
-                // 0.5 s minimum before first decode: Whisper can produce reliable output from
-                // ~0.5 s of audio. The previous 2 s default guaranteed a 2 s silent wait before
-                // the first caption ever appeared.
-                MinimumAudioBeforeFirstDecode = TimeSpan.FromSeconds(ResolveDoubleEnv("UC_STT_MIN_AUDIO", 0.5)),
-                StabilityWindow = ResolveIntEnv("UC_STT_STABILITY", 2),
-            };
-            return new WhisperSpeechToTextEngine(options);
+            // Entry 14 promotion: the production default is the faster-whisper native streaming
+            // engine with Chrome-style live partials (SpeechEngineFactory); UC_STT_ENGINE=ggml-base
+            // selects the original local-Whisper engine as the explicit fallback. See
+            // SpeechEngineFactory for the full selection table.
+            return SpeechEngineFactory.Create(language);
         });
 
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
@@ -150,66 +124,5 @@ public partial class App : Application
         services.AddSingleton<CaptionOverlayWindow>();
         services.AddSingleton<IOverlayService>(sp => sp.GetRequiredService<CaptionOverlayWindow>());
         services.AddSingleton<ControlWindow>();
-    }
-
-    /// <summary>
-    /// Resolves the Whisper model path: the <c>UC_STT_MODEL_PATH</c> environment variable when set,
-    /// otherwise the repository-relative <c>artifacts/models/ggml-base.bin</c>.
-    /// </summary>
-    private static string ResolveModelPath()
-    {
-        string? configured = Environment.GetEnvironmentVariable("UC_STT_MODEL_PATH");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured;
-        }
-
-        return Path.Combine("artifacts", "models", "ggml-base.bin");
-    }
-
-    /// <summary>
-    /// Resolves the Python interpreter hosting faster-whisper: the <c>UC_FW_PYTHON</c> environment
-    /// variable when set, otherwise a <c>fwv</c> venv under <c>TEMP</c> (the same auto-discovery
-    /// pattern as Argos), otherwise the system <c>python</c>.
-    /// </summary>
-    private static string ResolveFasterWhisperPython()
-    {
-        string? configured = Environment.GetEnvironmentVariable("UC_FW_PYTHON");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured;
-        }
-
-        var tempPath = Environment.GetEnvironmentVariable("TEMP");
-        if (!string.IsNullOrWhiteSpace(tempPath))
-        {
-            var autoPython = Path.Combine(tempPath, "fwv", "Scripts", "python.exe");
-            if (File.Exists(autoPython))
-            {
-                return autoPython;
-            }
-        }
-
-        return "python";
-    }
-
-    /// <summary>
-    /// Reads an optional integer benchmark override (for example <c>UC_STT_STABILITY</c>); returns
-    /// <paramref name="fallback"/> when unset or unparseable. Overrides never change the built-in
-    /// default — the fallback here is the validated Slice 6 baseline (8 s window / 1 s interval /
-    /// StabilityWindow 2), the single authoritative configuration shared with the benchmark.
-    /// </summary>
-    private static int ResolveIntEnv(string name, int fallback)
-    {
-        string? raw = Environment.GetEnvironmentVariable(name);
-        return int.TryParse(raw, out int value) ? value : fallback;
-    }
-
-    private static double ResolveDoubleEnv(string name, double fallback)
-    {
-        string? raw = Environment.GetEnvironmentVariable(name);
-        return double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value)
-            ? value
-            : fallback;
     }
 }

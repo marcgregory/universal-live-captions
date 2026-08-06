@@ -43,3 +43,37 @@ artifacts/samples/
 
 # Argos Python venv + translation model packages downloaded locally for dev
 artifacts/argos/
+
+# Generated smoke/diagnostic outputs (re-runnable, not permanent evidence)
+smoke_captions_*.txt
+smoke_diag_*.txt
+smoke_live.log
+smoke.ps1
+smoke_settings_*.json
+diag_captions_*.txt
+diag_live.log
+diag.ps1
+diag_*.ps1
+cpu_*.csv
+cpu_live_*.log
+
+# Real-world acceptance / installer acceptance harness + evidence (untracked)
+acceptance.ps1
+acceptance_*
+app_validation.ps1
+appval_*
+installer_acceptance.ps1
+installer_acceptance*
+cpu_dbg_*.ps1
+cpu_probe.ps1
+cpu_decode_sweep.py
+cpu_settings_*.json
+raw_stt_*.log
+gen_english_wav.ps1
+
+# Local benchmark/helper data (untracked)
+english_corpus.txt
+vlc-help.txt
+
+# Packaged installer build output (source .iss/.ps1/.cmd are tracked)
+packaging/output/
