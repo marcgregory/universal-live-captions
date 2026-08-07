@@ -106,13 +106,23 @@ public partial class App : Application
             return SpeechEngineFactory.Create(language);
         });
 
-        // Live-audio translation engine (A4): the App-side factory produces an optional
+        // Live-audio translation engine (A4 + ADR-0009): the App-side factory produces an optional
         // ILiveAudioTranslationEngine for a (source, target) language pair. Default = null (no
         // provider configured — the offline-only path); future providers (Gemini Live Translate)
         // plug in here. The Func type matches the CaptionPipeline constructor parameter so the
         // pipeline can recreate the engine per session without knowing about environment variables.
+        //
+        // ADR-0009: the Gemini API key now comes from the Windows Credential Manager via
+        // ICredentialStore, not from the UC_GEMINI_API_KEY env var. The credential store is
+        // registered as a singleton above the factory so the factory closure can resolve it; the
+        // factory reads the key once when a Gemini session starts and the engine drops it from
+        // memory on Dispose (see ADR-0009 for the lifecycle).
+        services.AddSingleton<ICredentialStore>(_ => new WindowsCredentialStore());
         services.AddSingleton<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
-            _ => pair => LiveTranslationEngineFactory.Create(pair.SourceLanguage, pair.TargetLanguage));
+            sp => pair => LiveTranslationEngineFactory.Create(
+                sp.GetRequiredService<ICredentialStore>(),
+                pair.SourceLanguage,
+                pair.TargetLanguage));
 
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
         // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.

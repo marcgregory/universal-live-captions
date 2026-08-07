@@ -37,6 +37,7 @@ public class SettingsStoreTests : IDisposable
             Language = "ja",
             TranslationEnabled = true,
             TargetLanguage = "tl",
+            Provider = TranslationProvider.Gemini,
             Opacity = 0.8,
             FontSize = 24.0,
             ClickThrough = true,
@@ -86,6 +87,23 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Load_OldV1SchemaWithoutProviderField_DefaultsToArgos()
+    {
+        // v0.5.30 added UserSettings.Provider (TranslationProvider enum). A settings.json written by
+        // v0.5.29 (or earlier) does NOT contain a Provider field; the load must degrade gracefully
+        // to the documented default (Argos). System.Text.Json ignores unknown fields by default, so
+        // this test pins the v1→v2 migration path.
+        string path = Path.Combine(_directory, "settings.json");
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(path, @"{ ""Version"": 1, ""DeviceId"": ""legacy-device"", ""Language"": ""en"" }");
+
+        UserSettings loaded = _store.Load();
+
+        Assert.Equal("legacy-device", loaded.DeviceId);
+        Assert.Null(loaded.Provider);
+    }
+
+    [Fact]
     public void Save_writes_atomically_and_failed_save_preserves_last_good_file()
     {
         _store.Save(new UserSettings { DeviceId = "good" });
@@ -110,10 +128,12 @@ public class SettingsStoreTests : IDisposable
         await Task.WhenAll(saves);
 
         // The serialized saves always land a complete, parseable file holding one of the written
-        // values — never a torn/interleaved one.
+        // values — never a torn/interleaved one. The persisted Version is the current schema
+        // version (UserSettings.CurrentVersion, bumped to 2 in v0.5.30 when the Provider field
+        // was added).
         UserSettings loaded = _store.Load();
         Assert.Contains(loaded.DeviceId, ids);
-        Assert.Equal(1, loaded.Version);
+        Assert.Equal(UserSettings.CurrentVersion, loaded.Version);
 
         // A final sequential save settles last-write-wins.
         _store.Save(new UserSettings { DeviceId = "last-wins" });

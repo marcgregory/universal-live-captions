@@ -26,11 +26,22 @@ public partial class ControlWindow : Window
     private readonly string _captionSourceLanguage;
     private readonly ISettingsStore _settingsStore;
     private readonly UserSettings _settings;
+    private readonly ICredentialStore _credentialStore;
 
     private bool _initializing = true;
     private bool _savePending;
 
     private sealed record LanguageOption(string Label, string? Code);
+
+    private sealed record ProviderOption(string Label, TranslationProvider Value);
+
+    private static readonly ProviderOption[] TranslationProviders =
+    [
+        new("Argos (offline)", TranslationProvider.Argos),
+        new("Gemini (cloud)", TranslationProvider.Gemini),
+    ];
+
+    private const string GeminiKeyTarget = "UniversalCaptions:GeminiApiKey";
 
     private static readonly LanguageOption[] SourceLanguages =
     [
@@ -56,7 +67,10 @@ public partial class ControlWindow : Window
     /// <param name="captionOptions">The caption service options, for the caption source language.</param>
     /// <param name="settingsStore">The settings store this window saves its user preferences to (TD-005).</param>
     /// <param name="settings">The persisted user settings applied to the controls on load (TD-005).</param>
-    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine, ISettingsStore settingsStore, UserSettings settings)
+    /// <param name="credentialStore">
+    /// The Windows Credential Manager seam used by the Gemini API-key flow (ADR-0009).
+    /// </param>
+    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine, ISettingsStore settingsStore, UserSettings settings, ICredentialStore credentialStore)
     {
         _pipeline = pipeline;
         _overlay = overlay;
@@ -65,6 +79,7 @@ public partial class ControlWindow : Window
         _captionSourceLanguage = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions))).SourceLanguage;
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
         InitializeComponent();
 
         Loaded += OnLoaded;
@@ -112,6 +127,11 @@ public partial class ControlWindow : Window
             TargetLanguageCombo.IsEnabled = translationEnabled;
 
             TranslationToggle.IsChecked = translationEnabled;
+
+            ProviderCombo.ItemsSource = TranslationProviders;
+            ProviderCombo.SelectedIndex = FindProviderIndex(_settings.Provider ?? TranslationProvider.Argos);
+            UpdateGeminiKeyPanelState();
+
             ClickThroughToggle.IsChecked = _settings.ClickThrough == true;
 
             OpacitySlider.Value = _overlay.Opacity;
@@ -171,6 +191,18 @@ public partial class ControlWindow : Window
             }
         }
 
+        return 0;
+    }
+
+    private static int FindProviderIndex(TranslationProvider value)
+    {
+        for (int i = 0; i < TranslationProviders.Length; i++)
+        {
+            if (TranslationProviders[i].Value == value)
+            {
+                return i;
+            }
+        }
         return 0;
     }
 
@@ -352,6 +384,7 @@ public partial class ControlWindow : Window
             Language = (LanguageCombo.SelectedItem as LanguageOption)?.Code,
             TranslationEnabled = TranslationToggle.IsChecked,
             TargetLanguage = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code,
+            Provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value,
             Opacity = OpacitySlider.Value,
             FontSize = FontSizeSlider.Value,
             ClickThrough = ClickThroughToggle.IsChecked,
@@ -402,5 +435,176 @@ public partial class ControlWindow : Window
             PipelineStatusKind.Error => Brushes.IndianRed,
             _ => Brushes.Gray,
         };
+    }
+
+    /// <summary>
+    /// Reacts to a change in the translation provider combo. Does NOT mutate any active Gemini
+    /// session's credential — the new provider applies to the next Start (ADR-0009 §Trade-offs).
+    /// </summary>
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateGeminiKeyPanelState();
+        SaveSettings();
+    }
+
+    /// <summary>
+    /// Reflects the current provider + credential presence in the Gemini key panel's controls and
+    /// status text. Called from <see cref="OnLoaded"/>, <see cref="OnProviderChanged"/>, and the
+    /// Add/Update/Remove handlers. Pure UI refresh — does not read or write the credential itself.
+    /// </summary>
+    private void UpdateGeminiKeyPanelState()
+    {
+        bool isGemini = (ProviderCombo.SelectedItem as ProviderOption)?.Value == TranslationProvider.Gemini;
+        bool hasKey = _credentialStore.HasCredential(GeminiKeyTarget);
+
+        GeminiKeyPanel.IsEnabled = isGemini;
+        if (!isGemini)
+        {
+            GeminiKeyStatusText.Text = "Not applicable";
+            AddGeminiKeyButton.Visibility = Visibility.Collapsed;
+            UpdateGeminiKeyButton.Visibility = Visibility.Collapsed;
+            RemoveGeminiKeyButton.Visibility = Visibility.Collapsed;
+            GeminiKeyLastUpdatedText.Text = string.Empty;
+            return;
+        }
+
+        GeminiKeyStatusText.Text = hasKey ? "Configured" : "Not configured";
+        AddGeminiKeyButton.Visibility = hasKey ? Visibility.Collapsed : Visibility.Visible;
+        UpdateGeminiKeyButton.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
+        RemoveGeminiKeyButton.IsEnabled = hasKey;
+        // The "last updated" timestamp is intentionally not shown — recording it would require
+        // persisting it (which contradicts the "minimum persistence" policy) or querying the
+        // Credential Manager's FILETIME (which is not surfaced via CredRead+CredFree here).
+        GeminiKeyLastUpdatedText.Text = string.Empty;
+    }
+
+    private void OnAddGeminiKeyClicked(object sender, RoutedEventArgs e) => PromptForGeminiKey();
+
+    private void OnUpdateGeminiKeyClicked(object sender, RoutedEventArgs e) => PromptForGeminiKey();
+
+    /// <summary>
+    /// Opens a modal dialog containing a <see cref="PasswordBox"/>. The user enters (or re-enters)
+    /// the Gemini API key and clicks Save. The value is passed to <see cref="ICredentialStore"/>
+    /// via <see cref="SecureString"/>-backed WPF memory; the local string reference is dropped
+    /// immediately after the store call returns. Never logs, never displays, never persists
+    /// outside the Credential Manager (ADR-0009).
+    /// </summary>
+    private void PromptForGeminiKey()
+    {
+        bool hasExisting = _credentialStore.HasCredential(GeminiKeyTarget);
+        string title = hasExisting ? "Update Gemini API key" : "Add Gemini API key";
+
+        Window dialog = new()
+        {
+            Title = title,
+            Owner = this,
+            Width = 460,
+            Height = 200,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+        };
+
+        StackPanel panel = new() { Margin = new Thickness(14) };
+        TextBlock instructions = new()
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        instructions.Text = "Paste your Gemini API key. It is stored in Windows Credential Manager and read only when you start a Gemini session. The key is never displayed back to you.";
+        panel.Children.Add(instructions);
+
+        PasswordBox passwordBox = new() { Margin = new Thickness(0, 0, 0, 10) };
+        panel.Children.Add(passwordBox);
+
+        TextBlock errorText = new()
+        {
+            Foreground = Brushes.IndianRed,
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        panel.Children.Add(errorText);
+
+        StackPanel buttons = new()
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        Button saveButton = new()
+        {
+            Content = "Save",
+            Padding = new Thickness(14, 6, 14, 6),
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true,
+        };
+        Button cancelButton = new()
+        {
+            Content = "Cancel",
+            Padding = new Thickness(14, 6, 14, 6),
+            IsCancel = true,
+        };
+        buttons.Children.Add(saveButton);
+        buttons.Children.Add(cancelButton);
+        panel.Children.Add(buttons);
+
+        dialog.Content = panel;
+
+        bool? dialogResult = null;
+        saveButton.Click += (_, _) =>
+        {
+            string value = passwordBox.Password;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                errorText.Text = "Please enter a non-empty key.";
+                errorText.Visibility = Visibility.Visible;
+                return;
+            }
+            bool ok = _credentialStore.SetCredential(GeminiKeyTarget, value);
+            // Drop the local reference. Per ADR-0009: minimum lifetime + minimum copies; we do not
+            // claim cryptographic erasure of every managed-string copy.
+            value = string.Empty;
+            passwordBox.Password = string.Empty;
+            if (!ok)
+            {
+                errorText.Text = "Could not save the credential. Check that Windows Credential Manager is available.";
+                errorText.Visibility = Visibility.Visible;
+                return;
+            }
+            dialogResult = true;
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) =>
+        {
+            passwordBox.Password = string.Empty;
+            dialogResult = false;
+            dialog.Close();
+        };
+
+        dialog.ShowDialog();
+
+        if (dialogResult == true)
+        {
+            UpdateGeminiKeyPanelState();
+        }
+    }
+
+    private void OnRemoveGeminiKeyClicked(object sender, RoutedEventArgs e)
+    {
+        MessageBoxResult confirm = MessageBox.Show(
+            this,
+            "Remove the Gemini API key from Windows Credential Manager? Active Gemini sessions are not affected (the next Start will re-read).",
+            "Remove Gemini API key",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _credentialStore.RemoveCredential(GeminiKeyTarget);
+        UpdateGeminiKeyPanelState();
     }
 }

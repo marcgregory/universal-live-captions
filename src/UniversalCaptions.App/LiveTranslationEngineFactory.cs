@@ -1,52 +1,77 @@
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Core.Translation;
 using UniversalCaptions.Speech.Gemini;
 
 namespace UniversalCaptions.App;
 
 /// <summary>
-/// Builds the optional <see cref="ILiveAudioTranslationEngine"/> from environment knobs. The
-/// companion of <see cref="SpeechEngineFactory"/>: it lives in <c>UniversalCaptions.App</c> (the DI
-/// composition root) rather than <c>UniversalCaptions.Core.Translation</c> so the choice of provider
-/// — none, Gemini Live Translate, future cloud providers — stays a deployment decision rather than a
-/// contract that the Core layer would force on every consumer (App-side factory placement, A4).
+/// Builds the optional <see cref="ILiveAudioTranslationEngine"/> from environment knobs plus the
+/// user's stored credential. The companion of <see cref="SpeechEngineFactory"/>: it lives in
+/// <c>UniversalCaptions.App</c> (the DI composition root) rather than
+/// <c>UniversalCaptions.Core.Translation</c> so the choice of provider — none, Gemini Live
+/// Translate, future cloud providers — stays a deployment decision rather than a contract that the
+/// Core layer would force on every consumer (App-side factory placement, A4).
 /// </summary>
 /// <remarks>
 /// <para>
 /// The selection table mirrors the speech factory's surface: the <c>UC_LIVE_TRANSLATION_PROVIDER</c>
 /// environment variable picks the implementation. <c>unset</c> / <c>none</c> / empty → no live
 /// translation engine is created (the default; the App composes an offline-only pipeline). <c>gemini</c>
-/// → wires a <see cref="GeminiLiveTranslateEngine"/> with the API key from <c>UC_GEMINI_API_KEY</c>.
+/// → wires a <see cref="GeminiLiveTranslateEngine"/> with the API key read from
+/// <see cref="ICredentialStore"/>.
 /// </para>
 /// <para>
 /// Returning <c>null</c> is the intended default — the caption pipeline accepts a null
 /// <see cref="ILiveAudioTranslationEngine"/> and silently skips PCM fan-out. The factory itself
-/// never throws on an unset/unknown provider; a real provider that requires configuration must do its
-/// own validation and surface failures through <see cref="ILiveAudioTranslationEngine.TranslationFailed"/>
-/// (not via factory-time exceptions), so the pipeline stays resilient to a misconfigured live
-/// translation path.
+/// never throws on an unset/unknown provider; a real provider that requires configuration must do
+/// its own validation and surface failures through
+/// <see cref="ILiveAudioTranslationEngine.TranslationFailed"/> (not via factory-time exceptions),
+/// so the pipeline stays resilient to a misconfigured live translation path.
 /// </para>
 /// <para>
-/// API key handling: the engine's constructor requires the key directly. The factory reads it from
-/// <c>UC_GEMINI_API_KEY</c> as a transient mechanism. The App's intended future path is to load the
-/// key from the Windows Credential Manager; the env-var surface is the A6 wire-up and is documented
-/// in the landing page as a setup step. The factory never logs the key, never includes it in
-/// exceptions, and never passes it through diagnostics.
+/// API key handling (ADR-0009): the Gemini key is stored in the Windows Credential Manager under
+/// the target name <c>UniversalCaptions:GeminiApiKey</c> via <see cref="ICredentialStore"/>. The
+/// factory reads it once at the start of a Gemini session and passes it to
+/// <see cref="GeminiLiveTranslateEngineOptions.ApiKey"/>; the value is held only by the running
+/// engine and is dropped from memory on engine Dispose. The legacy <c>UC_GEMINI_API_KEY</c>
+/// environment-variable fallback is no longer consulted in the App — the developer spike runner
+/// (<c>tools/GeminiDirectWireSpike</c>) retains the env-var path for offline wire testing. The
+/// factory never logs the key, never includes it in exceptions, and never passes it through
+/// diagnostics.
 /// </para>
 /// </remarks>
 public static class LiveTranslationEngineFactory
 {
     /// <summary>
-    /// Selects and constructs the live-audio translation engine from <c>UC_LIVE_TRANSLATION_PROVIDER</c>.
-    /// Returns <c>null</c> when the provider is unset, empty, set to <c>none</c>, set to an unknown
-    /// value, or when the chosen provider is missing its required configuration (for example, the
-    /// Gemini engine without <c>UC_GEMINI_API_KEY</c>). The pipeline treats a null return as
-    /// "no live translation engine", which silently degrades to the offline-only pipeline.
+    /// Credential target name used by the App for the Gemini API key in Windows Credential Manager.
+    /// Exposed <c>internal</c> so tests can probe the same target the factory reads.
     /// </summary>
+    internal const string GeminiApiKeyTarget = "UniversalCaptions:GeminiApiKey";
+
+    /// <summary>
+    /// Selects and constructs the live-audio translation engine from <c>UC_LIVE_TRANSLATION_PROVIDER</c>
+    /// and the user's stored credential. Returns <c>null</c> when the provider is unset, empty, set to
+    /// <c>none</c>, set to an unknown value, or when the chosen provider is missing its required
+    /// configuration (for example, the Gemini engine without a stored API key). The pipeline treats
+    /// a null return as "no live translation engine", which silently degrades to the offline-only
+    /// pipeline. The factory itself never throws on a misconfigured or failing
+    /// <see cref="ICredentialStore"/> — that would break the offline pipeline.
+    /// </summary>
+    /// <param name="credentialStore">
+    /// The credential store to consult for the Gemini API key. The factory never throws if this
+    /// store fails; it returns <c>null</c> instead.
+    /// </param>
     /// <param name="sourceLanguage">The ISO 639-1 source language, when known.</param>
     /// <param name="targetLanguage">The ISO 639-1 target language, when known.</param>
     /// <returns>The constructed engine, or <c>null</c> when no live translation is configured.</returns>
-    public static ILiveAudioTranslationEngine? Create(string? sourceLanguage, string? targetLanguage)
+    public static ILiveAudioTranslationEngine? Create(ICredentialStore credentialStore, string? sourceLanguage, string? targetLanguage)
     {
+        if (credentialStore is null)
+        {
+            // Defensive: a null store is treated the same as an empty one. The factory never throws.
+            return null;
+        }
+
         string provider = Environment.GetEnvironmentVariable("UC_LIVE_TRANSLATION_PROVIDER")?.Trim().ToLowerInvariant() ?? string.Empty;
 
         if (string.IsNullOrEmpty(provider) || provider == "none" || provider == "off")
@@ -56,7 +81,22 @@ public static class LiveTranslationEngineFactory
 
         if (provider == "gemini")
         {
-            string? apiKey = Environment.GetEnvironmentVariable("UC_GEMINI_API_KEY");
+            // A failing ICredentialStore must not break the offline-only pipeline (ADR-0009
+            // invariant: the factory never throws). The lookup is wrapped so a broken store
+            // degrades to "no Gemini engine", same as a missing key.
+            string? apiKey;
+            try
+            {
+                apiKey = credentialStore.TryGetCredential(GeminiApiKeyTarget);
+            }
+            catch (Exception)
+            {
+                // The factory never logs the key, never includes the key in exceptions, and never
+                // surfaces store-failure details to the user — that would leak store internals. A
+                // null return is the safe, documented degradation path.
+                return null;
+            }
+
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 // Missing required configuration: return null and let the offline pipeline run. The

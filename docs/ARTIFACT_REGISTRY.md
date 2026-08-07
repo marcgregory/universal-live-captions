@@ -56,6 +56,7 @@ Every concept has exactly one authoritative document. An agent must update that 
 | Landing Page | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Public product landing page (HTML/CSS/JS + assets) — the user-facing download surface tied to [RELEASE_PLAN.md](implementation/RELEASE_PLAN.md) | Bootstrap (de facto) + formalized 2026-08-07 |
 | Installer Packaging | `packaging/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Inno Setup `.iss` + `launcher.cmd` + `build-package.ps1` that produce `UniversalCaptions-Setup-*.exe` — governed like code; `output/` is gitignored build output | Bootstrap (de facto) + formalized 2026-08-07 |
 | Local Dev Artifacts | `artifacts/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Gitignored developer-only caches — Whisper models, sample audio, Argos venv + packages, benchmark report outputs. The directory is canonical; its contents are not release-tracked. | Bootstrap (de facto) + formalized 2026-08-07 |
+| Credentials (Gemini API key, Windows Credential Manager) | [SECURITY_PLAN.md](SECURITY_PLAN.md) (Section "Secret Management") + [adr/ADR-0009.md](adr/ADR-0009.md) | One row per secret class; classification lives in SECURITY_PLAN, lifecycle/invariants live in ADR-0009. The raw value never appears in any document. | 2026-08-08 |
 
 ---
 
@@ -78,6 +79,7 @@ When working on a concern, update only its owner document. Do not create paralle
 | Privacy behavior change | SECURITY_PLAN.md | PRD.md |
 | Landing-page copy or layout | `landing/index.html` + `landing/styles.css` + `landing/script.js` | PRD.md, RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
 | Installer build configuration | `packaging/UniversalCaptions.iss` + `packaging/launcher.cmd` + `packaging/build-package.ps1` | RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
+| Credential lifecycle / API-key handling | `adr/ADR-0009.md` + `SECURITY_PLAN.md` (Section "Secret Management") | PRD.md, RELEASE_PLAN.md (cross-reference only — provider toggle ships in v0.5.30, see ADR-0009 §Implementation Outline) |
 
 ---
 

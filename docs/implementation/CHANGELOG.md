@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-06
+Last updated: 2026-08-08
 
 ## Metadata
 
@@ -16,6 +16,43 @@ Last updated: 2026-08-06
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.30 - 2026-08-08 (in progress)
+
+### Gemini API key → Windows Credential Manager (task #24)
+
+- **Windows Credential Manager is now the single source of truth for the Gemini API key in the App**
+  (ADR-0009). The production App reads the credential **once at the start of a Gemini session** through
+  the new `ICredentialStore` seam (`src/UniversalCaptions.App/Settings/ICredentialStore.cs` →
+  `WindowsCredentialStore.cs` over advapi32 `CredWriteW`/`CredReadW`/`CredDeleteW` under the target
+  name `UniversalCaptions:GeminiApiKey`) and drops it from active memory on engine Dispose / Stop.
+  Argos-only sessions never load the key.
+- **Settings UI** — Translation provider combo (Argos | Gemini) plus `[Add API key…]` /
+  `[Update…]` / `[Remove]` buttons + a `Configured` / `Not configured` status indicator. The key
+  is captured in a modal `Window` containing a WPF `PasswordBox` (SecureString-backed memory); the
+  raw value is never displayed back to the user and is cleared from local references immediately
+  after `SetCredential` returns. Active Gemini sessions are intentionally not torn down mid-flight
+  when the credential changes — the next Start picks up the new value (ADR-0009 §Trade-offs).
+- **`UC_GEMINI_API_KEY` environment-variable fallback REMOVED from the App path.**
+  `LiveTranslationEngineFactory.Create` no longer consults the env var; the developer spike runner
+  (`tools/GeminiDirectWireSpike` + `tests/UniversalCaptions.Speech.Gemini.Tests/Spikes/GeminiDirectWireSpike.cs`)
+  retains the env-var path for offline wire testing. Pinned by
+  `LiveTranslationEngineFactoryTests.Create_ProviderGemini_Ignores_UC_GEMINI_API_KEY_EnvVar`.
+- **`UserSettings.CurrentVersion` 1 → 2** to record the new `TranslationProvider Provider` enum
+  field. The bump is load-tolerant — `SettingsStore` ignores unknown fields and falls back to
+  defaults on parse failure, so existing v1 settings files load with `Provider = Argos` (default).
+  Pinned by `SettingsStoreTests.Load_OldV1SchemaWithoutProviderField_DefaultsToArgos`.
+- **`SECURITY_PLAN.md`** — new `Restricted` data-classification row (Cloud API keys); expanded
+  §"Secret Management" with the storage / read / UI / revocation policy; five new credential
+  security test cases appended to §"Security Test Cases".
+- **`ARTIFACT_REGISTRY.md`** — new rows in both the Artifact table and the Concept-to-Document
+  Mapping table point at `SECURITY_PLAN.md` §"Secret Management" + `ADR-0009.md`.
+- **Tests** — 17 new tests across `InMemoryCredentialStoreTests` (9), `WindowsCredentialStoreTests`
+  (6, Windows-only category), `LiveTranslationEngineFactoryTests` (10), and `SettingsStoreTests`
+  (1 migration test). Full suite target: **493/493 minimum**.
+- **Breaking change for App developers** (no public release yet — internal only): code that read
+  `UC_GEMINI_API_KEY` from the App must move to the Settings flow. The wire-protocol surface in
+  `src/UniversalCaptions.Speech.Gemini/` is unchanged and remains frozen.
 
 ## v0.5.29 - 2026-08-07
 

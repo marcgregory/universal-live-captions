@@ -3,13 +3,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Universal Live Captions"
         Width="400"
-        Height="490"
+        Height="590"
         MinWidth="360"
-        MinHeight="460"
+        MinHeight="560"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI">
     <Grid Margin="18,14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -75,7 +77,52 @@
                   IsEnabled="False"
                   SelectionChanged="OnTargetLanguageChanged" />
 
-        <StackPanel Grid.Row="5"
+        <TextBlock Grid.Row="5"
+                   Text="Translation provider"
+                   VerticalAlignment="Center" />
+        <ComboBox x:Name="ProviderCombo"
+                  Grid.Row="5"
+                  Grid.Column="1"
+                  Margin="10,4"
+                  SelectionChanged="OnProviderChanged" />
+
+        <TextBlock Grid.Row="6"
+                   Text="Gemini API key"
+                   VerticalAlignment="Top"
+                   Margin="0,8,0,0" />
+        <StackPanel x:Name="GeminiKeyPanel"
+                    Grid.Row="6"
+                    Grid.Column="1"
+                    Margin="10,4">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="GeminiKeyStatusText"
+                           Text="Not configured"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="GeminiKeyLastUpdatedText"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="#888888"
+                           Text="" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <Button x:Name="AddGeminiKeyButton"
+                        Content="Add API key…"
+                        Padding="10,4"
+                        Margin="0,0,8,0"
+                        Click="OnAddGeminiKeyClicked" />
+                <Button x:Name="UpdateGeminiKeyButton"
+                        Content="Update…"
+                        Padding="10,4"
+                        Margin="0,0,8,0"
+                        Click="OnUpdateGeminiKeyClicked" />
+                <Button x:Name="RemoveGeminiKeyButton"
+                        Content="Remove"
+                        Padding="10,4"
+                        Click="OnRemoveGeminiKeyClicked" />
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="7"
                     Grid.ColumnSpan="2"
                     Orientation="Horizontal"
                     Margin="0,8,0,0">
@@ -91,35 +138,35 @@
                        VerticalAlignment="Center" />
         </StackPanel>
 
-        <TextBlock Grid.Row="6"
+        <TextBlock Grid.Row="8"
                    Grid.Column="0"
                    Text="STT latency"
                    VerticalAlignment="Center" />
         <TextBlock x:Name="LatencyText"
-                   Grid.Row="6"
+                   Grid.Row="8"
                    Grid.Column="1"
                    Margin="10,2"
                    Text="—"
                    VerticalAlignment="Center" />
 
-        <TextBlock Grid.Row="7"
+        <TextBlock Grid.Row="9"
                    Grid.Column="0"
                    Text="E2E latency"
                    VerticalAlignment="Center" />
         <TextBlock x:Name="EndToEndLatencyText"
-                   Grid.Row="7"
+                   Grid.Row="9"
                    Grid.Column="1"
                    Margin="10,2"
                    Text="—"
                    TextWrapping="Wrap"
                    VerticalAlignment="Center" />
 
-        <TextBlock Grid.Row="8"
+        <TextBlock Grid.Row="10"
                    Grid.Column="0"
                    Text="Overlay opacity"
                    VerticalAlignment="Center" />
         <Slider x:Name="OpacitySlider"
-                Grid.Row="8"
+                Grid.Row="10"
                 Grid.Column="1"
                 Margin="10,4"
                 Minimum="0.2"
@@ -127,12 +174,12 @@
                 Value="1"
                 ValueChanged="OnOpacityChanged" />
 
-        <TextBlock Grid.Row="9"
+        <TextBlock Grid.Row="11"
                    Grid.Column="0"
                    Text="Overlay font"
                    VerticalAlignment="Center" />
         <Slider x:Name="FontSizeSlider"
-                Grid.Row="9"
+                Grid.Row="11"
                 Grid.Column="1"
                 Margin="10,4"
                 Minimum="10"
@@ -140,18 +187,18 @@
                 Value="16"
                 ValueChanged="OnFontSizeChanged" />
 
-        <TextBlock Grid.Row="10"
+        <TextBlock Grid.Row="12"
                    Text="Click-through"
                    VerticalAlignment="Center" />
         <CheckBox x:Name="ClickThroughToggle"
-                  Grid.Row="10"
+                  Grid.Row="12"
                   Grid.Column="1"
                   Margin="10,4"
                   Content="Let clicks pass to other apps"
                   Checked="OnClickThroughToggled"
                   Unchecked="OnClickThroughToggled" />
 
-        <StackPanel Grid.Row="11"
+        <StackPanel Grid.Row="13"
                     Grid.ColumnSpan="2"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"

@@ -50,6 +50,7 @@ Not applicable — single-user local application.
 
 | Classification | Examples | Storage Rules | Transmission Rules | Retention |
 |---|---|---|---|---|
+| Restricted | Cloud API keys (e.g., Gemini Live Translate) | Windows Credential Manager (advapi32 `CredWriteW`); in-memory only while an active session references them | TLS to vendor endpoint (e.g., `generativelanguage.googleapis.com`) | Until the user explicitly removes them; never written to settings.json or logs |
 | Confidential | Captured system audio (may contain conversations, passwords spoken aloud, personal data) | Never persisted by default; in-memory only | Never transmitted in MVP (local STT only) | Not retained |
 | Internal | Transcripts in caption state | In-memory caption history; cleared on stop | Never transmitted in MVP | Cleared on stop / session end |
 | Public | App diagnostics without audio content (sample rates, device names) | Optional log output | n/a | Log lifespan |
@@ -68,7 +69,29 @@ Documented in [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) Section 10 as i
 
 ## Secret Management
 
-The MVP has no secrets. Cloud STT API keys (future) must be stored via the OS credential manager, never in source control.
+Cloud API keys used by optional cloud translation engines are **Restricted** data per the Data
+Classification table. The App enforces this policy through the seams documented in
+[ADR-0009](adr/ADR-0009.md):
+
+- **Storage.** The Gemini API key is stored in **Windows Credential Manager** via advapi32
+  `CredWriteW` under the target name `UniversalCaptions:GeminiApiKey` (type
+  `CRED_TYPE_GENERIC`, persistence `CRED_PERSIST_LOCAL_MACHINE`, per-user DPAPI encryption).
+  The key never appears in `settings.json`, source code, logs, exception messages, telemetry,
+  or clipboard.
+- **Read path.** The App reads the credential **once at the start of a Gemini session** through
+  `ICredentialStore.TryGetCredential`; the engine receives the value as
+  `GeminiLiveTranslateEngineOptions.ApiKey` and drops it from active memory on engine Dispose /
+  Stop. Argos-only sessions never load the key.
+- **UI capture.** The Settings flow opens a modal containing a WPF `PasswordBox` (SecureString-backed
+  memory). The local `string` reference is dropped immediately after `SetCredential` returns; the
+  `PasswordBox.Password` is cleared before the modal closes. The raw value is never displayed
+  back to the user — only a `Configured` / `Not configured` status is shown.
+- **No env-var fallback in the App.** The legacy `UC_GEMINI_API_KEY` environment variable is
+  **not** consulted by the production App (the developer spike runner keeps the env-var path
+  for offline wire testing only).
+- **Revocation.** The previously exposed `AQ.Ab8RN6…` key (fingerprint `AQ.Ab8RN`) must be
+  revoked in Google AI Studio before any public release. Replacement keys live in the user's
+  Credential Manager only; the value is never pasted into chat, source, `.env`, or `settings.json`.
 
 ## Input and File Upload Validation
 
@@ -125,6 +148,23 @@ Operational failures (device loss, engine failure) are handled at runtime with u
 - [ ] **Microphone isolation** — the app never opens a microphone capture endpoint
 - [ ] **No network** — no outbound network calls in the MVP pipeline
 - [ ] **Stop clears state** — stopping capture clears in-memory transcripts
+
+### Credential / API-key Security Tests (ADR-0009)
+
+- [ ] **Production App does NOT read `UC_GEMINI_API_KEY` env var** — pinned by
+      `LiveTranslationEngineFactoryTests.Create_ProviderGemini_Ignores_UC_GEMINI_API_KEY_EnvVar`.
+- [ ] **Production App never writes the Gemini key to `settings.json`** — the raw key value is not a
+      `UserSettings` field; only the `TranslationProvider` enum (Argos/Gemini) is persisted.
+- [ ] **Key is dropped from active session after Stop** — the engine receives the key as
+      `ApiKey` on construction and is disposed by the pipeline on Stop; no caching in
+      `LiveTranslationEngineFactory` or `WindowsCredentialStore`.
+- [ ] **Settings UI never displays the raw key** — the Settings panel shows only a `Configured` /
+      `Not configured` status; the modal capture uses a `PasswordBox` and clears its `Password`
+      before closing.
+- [ ] **Key removal deletes the Credential Manager entry** — pinned by
+      `WindowsCredentialStoreTests.Roundtrip_SetReadDelete` and `InMemoryCredentialStoreTests.Remove_Deletes_Value`.
+- [ ] **Factory never throws on a failing `ICredentialStore`** — pinned by
+      `LiveTranslationEngineFactoryTests.Create_ProviderGemini_StoreException_DoesNotThrow`.
 
 ## Release Security Checklist
 
