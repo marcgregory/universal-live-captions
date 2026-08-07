@@ -1,6 +1,6 @@
 # Benchmark Report
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Metadata
 
@@ -1282,3 +1282,39 @@ revision `55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636`, load 3.841 s, per-row infer
 `artifacts/reports/translatelive/argos_baseline_unseen_2026-08-07.json` (Argos raw rows, identical
 input); probe scripts `m2m_probe_unseen.py` + `argos_corpus_unseen.py` (repo root). Raw corpora/
 outputs outside the repo under `%TEMP%\opencode\txbench\`.
+
+---
+
+## Final Decision — Offline Model-Selection Investigation CLOSED (2026-08-07)
+
+**User decision (2026-08-07).** Stop searching for another offline MT model. The offline-candidate
+evidence chain is now complete and conclusive for en→tl on this product's constraints:
+
+| Candidate | License | Quality vs Argos | Realtime | Verdict |
+|---|---|---|---|---|
+| **Argos / OPUS-MT en→tl** (+ frozen 13-rule naturalizer) | Apache-2.0 (shipped) | baseline — stilted but correct | fast (~0.11 s/line) | **Production offline baseline (frozen)** |
+| **NLLB-200-distilled-600M** | CC-BY-NC-4.0 | materially better | ~577 ms/line, 1.14 GB | Quality ceiling; **not production-eligible** |
+| **MADLAD-400-3B-MT** | Apache-2.0 | hallucination-prone/verbose | 2.8 s avg / 22.7 s max, 2.8 GB | Rejected (2026-08-06) |
+| **M2M-100-418M** | MIT | worse on 0/16 unseen lines | ~2.76 s/line mean | Rejected (2026-08-07) |
+| **Gemini Live Translate** | cloud | clearly better naturalness | realtime | Experimental quality/realtime **reference** (cloud/privacy/cost tradeoff) |
+| **13-rule naturalizer** | — | improves known Argos artifacts | free | Keep frozen; ~0 unseen-set recall |
+
+**Three-track conclusion (user-approved):**
+
+1. **Keep Argos as the production offline baseline** (frozen): `Whisper → Argos/OPUS-MT en→tl →
+   frozen 13-rule naturalizer → Caption`. The naturalizer stays because it demonstrably fixes known
+   recurring artifacts even though it is not a general translator.
+2. **Keep Gemini as the experimental quality/realtime reference.** Established tradeoff: Gemini wins
+   naturalness + realtime tracking; Argos wins offline, privacy, cost. This is a product choice, not a
+   winner/loser. Optional future **hybrid mode** (offline: Whisper→Argos→Naturalizer; online enhanced:
+   Whisper/audio→Gemini Live Translate) would let the user choose privacy/reliability vs
+   naturalness/realtime rather than forcing one technology.
+3. **Stop the offline-model hunt** unless a new candidate materially changes the constraints.
+   Repeatedly downloading MT models is no longer productive.
+
+**Next experiment (user direction):** not another MT sweep, but **small-model Tagalog
+naturalization** — whether a *small, permissively-licensed, instruction-following/text-rewriting
+model* can act as a **Tagalog naturalization/correction layer** over Argos (a different experiment
+from M2M/NLLB/MADLAD). The second blind human scorer of the unseen worksheet remains **supporting
+evidence only and no longer blocks the technical direction** (the M2M failure + unseen-set
+naturalizer result already provide enough evidence to move forward).

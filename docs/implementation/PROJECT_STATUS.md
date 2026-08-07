@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Metadata
 
@@ -18,6 +18,23 @@ Last updated: 2026-08-06
 This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
+
+**Translation research phase — offline model-selection investigation CLOSED (2026-08-07).** User
+decision: **stop searching for another offline MT model.** Evidence chain (all recorded in
+`BENCHMARK_REPORT.md`): Argos/OPUS-MT en→tl (production offline baseline, frozen, ~0.11 s/line),
+NLLB-200-distilled-600M (quality ceiling but CC-BY-NC → not production-eligible), MADLAD-400-3B-MT
+(rejected 2026-08-06: slow/verbose/2.8 GB), M2M-100-418M (rejected 2026-08-07: lost 0/16 unseen
+lines to Argos, ~2.76 s/line mean), Gemini Live Translate (experimental quality/realtime reference —
+cloud/privacy/cost tradeoff), frozen 13-rule naturalizer (fixes known Argos artifacts, ~0 unseen-set
+recall). **Three-track conclusion:** (1) keep Argos + naturalizer as the production offline baseline
+(`Whisper → Argos/OPUS-MT en→tl → frozen 13-rule naturalizer → Caption`); (2) keep Gemini as the
+experimental reference (naturalness + realtime vs offline + privacy + cost); (3) stop the offline-
+model hunt unless a new candidate materially changes the constraints. **Next experiment (user
+direction): small-model Tagalog naturalization** — whether a small, permissively-licensed,
+instruction-following/rewriting model can act as a Tagalog naturalization/correction layer over
+Argos (a different experiment from another MT sweep). The second blind scorer of the unseen
+worksheet is supporting evidence only and no longer blocks the direction. Evidence: BENCHMARK_REPORT
+(Unseen-set generalization test + M2M probe + Final Decision), commits `98ab405`/`100fbae`.
 
 **v0.5.26 — Core + Installer + Phase 2 app validation DONE (2026-08-06).** App-by-app validation of
 the installed v0.5.26 bundle (`launcher.cmd`, `%LocalAppData%\UniversalCaptions`, no repo/admin/dev

@@ -17,6 +17,36 @@ Last updated: 2026-08-06
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.27 - 2026-08-07
+
+### Translation research (no production-code changes)
+
+- **Unseen-set generalization test of the frozen 13-rule `TagalogNaturalizer` (2026-08-07).** New
+  unseen conversational en→tl sample (`gen_english_unseen_wav.ps1` + `artifacts/samples/
+  english_unseen_90s_16k.wav`, 92.85 s, 16 lines that avoid all 13 naturalizer triggers) run through
+  the real App pipeline (Whisper → Argos → naturalizer) and a Gemini Live Translate leg
+  (`translatelive`). Naturalizer coverage on unseen content: **0/23 rewrites**. Blinded per-line
+  human eval (worksheet + key in `artifacts/reports/translatelive/`): decoded Argos Nat 2.69 /
+  Meaning 3.56 / 1 win vs Gemini Nat 4.44 / Meaning 4.81 / 14 wins + 1 tie — **decisive Gemini
+  victory**; the 13 rules stay frozen, no promotion. Recorded in `BENCHMARK_REPORT.md`; evidence
+  committed `98ab405`.
+- **M2M-100-418M offline en→tl quality probe (2026-08-07).** Translation-only comparison of
+  facebook/m2m100_418M (MIT, permissive) vs the bundled Argos/OPUS-MT baseline on the exact same 16
+  unseen English lines, native/untuned per the user's measurement rule (`m2m_probe_unseen.py` +
+  `argos_corpus_unseen.py`, raw rows in `artifacts/reports/translatelive/`). **M2M lost 0/16 lines**:
+  whole-utterance English passthrough (#10), word-sense catastrophes ("here you go" → `pag-ibig`,
+  "nine thirty" → `nakaraang taon`), English leakage throughout, and ~20–40× slower inference
+  (mean 2.76 s/line vs Argos ~0.11 s/line). Rejected at the quality gate (user's rule: no streaming
+  benchmark when not clearly better). Evidence committed `100fbae`.
+- **Offline model-selection investigation CLOSED (2026-08-07, user decision).** Stop the offline-MT
+  hunt; no candidate (NLLB-600M CC-BY-NC, MADLAD-400-3B, M2M-100-418M) beats the frozen
+  Argos+naturalizer offline baseline while meeting permissive-license + realtime constraints.
+  Three-track conclusion: (1) Argos+naturalizer stays the production offline baseline; (2) Gemini
+  remains the experimental quality/realtime reference (naturalness + realtime vs offline + privacy +
+  cost); (3) next experiment is **small-model Tagalog naturalization** (an instruction-following/
+  rewriting layer over Argos), not another MT sweep. Second blind scorer is supporting evidence only,
+  no longer blocking. See `BENCHMARK_REPORT.md` "Final Decision".
+
 ## v0.5.26 - 2026-08-06
 
 ### Added (offline installer — UC_FW_MODEL + packaging)
