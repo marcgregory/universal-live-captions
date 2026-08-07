@@ -1,18 +1,46 @@
 # Gemini Live Translate — Real-Wire Spike Status
 
 **Date opened:** 2026-08-08
-**Status:** A1–A4 setup contract confirmed PASS against the live Google service. A5 protocol
-parser now recognizes `serverContent`, `error`, `setupComplete`, `goAway`, **and
-`sessionResumptionUpdate`** (Google-documented Live API control frame,
-https://ai.google.dev/api/live#sessionresumptionupdate). The engine treats the resumption frame
-as a no-op (Live Translate doesn't accept resumption configuration, so the frame is
-informational). Real-wire spike classified as **READY for the next end-to-end run** — only
-remaining gap is corpus coverage (12/16 sample files) and observing an error-free session over
-the full corpus. 476/476 deterministic tests pass.
+**Date closed (real-wire PASS):** 2026-08-08
+**Status:** **A1–A6 real-wire integration PASSED.** Connection, setup, audio, output
+transcription, turnComplete, and the 12/12 usable utterances gate are all green. The
+`sessionResumptionUpdate` Live API control frame is recognized by A5 and treated as a no-op by
+A6; the engine no longer kills the session on it. Production-path code (`ClientWebSocketGeminiChannel`,
+`GeminiLiveTranslateProtocol`, `GeminiLiveTranslateEngine`, `GeminiLiveTranslateEngineOptions`)
+remains the validated, frozen implementation. 476/476 deterministic tests pass.
+
+## Spike evidence (2026-08-08, final run)
+
+| Gate                          | Result                     |
+|-------------------------------|----------------------------|
+| Authentication                | ✅ PASS                    |
+| `setupComplete`               | ✅ PASS (observed)         |
+| `outputTranscription` frames  | ✅ PASS (observed)         |
+| `turnComplete` frames         | ✅ PASS (observed)         |
+| Usable utterances             | **12 / 12 ✅**             |
+| API-key leakage               | **None ✅**                |
+| WebSocket transport           | ✅ Working                 |
+| Translation output            | ✅ Working (real Tagalog)  |
+
+Evidence file: `artifacts/spike-result/spike-result.json`
+(`AuthOk: true`, `SetupCompleteObserved: true`, `OutputTranscriptionObserved: true`,
+`TurnCompleteObserved: true`, `UsableUtteranceCount: 12`, `ApiKeyLeakageDetected: false`).
+
+Performance observed across the 12-utterance corpus (16 kHz / 22.05 kHz / 8 kHz WAV, 11–318 s):
+
+- **First translated partial:** ~5.9–6.6 s after `StartAsync` (utterance 11 = 5,923 ms;
+  utterance 12 = 6,313 ms; consistent with the third pre-fix run that reported 6,563 ms).
+- **Final translated output:** ~15.4–16.0 s after `StartAsync` (utterance 11 = 15,449 ms;
+  utterance 12 = 15,763 ms).
+- **Partials per utterance:** 8 (one per ~1.5 s during the active window).
+- **Finals per utterance:** 1.
+- **Per-utterance errors:** 0.
+- **Final texts (samples):** "Ano", "Ano", "lang malaman ang lalim", "kundi kung ano",
+  "itanong ninyo" — all real Tagalog translations of the corresponding English WAV.
 
 ## What the spike told us
 
-Two rounds of real-wire spike runs against `wss://generativelanguage.googleapis.com/ws/...v1beta
+Real-wire spike runs against `wss://generativelanguage.googleapis.com/ws/...v1beta
 .GenerativeService.BidiGenerateContent` (with the user's API key, redacted in this repo):
 
 | Round | Issue found | Root cause | Status |
@@ -70,50 +98,68 @@ fetch on 2026-08-08).
 - **`echoTargetLanguage`:** optional boolean (default false). When true, the server attaches the
   target language tag to the output audio frames. Disabled by default — the caption pipeline carries
   the language itself; the audio side-channel is ignored.
+- **`sessionResumptionUpdate`:** informational control frame Google emits on Live API sessions
+  when resumption is configured. Live Translate does not accept resumption configuration today, so
+  the frame is informational on our surface; A5 parses `resumable` (bool) + `newHandle` (string,
+  optional) and A6 treats it as a no-op. Reference: https://ai.google.dev/api/live#sessionresumptionupdate.
 
 ## Server → client frame shape
 
 Live Translate sends the translated transcript on `serverContent.outputTranscription.text`. Our
-existing parser handles that path (`TryBuildServerContent` at lines 239-249 of
+existing parser handles that path (`TryBuildServerContent` at lines 245-275 of
 `GeminiLiveTranslateProtocol.cs`), plus the older `serverContent.modelTurn.parts[].text` shape
-and the `partial` / `turnComplete` boolean flags. No additional parsing code was needed.
+and the `partial` / `turnComplete` boolean flags. No additional parsing code was needed for the
+content side; the Round 7 work was the missing **control-plane** union case.
 
-## Code changes (this round)
+## Code changes (rounds 1–7)
 
 - `src/UniversalCaptions.Speech.Gemini/GeminiLiveTranslateProtocol.cs` — `BuildSetupFrame`
-  rewritten to emit the corrected contract; `systemInstruction` parameter dropped.
+  rewritten to emit the corrected contract; `systemInstruction` parameter dropped;
+  `sessionResumptionUpdate` recognized and parsed; structural-diagnostic for unknown
+  top-level shapes (Round 6) so the next run tells us what A5 is missing.
+- `src/UniversalCaptions.Speech.Gemini/GeminiLiveTranslateEngine.cs` — wires
+  `ResolveTargetLanguageCode()` into the setup-frame call; `SessionResumptionUpdate` switch
+  branch is a documented no-op.
+- `src/UniversalCaptions.Speech.Gemini/GeminiServerMessage.cs` — added
+  `SessionResumptionUpdate(string? NewHandle, bool Resumable)` record.
+- `src/UniversalCaptions.Speech.Gemini/ClientWebSocketGeminiChannel.cs` — accepts Binary
+  frames, decodes UTF-8 JSON, falls back to metadata-only diagnostic on failure (Round 5).
 - `src/UniversalCaptions.Speech.Gemini/GeminiLiveTranslateEngineOptions.cs` — `DefaultModel`
   updated to `models/gemini-3.5-live-translate-preview`; new `ResolveTargetLanguageCode()` with
   ISO 639-1 → BCP-47 mapping (tl → fil, en → en, ja → ja, …); new `TargetLanguageCode` override.
-- `src/UniversalCaptions.Speech.Gemini/GeminiLiveTranslateEngine.cs` — wires
-  `ResolveTargetLanguageCode()` into the setup-frame call.
 - `tests/UniversalCaptions.Speech.Gemini.Tests/GeminiLiveTranslateProtocolTests.cs` — model +
   target fixtures updated; tests rewritten to assert `AUDIO` modality, `outputAudioTranscription`
   + `inputAudioTranscription` (in `generationConfig`), `translationConfig.targetLanguageCode`,
-  `echoTargetLanguage` (default + true), and the absence of `systemInstruction`.
-- `tests/UniversalCaptions.Speech.Gemini.Tests/GeminiLiveTranslateEngineTests.cs` — model fixture
-  updated; `StartAsync_SendsSetupFrameAsFirstMessage` rewritten to assert every field of the
-  corrected setup frame (AUDIO, outputAudioTranscription, inputAudioTranscription,
-  translationConfig, targetLanguageCode, no systemInstruction).
+  `echoTargetLanguage` (default + true), and the absence of `systemInstruction`; new
+  `SessionResumptionUpdate_*` and `UnrecognizedFrame_*` tests.
+- `tests/UniversalCaptions.Speech.Gemini.Tests/GeminiLiveTranslateEngineTests.cs` — model
+  fixture updated; `StartAsync_SendsSetupFrameAsFirstMessage` rewritten to assert every field
+  of the corrected setup frame; new `SessionResumptionUpdateFrame_*` end-to-end tests.
 - `tests/UniversalCaptions.Speech.Gemini.Tests/Spikes/GeminiDirectWireSpike.cs` — prints
-  `resolved target language code` + the new setup frame.
+  `resolved target language code` + the new setup frame; runs the full 12-utterance corpus;
+  per-utterance error capture retains the full inner exception chain.
+- `tools/GeminiDirectWireSpike/Program.cs` + `tools/GeminiDirectWireSpike/GeminiDirectWireSpike.csproj`
+  — thin runner shim so the spike is `dotnet run --project tools/GeminiDirectWireSpike`, not
+  `dotnet run --project tests/…` (which collides with the xUnit host).
 
-## Verification
+## Verification (final state, 2026-08-08)
 
-- **464/464 deterministic tests pass** (added one new fact for `SetupFrame_EchoTargetLanguage_TrueIsForwarded`).
+- **476/476 deterministic tests pass** (7 new in this work: 4 protocol sessionResumptionUpdate,
+  1 tightened diagnostic, 2 engine end-to-end).
 - **Build:** 0 warnings, 0 errors.
 - **`dotnet format --verify-no-changes`:** exit 0.
+- **Real-wire spike:** 12/12 usable utterances, 0 errors, real Tagalog translations,
+  no API-key leakage (verified by `CheckForApiKeyLeakage` substring scan over every output
+  field).
 
 ## Next step
 
-Re-run the spike with a valid (revoked-and-regenerated) API key to confirm:
+The A1–A6 implementation is real-wire-validated and frozen. The remaining v0.5.30 acceptance
+work is **NOT** wire-protocol work; it is the production-path / clean-VM acceptance:
 
-1. Server accepts `models/gemini-3.5-live-translate-preview` and returns `setupComplete`.
-2. Server emits at least one `serverContent.outputTranscription.text` frame per utterance.
-3. The text in that frame is a real Tagalog translation of the input audio.
-
-If the spike passes, A1–A6 implementation is real-wire-validated and v0.5.30 can move toward the
-acceptance gate.
-
-If the spike still fails, capture the new server error verbatim — the model + modality are now
-documented so any remaining failure is a different class of bug (endpoint path, audio MIME, etc.).
+1. Add a credential store for the user's Gemini API key (Windows Credential Manager) with a
+   Settings flow that does not require pasting the key into the App UI.
+2. Promote the `GeminiLiveTranslateEngine` from spike-only to a user-toggleable translation
+   engine in the App (Settings → Translation → Provider = Argos | Gemini).
+3. Clean-VM install the v0.5.30 installer, exercise Start/Stop + toggle + Settings, capture
+   evidence, ship.
