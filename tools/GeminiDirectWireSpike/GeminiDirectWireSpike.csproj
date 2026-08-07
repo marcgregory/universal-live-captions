@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>UniversalCaptions.Speech.Gemini.Tests.Spikes</RootNamespace>
+    <AssemblyName>GeminiDirectWireSpike</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\tests\UniversalCaptions.Speech.Gemini.Tests\Spikes\GeminiDirectWireSpike.cs" Link="Spikes\GeminiDirectWireSpike.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\UniversalCaptions.Core\UniversalCaptions.Core.csproj" />
+    <ProjectReference Include="..\..\src\UniversalCaptions.Speech.Gemini\UniversalCaptions.Speech.Gemini.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -53,6 +53,9 @@ Every concept has exactly one authoritative document. An agent must update that 
 | Architectural Decisions | [ADR-*.md](adr/ADR-0001.md) | Consequential decision records | Bootstrap + Ongoing |
 | Audio Capture Model | [ARCHITECTURE.md](ARCHITECTURE.md) (Section "Audio Capture Model") | WASAPI loopback capture design | Bootstrap |
 | Privacy Model | [SECURITY_PLAN.md](SECURITY_PLAN.md) (Section "Privacy Model") | How sensitive audio is handled | Bootstrap |
+| Landing Page | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Public product landing page (HTML/CSS/JS + assets) — the user-facing download surface tied to [RELEASE_PLAN.md](implementation/RELEASE_PLAN.md) | Bootstrap (de facto) + formalized 2026-08-07 |
+| Installer Packaging | `packaging/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Inno Setup `.iss` + `launcher.cmd` + `build-package.ps1` that produce `UniversalCaptions-Setup-*.exe` — governed like code; `output/` is gitignored build output | Bootstrap (de facto) + formalized 2026-08-07 |
+| Local Dev Artifacts | `artifacts/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Gitignored developer-only caches — Whisper models, sample audio, Argos venv + packages, benchmark report outputs. The directory is canonical; its contents are not release-tracked. | Bootstrap (de facto) + formalized 2026-08-07 |
 
 ---
 
@@ -73,6 +76,8 @@ When working on a concern, update only its owner document. Do not create paralle
 | Release decision | RELEASE_PLAN.md | PROJECT_STATUS.md |
 | Audio capture behavior | ARCHITECTURE.md | PRD.md |
 | Privacy behavior change | SECURITY_PLAN.md | PRD.md |
+| Landing-page copy or layout | `landing/index.html` + `landing/styles.css` + `landing/script.js` | PRD.md, RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
+| Installer build configuration | `packaging/UniversalCaptions.iss` + `packaging/launcher.cmd` + `packaging/build-package.ps1` | RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
 
 ---
 

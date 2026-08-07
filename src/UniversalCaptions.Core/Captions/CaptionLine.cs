@@ -13,6 +13,20 @@ public enum CaptionLineState
 }
 
 /// <summary>
+/// Identifies which pipeline produced a <see cref="CaptionLine"/>. Lines from different origins
+/// coexist in the same caption state without overwriting one another; active-line identity is
+/// <see cref="Origin"/> + instance identity.
+/// </summary>
+public enum LineOrigin
+{
+    /// <summary>The line was produced by an <c>ISpeechToTextEngine</c> recognising the source audio.</summary>
+    SourceStt,
+
+    /// <summary>The line was produced by an <c>ILiveAudioTranslationEngine</c> emitting target-language text.</summary>
+    Translation,
+}
+
+/// <summary>
 /// The translation state of a <see cref="CaptionLine"/>.
 /// </summary>
 public enum CaptionTranslationStatus
@@ -58,6 +72,7 @@ public sealed class CaptionLine
     /// <param name="translationErrorMessage">A message describing a translation failure, when failed.</param>
     /// <param name="translationStartedAtUtc">The time the translation request started (UTC), when translation was attempted.</param>
     /// <param name="translationCompletedAtUtc">The time the translated line was applied/published (UTC), when translation completed.</param>
+    /// <param name="origin">Which pipeline produced this line. Defaults to <see cref="LineOrigin.SourceStt"/>.</param>
     public CaptionLine(
         string text,
         string sourceLanguage,
@@ -70,7 +85,8 @@ public sealed class CaptionLine
         CaptionTranslationStatus translationStatus = CaptionTranslationStatus.NotRequested,
         string? translationErrorMessage = null,
         DateTime? translationStartedAtUtc = null,
-        DateTime? translationCompletedAtUtc = null)
+        DateTime? translationCompletedAtUtc = null,
+        LineOrigin origin = LineOrigin.SourceStt)
     {
         Text = text;
         SourceLanguage = sourceLanguage;
@@ -84,6 +100,7 @@ public sealed class CaptionLine
         TranslationErrorMessage = translationErrorMessage;
         TranslationStartedAtUtc = translationStartedAtUtc;
         TranslationCompletedAtUtc = translationCompletedAtUtc;
+        Origin = origin;
     }
 
     /// <summary>The source-language caption text.</summary>
@@ -129,6 +146,9 @@ public sealed class CaptionLine
     /// <summary>A message describing a translation failure, when translation failed.</summary>
     public string? TranslationErrorMessage { get; }
 
+    /// <summary>Which pipeline produced this line.</summary>
+    public LineOrigin Origin { get; }
+
     /// <summary>
     /// Returns a copy of this line with a completed translation applied. The source text is
     /// preserved. When <paramref name="translationCompletedAtUtc"/> is set, the line is published to
@@ -141,14 +161,14 @@ public sealed class CaptionLine
         DateTime? translationCompletedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
         targetLanguage, translatedText, CaptionTranslationStatus.Completed, null,
-        translationStartedAtUtc, translationCompletedAtUtc);
+        translationStartedAtUtc, translationCompletedAtUtc, Origin);
 
     /// <summary>
     /// Returns a copy of this line marked as pending translation. The source text is preserved.
     /// </summary>
     public CaptionLine WithPendingTranslation(string targetLanguage, DateTime? translationStartedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
-        targetLanguage, null, CaptionTranslationStatus.Pending, null, translationStartedAtUtc, null);
+        targetLanguage, null, CaptionTranslationStatus.Pending, null, translationStartedAtUtc, null, Origin);
 
     /// <summary>
     /// Returns a copy of this line marked as a translation failure. The source text is preserved.
@@ -156,7 +176,7 @@ public sealed class CaptionLine
     /// <param name="errorMessage">A message describing why translation failed.</param>
     public CaptionLine WithTranslationFailure(string errorMessage, DateTime? translationStartedAtUtc = null) => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
-        TargetLanguage, null, CaptionTranslationStatus.Failed, errorMessage, translationStartedAtUtc, null);
+        TargetLanguage, null, CaptionTranslationStatus.Failed, errorMessage, translationStartedAtUtc, null, Origin);
 
     /// <inheritdoc />
     public override string ToString() => $"{State}[{Sequence}] {Text}";

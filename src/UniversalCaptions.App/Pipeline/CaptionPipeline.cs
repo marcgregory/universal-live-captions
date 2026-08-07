@@ -4,6 +4,7 @@ using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Capture;
 using UniversalCaptions.Core.Processing;
 using UniversalCaptions.Core.Speech;
+using UniversalCaptions.Core.Translation;
 
 namespace UniversalCaptions.App.Pipeline;
 
@@ -40,9 +41,19 @@ public sealed class CaptionPipeline : IDisposable
     private readonly ICaptionService _captions;
     private readonly IDeviceChangeMonitor? _monitor;
     private readonly DefaultDeviceAutoRecovery? _recovery;
+    private readonly Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>? _liveTranslationFactory;
+    private readonly string? _sourceLanguage;
+    private readonly string? _targetLanguage;
 
     private IAudioCapture? _capture;
     private ISpeechToTextEngine? _speechToText;
+    private ILiveAudioTranslationEngine? _liveTranslation;
+    // Event delegates captured at subscription time so the failure path can detach the exact same
+    // handlers without depending on a public remove API (events only expose -= from inside the
+    // declaring type — these references are the standard solution when subscribing from outside).
+    private EventHandler<PartialTranslation>? _onPartialTranslation;
+    private EventHandler<FinalTranslation>? _onFinalTranslation;
+    private EventHandler<LiveTranslationError>? _onLiveTranslationFailed;
     private string? _deviceId;
     private Task? _teardownTask;
     private bool _faulted;
@@ -61,24 +72,47 @@ public sealed class CaptionPipeline : IDisposable
     /// Optional device-change source for TD-002 auto-recovery. When null (or when the session captures
     /// an explicitly chosen device), no notification restarts the session.
     /// </param>
+    /// <param name="liveTranslationFactory">
+    /// Optional factory that produces an <see cref="ILiveAudioTranslationEngine"/> for the configured
+    /// source/target language pair. When null, or when the factory itself returns null (no provider
+    /// configured), the pipeline runs the offline-only path: PCM is not fanned out to a live
+    /// translator and no <see cref="ILiveAudioTranslationEngine.PartialTranslationAvailable"/> /
+    /// <see cref="ILiveAudioTranslationEngine.FinalTranslationAvailable"/> events are produced. A live
+    /// translation engine failure (raised through <see cref="ILiveAudioTranslationEngine.TranslationFailed"/>)
+    /// never faults the caption pipeline or stops Whisper — only the live translation engine itself is
+    /// stopped and disposed, and a status is raised so the UI can surface the failure.
+    /// </param>
+    /// <param name="sourceLanguage">The source language passed to the live translation factory, when known.</param>
+    /// <param name="targetLanguage">The target language passed to the live translation factory, when known.</param>
     public CaptionPipeline(
         Func<string?, IAudioCapture> captureFactory,
         IAudioProcessor processor,
         Func<string?, ISpeechToTextEngine> speechToTextFactory,
         ICaptionService captions,
-        IDeviceChangeMonitor? monitor = null)
+        IDeviceChangeMonitor? monitor = null,
+        Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>? liveTranslationFactory = null,
+        string? sourceLanguage = null,
+        string? targetLanguage = null)
     {
         _captureFactory = captureFactory ?? throw new ArgumentNullException(nameof(captureFactory));
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _speechToTextFactory = speechToTextFactory ?? throw new ArgumentNullException(nameof(speechToTextFactory));
         _captions = captions ?? throw new ArgumentNullException(nameof(captions));
         _monitor = monitor;
+        _liveTranslationFactory = liveTranslationFactory;
+        _sourceLanguage = NormalizeLanguage(sourceLanguage);
+        _targetLanguage = NormalizeLanguage(targetLanguage);
         if (monitor is not null)
         {
             _recovery = new DefaultDeviceAutoRecovery(monitor, () => IsOnDefaultDevice, _ => RestartCaptureAsync());
         }
 
         _captions.CaptionLineUpdated += OnCaptionLineUpdated;
+    }
+
+    private static string? NormalizeLanguage(string? language)
+    {
+        return string.IsNullOrWhiteSpace(language) ? null : language.Trim().ToLowerInvariant();
     }
 
     /// <summary>Raised when the pipeline state changes (capturing, stopped, or error).</summary>
@@ -167,6 +201,44 @@ public sealed class CaptionPipeline : IDisposable
 
         if (_capture.IsCapturing)
         {
+            // Live-translation engine is created AFTER speech has started and capture is live, so a
+            // failure to create it (e.g. provider is unset / factory returns null) cannot fault the
+            // offline path. The engine is the sole property of the pipeline — we own StartAsync /
+            // StopAsync / Dispose, and TranslationFailed only tears the engine down without setting
+            // _faulted or stopping Whisper.
+            if (_liveTranslationFactory is not null && _sourceLanguage is not null && _targetLanguage is not null)
+            {
+                _liveTranslation = CreateLiveTranslation(_sourceLanguage, _targetLanguage);
+                if (_liveTranslation is not null)
+                {
+                    // Capture delegate fields first so StopSessionLocked and the failure handler
+                    // can unsubscribe the exact same handler instances.
+                    _onPartialTranslation = OnPartialTranslation;
+                    _onFinalTranslation = OnFinalTranslation;
+                    _onLiveTranslationFailed = OnLiveTranslationFailed;
+                    _liveTranslation.PartialTranslationAvailable += _onPartialTranslation;
+                    _liveTranslation.FinalTranslationAvailable += _onFinalTranslation;
+                    _liveTranslation.TranslationFailed += _onLiveTranslationFailed;
+
+                    try
+                    {
+                        // StartAsync is awaited from the UI thread; a slow cloud handshake is bounded
+                        // by the user's perceived Start latency. The factory has already produced the
+                        // engine so this is the only failure mode that can fault the live path.
+                        _liveTranslation.StartAsync().GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Treat the synchronous StartAsync failure identically to a TranslationFailed
+                        // event: stop the engine, dispose it, raise status, leave Whisper running.
+                        DetachAndDisposeLiveTranslation();
+                        RaiseStatus(new PipelineStatus(
+                            PipelineStatusKind.Error,
+                            $"Live translation unavailable: {ex.Message}"));
+                    }
+                }
+            }
+
             TempaudioLatencyProbe.RecordDeviceStarted();
             UniversalCaptions.Core.Diagnostics.DiagnosticTracer.StartSession();
             if (_monitor is not null && _deviceId is null)
@@ -380,13 +452,15 @@ public sealed class CaptionPipeline : IDisposable
     {
         IAudioCapture? capture = _capture;
         ISpeechToTextEngine? speechToText = _speechToText;
-        if (capture is null && speechToText is null && !_captions.IsRunning)
+        ILiveAudioTranslationEngine? liveTranslation = _liveTranslation;
+        if (capture is null && speechToText is null && liveTranslation is null && !_captions.IsRunning)
         {
             return false;
         }
 
         _capture = null;
         _speechToText = null;
+        _liveTranslation = null;
         _deviceId = null;
         _monitor?.Stop();
 
@@ -403,17 +477,42 @@ public sealed class CaptionPipeline : IDisposable
             speechToText.RecognitionFailed -= OnRecognitionFailed;
         }
 
+        if (liveTranslation is not null)
+        {
+            if (_onPartialTranslation is not null)
+            {
+                liveTranslation.PartialTranslationAvailable -= _onPartialTranslation;
+            }
+
+            if (_onFinalTranslation is not null)
+            {
+                liveTranslation.FinalTranslationAvailable -= _onFinalTranslation;
+            }
+
+            if (_onLiveTranslationFailed is not null)
+            {
+                liveTranslation.TranslationFailed -= _onLiveTranslationFailed;
+            }
+        }
+
+        _onPartialTranslation = null;
+        _onFinalTranslation = null;
+        _onLiveTranslationFailed = null;
+
         _captions.Stop();
 
-        _teardownTask = Task.Run(() => TeardownComponents(capture, speechToText));
+        _teardownTask = Task.Run(() => TeardownComponents(capture, speechToText, liveTranslation));
         return true;
     }
 
     /// <summary>
     /// Stops and disposes the session components. Runs on a background task so a blocking Whisper
-    /// stop/dispose never stalls the caller (typically the WPF UI thread).
+    /// stop/dispose never stalls the caller (typically the WPF UI thread). The live translation engine
+    /// is stopped asynchronously; an await on its own receive loop would deadlock, so the failure
+    /// path (DetachAndDisposeLiveTranslation) does NOT call StopAsync at all — only Dispose, after
+    /// detaching the events so a Dispose from this teardown path is idempotent.
     /// </summary>
-    private static void TeardownComponents(IAudioCapture? capture, ISpeechToTextEngine? speechToText)
+    private static void TeardownComponents(IAudioCapture? capture, ISpeechToTextEngine? speechToText, ILiveAudioTranslationEngine? liveTranslation)
     {
         try
         {
@@ -425,6 +524,27 @@ public sealed class CaptionPipeline : IDisposable
         catch
         {
             // Teardown is best-effort: a failing component must not prevent the rest from stopping.
+        }
+
+        if (liveTranslation is not null)
+        {
+            try
+            {
+                liveTranslation.StopAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Stop failures are best-effort: dispose below still runs.
+            }
+
+            try
+            {
+                liveTranslation.Dispose();
+            }
+            catch
+            {
+                // Dispose failures are best-effort.
+            }
         }
     }
 
@@ -454,6 +574,19 @@ public sealed class CaptionPipeline : IDisposable
         }
     }
 
+    private ILiveAudioTranslationEngine? CreateLiveTranslation(string sourceLanguage, string targetLanguage)
+    {
+        try
+        {
+            return _liveTranslationFactory!((sourceLanguage, targetLanguage));
+        }
+        catch (Exception ex)
+        {
+            RaiseStatus(new PipelineStatus(PipelineStatusKind.Error, $"Live translation unavailable: {ex.Message}"));
+            return null;
+        }
+    }
+
     private void OnAudioAvailable(object? sender, AudioChunk chunk)
     {
         try
@@ -466,6 +599,12 @@ public sealed class CaptionPipeline : IDisposable
                 TempaudioLatencyProbe.RecordDispatch();
                 UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(2, "First audio chunk dispatched to Whisper");
                 _speechToText?.Process(processed);
+
+                // Parallel PCM fan-out: the same processed chunk is offered to the live translation
+                // engine. The engine owns its own bounded queue and drop policy (deferred to A6), so
+                // PushAudio is synchronous and MUST NOT do network I/O / throw — a failure surfaces
+                // via TranslationFailed, not exceptions caught here.
+                _liveTranslation?.PushAudio(processed);
             }
         }
         catch (Exception ex)
@@ -479,6 +618,93 @@ public sealed class CaptionPipeline : IDisposable
                 Stop();
             }
         }
+    }
+
+    private void OnPartialTranslation(object? sender, PartialTranslation translation)
+    {
+        _captions.ProcessPartialTranslation(translation);
+    }
+
+    private void OnFinalTranslation(object? sender, FinalTranslation translation)
+    {
+        _captions.ProcessFinalTranslation(translation);
+    }
+
+    /// <summary>
+    /// Live translation failure — isolated from the Whisper pipeline. The handler is non-blocking on
+    /// purpose: a failing receive loop must not be awaited from inside its own callback. We detach
+    /// the events, raise a status for the UI, null the field, and fire-and-forget the dispose on a
+    /// background task. Whisper continues running; the pipeline is NOT marked faulted.
+    /// </summary>
+    private void OnLiveTranslationFailed(object? sender, LiveTranslationError error)
+    {
+        DetachAndDisposeLiveTranslation();
+        RaiseStatus(new PipelineStatus(
+            PipelineStatusKind.Error,
+            $"Live translation unavailable: {error.Message}"));
+    }
+
+    /// <summary>
+    /// Detaches the live translation events, clears the field, and disposes the engine on a
+    /// background task. Must be idempotent: called from the failure handler AND from the synchronous
+    /// StartAsync failure path AND from <see cref="StopSessionLocked"/> is the normal path for the
+    /// latter (StopSessionLocked passes the local capture). This overload is the single-side
+    /// "unsubscribe + null + async dispose" used by the failure paths; it does NOT touch the Whisper
+    /// pipeline state.
+    /// </summary>
+    private void DetachAndDisposeLiveTranslation()
+    {
+        ILiveAudioTranslationEngine? engine;
+        EventHandler<PartialTranslation>? partial;
+        EventHandler<FinalTranslation>? final;
+        EventHandler<LiveTranslationError>? failed;
+
+        lock (_gate)
+        {
+            engine = _liveTranslation;
+            if (engine is null)
+            {
+                return;
+            }
+
+            _liveTranslation = null;
+            partial = _onPartialTranslation;
+            final = _onFinalTranslation;
+            failed = _onLiveTranslationFailed;
+            _onPartialTranslation = null;
+            _onFinalTranslation = null;
+            _onLiveTranslationFailed = null;
+
+            if (partial is not null)
+            {
+                engine.PartialTranslationAvailable -= partial;
+            }
+
+            if (final is not null)
+            {
+                engine.FinalTranslationAvailable -= final;
+            }
+
+            if (failed is not null)
+            {
+                engine.TranslationFailed -= failed;
+            }
+        }
+
+        // Dispose on a background task: the engine may be on its own receive loop and we are
+        // running inside its callback. We deliberately do NOT await StopAsync here — the failure
+        // event came from inside the engine, so waiting on its own loop would deadlock.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                engine.Dispose();
+            }
+            catch
+            {
+                // Dispose is best-effort: a failing engine must not affect the offline pipeline.
+            }
+        });
     }
 
     private void OnPartialTranscript(object? sender, PartialTranscript transcript)

@@ -1,4 +1,5 @@
 using UniversalCaptions.Core.Speech;
+using UniversalCaptions.Core.Translation;
 
 namespace UniversalCaptions.Core.Captions;
 
@@ -80,6 +81,21 @@ public interface ICaptionService : IDisposable
     /// </summary>
     /// <param name="transcript">The final transcript. Must not be null.</param>
     void ProcessFinal(FinalTranscript transcript);
+
+    /// <summary>
+    /// Replaces the active translation line with a caption built from a partial translation. The
+    /// translation lineage is independent from the STT lineage: a Whisper partial and a translation
+    /// partial arriving at the same moment do not overwrite one another. Ignored while not running.
+    /// </summary>
+    /// <param name="translation">The partial translation. Must not be null.</param>
+    void ProcessPartialTranslation(PartialTranslation translation);
+
+    /// <summary>
+    /// Commits a caption built from a final translation into the unified history. The translation
+    /// active line is cleared. Ignored while not running.
+    /// </summary>
+    /// <param name="translation">The final translation. Must not be null.</param>
+    void ProcessFinalTranslation(FinalTranslation translation);
 
     /// <summary>
     /// Waits until all in-flight translations have settled (completed, failed, or cancelled).

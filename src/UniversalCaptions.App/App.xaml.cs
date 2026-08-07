@@ -106,6 +106,14 @@ public partial class App : Application
             return SpeechEngineFactory.Create(language);
         });
 
+        // Live-audio translation engine (A4): the App-side factory produces an optional
+        // ILiveAudioTranslationEngine for a (source, target) language pair. Default = null (no
+        // provider configured — the offline-only path); future providers (Gemini Live Translate)
+        // plug in here. The Func type matches the CaptionPipeline constructor parameter so the
+        // pipeline can recreate the engine per session without knowing about environment variables.
+        services.AddSingleton<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
+            _ => pair => LiveTranslationEngineFactory.Create(pair.SourceLanguage, pair.TargetLanguage));
+
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
         // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.
         services.AddSingleton<IDeviceChangeMonitor, WasapiDeviceChangeNotifier>();
@@ -120,7 +128,15 @@ public partial class App : Application
         services.AddSingleton<ISettingsStore>(settingsStore);
         services.AddSingleton(userSettings);
 
-        services.AddSingleton<CaptionPipeline>();
+        services.AddSingleton<CaptionPipeline>(sp => new CaptionPipeline(
+                    sp.GetRequiredService<Func<string?, IAudioCapture>>(),
+                    sp.GetRequiredService<IAudioProcessor>(),
+                    sp.GetRequiredService<Func<string?, ISpeechToTextEngine>>(),
+                    sp.GetRequiredService<ICaptionService>(),
+                    sp.GetRequiredService<IDeviceChangeMonitor>(),
+                    sp.GetRequiredService<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
+                    captionOptions.SourceLanguage,
+                    captionOptions.TargetLanguage));
         services.AddSingleton<CaptionOverlayWindow>();
         services.AddSingleton<IOverlayService>(sp => sp.GetRequiredService<CaptionOverlayWindow>());
         services.AddSingleton<ControlWindow>();

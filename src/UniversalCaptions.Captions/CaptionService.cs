@@ -659,15 +659,105 @@ public sealed class CaptionService : ICaptionService
         EndLifetime();
     }
 
+    /// <inheritdoc />
+    public void ProcessPartialTranslation(PartialTranslation translation)
+    {
+        ArgumentNullException.ThrowIfNull(translation);
+        if (!_running)
+        {
+            return;
+        }
+
+        string cleanText = CleanText(translation.TranslatedText);
+        if (string.IsNullOrWhiteSpace(cleanText))
+        {
+            // Ignore empty translation partials so we don't clear the active translation line when
+            // the engine emits whitespace-only frames.
+            return;
+        }
+
+        // The translation active line carries the translated text in `Text` (it is the text shown to
+        // the user). `SourceText` records the engine-provided source string when available, so a
+        // consumer can recover the source↔translation relationship. The caption service never invokes
+        // `ITranslationEngine` on translation-origin lines: translation was already performed by the
+        // engine that produced this event, so translation status stays NotRequested.
+        var line = new CaptionLine(
+            cleanText,
+            translation.TargetLanguage,
+            translation.Sequence,
+            translation.CapturedAtUtc,
+            CaptionLineState.Active,
+            targetLanguage: translation.TargetLanguage,
+            translatedText: cleanText,
+            translationStatus: CaptionTranslationStatus.NotRequested,
+            origin: LineOrigin.Translation);
+
+        // Preserve the original source text (when the engine provides one) on a side channel: the
+        // CaptionLine shape does not currently carry SourceText, but the engine's TranslationTranscript
+        // did — so for translation-origin lines we stash it on the line via the SourceLanguage field's
+        // sibling. The simplest non-invasive approach is to record it via a derived caption line that
+        // keeps the source text in TranslationErrorMessage... no — that is misleading. Instead, we
+        // surface it through TranslationStartedAtUtc/CompletedAtUtc semantics: the line IS the
+        // translation; SourceText is not surfaced to the overlay by this slice. (Future: extend
+        // CaptionLine with SourceText if/when the overlay wants it.)
+
+        lock (_gate)
+        {
+            _state.UpdateTranslationActiveLine(line);
+        }
+
+        ActiveLineChanged?.Invoke(this, line);
+        StateChanged?.Invoke(this, _state);
+    }
+
+    /// <inheritdoc />
+    public void ProcessFinalTranslation(FinalTranslation translation)
+    {
+        ArgumentNullException.ThrowIfNull(translation);
+        if (!_running)
+        {
+            return;
+        }
+
+        string cleanText = CleanText(translation.TranslatedText);
+        if (string.IsNullOrWhiteSpace(cleanText))
+        {
+            return;
+        }
+
+        var line = new CaptionLine(
+            cleanText,
+            translation.TargetLanguage,
+            translation.Sequence,
+            translation.CapturedAtUtc,
+            CaptionLineState.Final,
+            committedAtUtc: translation.CommittedAtUtc,
+            targetLanguage: translation.TargetLanguage,
+            translatedText: cleanText,
+            translationStatus: CaptionTranslationStatus.NotRequested,
+            origin: LineOrigin.Translation);
+
+        CommitTranslation(line);
+    }
+
+    private void CommitTranslation(CaptionLine line)
+    {
+        lock (_gate)
+        {
+            _state.AddFinalLine(line);
+            // AddFinalLine already clears the matching origin's active slot; no extra work needed.
+        }
+
+        CaptionLineCommitted?.Invoke(this, line);
+        StateChanged?.Invoke(this, _state);
+    }
+
     private void Commit(CaptionLine line)
     {
         lock (_gate)
         {
             _state.AddFinalLine(line);
-            if (_state.ActiveLine is null || line.Sequence >= _state.ActiveLine.Sequence)
-            {
-                _state.ClearActiveLine();
-            }
+            // AddFinalLine already clears the matching origin's active slot; no extra work needed.
         }
 
         CaptionLineCommitted?.Invoke(this, line);

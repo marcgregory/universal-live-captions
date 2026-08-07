@@ -14,6 +14,7 @@
     <ProjectReference Include="..\UniversalCaptions.Captions\UniversalCaptions.Captions.csproj" />
     <ProjectReference Include="..\UniversalCaptions.Core\UniversalCaptions.Core.csproj" />
     <ProjectReference Include="..\UniversalCaptions.Speech\UniversalCaptions.Speech.csproj" />
+    <ProjectReference Include="..\UniversalCaptions.Speech.Gemini\UniversalCaptions.Speech.Gemini.csproj" />
     <ProjectReference Include="..\UniversalCaptions.Translation\UniversalCaptions.Translation.csproj" />
   </ItemGroup>
 

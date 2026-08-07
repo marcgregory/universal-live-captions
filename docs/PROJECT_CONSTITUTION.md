@@ -26,14 +26,17 @@ This constitution defines the immutable rules of this project. Every engineer �
 The project root may contain only these top-level directories:
 
 ```text
-docs/      # All project documentation
-src/       # Application source code (.NET projects)
-tests/     # Test projects (.NET xUnit)
+docs/       # All project documentation
+src/        # Application source code (.NET projects)
+tests/      # Test projects (.NET xUnit)
+artifacts/  # Locally-built + gitignored dev artifacts (models, samples, argos packages, report outputs); subdirs are per-category
+landing/    # Governed public release artifact (landing page); served at GitHub Pages
+packaging/  # Governed public release artifact (Inno Setup .iss, launcher.cmd, build-package.ps1); output/ is gitignored
 ```
 
 No additional top-level directories may be created unless explicitly approved by the user or defined in a documented ADR.
 
-All source code lives under `src/`. Documentation lives under `docs/`. Configuration files (`Directory.Build.props`, `.editorconfig`, `.gitignore`) live at the project root unless a tool requires otherwise.
+All source code lives under `src/`. Documentation lives under `docs/`. Configuration files (`Directory.Build.props`, `.editorconfig`, `.gitignore`) live at the project root unless a tool requires otherwise. Release artifacts that ship with the product (`landing/`, `packaging/`) are governed like code — versioned, reviewable, and owned by a registry entry (§2). Local-only artifacts (`artifacts/`) are gitignored by design — the directory itself is canonical, but its contents are not release-tracked.
 
 ---
 

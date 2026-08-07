@@ -31,6 +31,14 @@ Tagalog-fine-tune explicitly deferred as a future research project, not an MVP o
 Evidence: BENCHMARK_REPORT (Final Decision — Translation & Naturalizer Investigation CLOSED),
 CHANGELOG v0.5.29.
 
+**Release/landing-page work in progress (2026-08-07) — see
+[RELEASE_PLAN.md](RELEASE_PLAN.md) for v0.5.29 readiness.** Per
+[ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md), release-readiness content lives in `RELEASE_PLAN.md`
+(not duplicated here). The `landing/` + `packaging/` + `artifacts/` top-level directories are now
+explicitly governed by [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1; the landing page's
+primary Download CTA points at the v0.5.29 release tag. **Decision (in RELEASE_PLAN.md §1):
+NOT READY pending the v0.5.29 GitHub release tag + a clean-machine install verification.**
+
 **Small-model Tagalog naturalizer — quality probe FAILED (2026-08-07).** Per the user's next
 experiment, tested whether a small permissive instruction-following model can naturalize Argos
 en→tl output (contract: improve naturalness while preserving meaning; guardrails enforced in the

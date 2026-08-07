@@ -1,0 +1,3 @@
+- [No future features on shipping surface](no-future-features-on-shipping-surface.md) — landing page / Settings must describe only what the current release does; planned items belong in `docs/`.
+- [User prefers honest future framing](user-marc-prefers-honest-future-framing.md) — Marc values falsifiable copy; undersells over overstates.
+- [Gemini v0.5.30 slice scope](gemini-v0.5.30-slice-scope.md) — v0.5.30 = optional Gemini translation provider; new project + testable WebSocket seam + Windows Credential Manager + consent modal; v0.5.29 stays offline-only. Model + output-modality question still open (see `docs/spikes/GEMINI_MODEL_DISCOVERY.md`).
