@@ -1011,3 +1011,97 @@ int8 (`Heng666/madlad400-3b-mt-ct2-int8`, 2.8 GB) in the bundle python, T5-style
 is far too slow on this 12-core CPU for live captions (8.5–73× Argos per line), its output on short
 caption lines is verbose and off-target, and 2.8 GB blows the installer budget. Even at 12 threads
 and aggressive decoding the floor is ~2.8 s/line. **Not a production candidate on this machine.**
+
+# Tagalog Naturalizer — Human-Rated Quality Pass, Argos en→tl (2026-08-07)
+
+Human evaluation of the deterministic `TagalogNaturalizer` (13-rule phrase table) on the same
+practice-session corpus as the translatelive run, scored by a Filipino listener. Purpose: decide
+whether the naturalizer materially improves naturalness before any bigger architectural move
+(Argos replacement, rule expansion, or production wiring).
+
+## Method
+
+- Sample: `artifacts/samples/english_sustained_90s_16k.wav` (88.15 s, en→tl). The corpus loops the
+  same practice-session content twice, so the 22-row Argos run contains 12 **distinct** captions
+  (rows 13–22 are verbatim repeats of rows 2–11). The 12 distinct lines are the independent
+  evaluation units.
+- Evidence: `artifacts/reports/translatelive/argos_naturalized_2026-08-07.csv` (per-row original +
+  naturalized) and `argos_vs_gemini_english90s_2026-08-07.csv` (Gemini reference, assembled into
+  complete sentences).
+- Scoring per line, **Naturalized output only** (original Argos and Gemini were compared pairwise
+  via the Preference column, not scored in isolation):
+  - **Naturalness** 1 = very unnatural · 3 = understandable but awkward · 5 = sounds like a
+    Filipino would naturally say it.
+  - **Meaning** 1 = changed · 3 = partially preserved · 5 = exact meaning preserved.
+  - **Preference** Original Argos / Naturalized / Gemini / Tie — "which would you show a Filipino
+    viewer?", the crucial test, not similarity to Gemini.
+
+## Results
+
+| # | English (STT source) | Original Argos | Naturalized | Gemini reference | Nat | Meaning | Pref |
+|---|---|---|---|---|---|---:|---|
+| 1 | Hello and welcome to the first meeting of our Conversational Tagalog Practice Group. | Hello at malugod na tanggapin sa unang pulong ng aming Conversional Tagalog Practice Group. | Kamusta at maligayang pagdating sa unang pulong ng aming Conversational Tagalog Practice Group. | Kamusta at maligayang pagdating sa unang pulong ng ating conversational Tagalog practice group. | 5 | 5 | N |
+| 2 | My name is Maria. | Ang pangalan ko ay Maria. | (unchanged) | Ang pangalan ko ay Maria. | 5 | 5 | Tie |
+| 3 | What is your name? | Ano ang pangalan mo? | (unchanged) | Ano ang pangalan mo? | 5 | 5 | Tie |
+| 4 | Good morning everyone. | Magandang umaga lahat. | (unchanged) | Magandang umaga sa inyong lahat. | 4 | 5 | G |
+| 5 | Today we will practice greetings and introductions. | Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. | Ngayon ay mag-eensayo tayo ng mga pagbati at pagpapakilala. | Ngayon ay mag-eensayo tayo ng pagbati at pagpapakilala. | 5 | 5 | N |
+| 6 | Please open your notebooks to the first page. | Pakisuyong buksan ang inyong mga kuwaderno sa unang pahina. | Pakibuksan ang inyong mga kuwaderno sa unang pahina. | Pakibuksan ang inyong mga notebook sa unang pahina. | 5 | 5 | Tie |
+| 7 | Thank you for listening. | Salamat sa inyong pakikinig. | (unchanged) | Salamat sa pakikinig. | 4 | 5 | G |
+| 8 | We will see you next week. | Makikita ka namin sa susunod na linggo. | Magkikita tayo ulit sa susunod na linggo. | Magpapatuloy tayo sa susunod na linggo. | 5 | 5 | N |
+| 9 | Remember to speak slowly and clearly, and to listen carefully to each other. | Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa. | (unchanged) | Tandaan na magsalita nang dahan-dahan at malinaw. At makinig nang mabuti sa isa't isa. | 5 | 5 | N |
+| 10 | We will start with the numbers 1 through 10, then move on to the days of the week. | Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo. | (unchanged) | Magsisimula tayo sa mga numero 1 hanggang 10, pagkatapos ay lilipat sa mga araw ng linggo. | 4 | 5 | G |
+| 11 | Great work everyone, that is the end of today's practice session. | Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay. | Magandang trabaho sa inyong lahat, iyan ang katapusan ng ating sesyon sa pagsasanay. | Magaling. Magandang trabaho sa inyong lahat. Iyan ang katapusan ng ating sesyon sa pagsasanay. | 4 | 5 | G |
+| 12 | Hello and welcome to the first meeting of our conversational tagalog practice group. | Hello at malugod na tanggapin sa unang pulong ng aming grupong nag - uusap - usap na tangalog. | Kamusta at maligayang pagdating sa unang pulong ng aming grupong nakikipag-usap-usap na tagalog. | Kamusta at maligayang pagdating sa unang pulong ng ating conversational Tagalog practice group. | 3 | 4 | G |
+
+**Aggregate (12 distinct lines):**
+
+| Candidate | Naturalness (mean) | Meaning (mean) | Preference (12-line) | Preference (22-line weighted) |
+|---|---|---:|---:|---:|
+| Original Argos | — (not isolated-scored) | — | **0** | **0** |
+| Naturalized Argos | **4.5** | **4.9** | **4** | **7** |
+| Gemini | — (not isolated-scored) | — | **5** | **9** |
+| Tie | — | — | **3** | **6** |
+
+User-stated aggregate for Naturalized output: **Naturalness 4.5/5, Meaning 4.8/5** (the arithmetic mean
+of the per-line Meaning scores is 4.9; the 4.8 is the conservative reading). Rows 13–22 repeat 2–11
+verbatim and double the tally without adding independent evidence.
+
+## Findings
+
+- **F1 — Line 8 validates the human-pass premise: Gemini is a strong reference, not ground truth.**
+  The English is "We will see you next week." Naturalized `Magkikita tayo ulit` was scored **N (5/5)**
+  and preserves the "see you" emphasis; Gemini's `Magpapatuloy tayo` ("we will continue") is natural
+  but shifts the semantic emphasis. Do not chase Gemini's wording for its own sake.
+- **F2 — Line 12 exposes a different class of problem: proper-name preservation.** The naturalizer
+  correctly repairs the STT artifacts (`nag - uusap - usap`, `tangalog`) but its output
+  `grupong nakikipag-usap-usap na tagalog` is still grammatically awkward (3/5 naturalness, 4/5
+  meaning). The desired output is closer to keeping the proper group name
+  "Conversational Tagalog Practice Group" (as Gemini does). This is **not** phrase naturalization;
+  it needs a preserve-proper-name strategy. **Recorded as a quality finding; the rule is NOT changed**
+  per the user's direction to evaluate the current 13-rule set as-is.
+- **F3 — Line 11 is understandable but slightly literal.** `Magandang trabaho sa inyong lahat` works;
+  a Filipino speaker might say `Magaling kayong lahat` depending on emphasis. The added Gemini
+  `Magaling.` reads more idiomatic. English-influenced praise phrasing is a recurring style issue.
+- **F4 — The Gemini wins are consistency, not accuracy.** Lines 4, 7, 10 are all cases where Argos
+  (and Naturalized, which left them unchanged) is **correct but slightly more literal/formal**:
+  `Magandang umaga lahat` vs `sa inyong lahat`, `Salamat sa inyong pakikinig` vs `Salamat sa
+  pakikinig`, `mga araw ng sanlinggo`/`numerong` vs `mga numero`/`mga araw ng linggo`. These are
+  candidates for future rules after the larger-set evaluation — not changes now.
+
+## Overall judgment (user)
+
+> Naturalized Argos is already **substantially more conversational than raw Argos** (Original was
+> never preferred on any of the 12 lines) and **close to Gemini on most sentences** (4 Naturalized
+> wins, 5 Gemini wins, 3 ties). The remaining gap does not mean Argos needs replacing; it tells us
+> the naturalizer must be evaluated against a **larger, unseen conversational Tagalog set** —
+> group/class names, idiomatic expressions, formal-vs-conversational vocabulary, literal-but-foreign
+> phrasing, and preserving English proper names.
+
+## Decision (recorded 2026-08-07)
+
+1. **Keep the 13-rule table exactly as committed** (`fb223ec`). No rule expansion from these 12
+   lines — they are now scored, not tweaked against.
+2. The quantitative move toward the Gemini reference (full-stream char similarity **0.670 → 0.777,
+   +0.107**) is corroborated by the human pass but is **not** the optimization target.
+3. Next phase: evaluate the naturalizer on a larger unseen conversational-Tagalog set per F2–F4
+   before any rule expansion or production wiring.
