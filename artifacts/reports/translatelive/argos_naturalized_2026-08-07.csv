@@ -1,0 +1,26 @@
+leg,index,emit_s,source_start_s,translate_ms,kind,text,naturalized
+argos,1,12.609,0.150,201,caption,Hello at malugod na tanggapin sa unang pulong ng aming Conversional Tagalog Practice Group.,Kamusta at maligayang pagdating sa unang pulong ng aming Conversational Tagalog Practice Group.
+argos,2,17.465,6.400,101,caption,Ang pangalan ko ay Maria.,Ang pangalan ko ay Maria.
+argos,3,22.508,8.750,81,caption,Ano ang pangalan mo?,Ano ang pangalan mo?
+argos,4,25.016,10.830,83,caption,Magandang umaga lahat.,Magandang umaga lahat.
+argos,5,30.767,13.280,299,caption,Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad.,Ngayon ay mag-eensayo tayo ng mga pagbati at pagpapakilala.
+argos,6,35.854,17.460,94,caption,Pakisuyong buksan ang inyong mga kuwaderno sa unang pahina.,Pakibuksan ang inyong mga kuwaderno sa unang pahina.
+argos,7,40.684,21.400,78,caption,Salamat sa inyong pakikinig.,Salamat sa inyong pakikinig.
+argos,8,46.035,23.860,103,caption,Makikita ka namin sa susunod na linggo.,Magkikita tayo ulit sa susunod na linggo.
+argos,9,54.179,26.540,180,caption,"Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa.","Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa."
+argos,10,66.457,32.610,237,caption,"Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo.","Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo."
+argos,11,72.020,38.790,178,caption,"Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay.","Magandang trabaho sa inyong lahat, iyan ang katapusan ng ating sesyon sa pagsasanay."
+argos,12,83.713,44.230,264,caption,Hello at malugod na tanggapin sa unang pulong ng aming grupong nag - uusap - usap na tangalog.,Kamusta at maligayang pagdating sa unang pulong ng aming grupong nakikipag-usap-usap na tagalog.
+argos,13,88.688,50.470,81,caption,Ang pangalan ko ay Maria.,Ang pangalan ko ay Maria.
+argos,14,91.204,52.820,56,caption,Ano ang pangalan mo?,Ano ang pangalan mo?
+argos,15,96.395,54.900,156,caption,Magandang umaga lahat.,Magandang umaga lahat.
+argos,16,102.305,57.350,125,caption,Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad.,Ngayon ay mag-eensayo tayo ng mga pagbati at pagpapakilala.
+argos,17,107.419,61.530,96,caption,Pakisuyong buksan ang inyong mga kuwaderno sa unang pahina.,Pakibuksan ang inyong mga kuwaderno sa unang pahina.
+argos,18,112.532,65.480,133,caption,Salamat sa inyong pakikinig.,Salamat sa inyong pakikinig.
+argos,19,115.141,67.940,124,caption,Makikita ka namin sa susunod na linggo.,Magkikita tayo ulit sa susunod na linggo.
+argos,20,123.751,70.620,243,caption,"Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa.","Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa."
+argos,21,134.590,76.690,173,caption,"Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo.","Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo."
+argos,22,142.369,82.860,108,caption,"Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay.","Magandang trabaho sa inyong lahat, iyan ang katapusan ng ating sesyon sa pagsasanay."
+
+summary,leg,audio_s,first_caption_s,committed,updates,cadence_per120s,median_translate_ms,tail_after_feed_s,repeated_bigrams,duplicates,unterminated,proc_cpu_pct,worker_cpu_pct,peak_ram_mb,up_mb,down_mb,cost_usd,cost_usd_per_hour,connect_s,setup_s,error,naturalized_captions
+,argos,88.15,12.609,22,30,29.9,124,,95,0,0,0.5,32.7,1084.0,,,,,,,,10
