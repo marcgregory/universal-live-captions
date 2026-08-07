@@ -1318,3 +1318,91 @@ model* can act as a **Tagalog naturalization/correction layer** over Argos (a di
 from M2M/NLLB/MADLAD). The second blind human scorer of the unseen worksheet remains **supporting
 evidence only and no longer blocks the technical direction** (the M2M failure + unseen-set
 naturalizer result already provide enough evidence to move forward).
+
+---
+
+## Small-Model Tagalog Naturalizer — Quality Probe (2026-08-07)
+
+**Context.** The naturalizer's contract (user-specified): *"Given an existing Tagalog translation,
+improve its naturalness while preserving its meaning."* The experiment is **quality only** on the
+same unseen 16-line corpus — no streaming optimization, and the experiment **stops** if the small
+model does not produce visibly better human-rated Tagalog than Argos + the frozen 13 rules.
+Guardrails (user-specified, enforced in the prompt): no name changes, no number/date/time changes,
+no invented or omitted information, no unnecessary translation of English proper names, no
+unrelated content, no added explanations, output only the corrected Tagalog caption.
+
+**Method.** Translation-only, identical 16 unseen English lines. Four columns:
+1. **Argos** (bundled OPUS-MT en→tl, `argos_translate_server.py`);
+2. **Argos + frozen 13-rule naturalizer** (the deterministic `TagalogNaturalizer`, applied to the
+   Argos output — ported 1:1 to Python and **parity-verified against all 13 C# unit-test vectors**);
+3. **Argos + small-model naturalizer** = `Qwen/Qwen2.5-1.5B-Instruct` (Apache-2.0, ungated, 1.5B —
+   a small permissive instruction-following model) given the **Argos Tagalog line only** (it is a
+   naturalizer, not a re-translator — no English input) under the guardrail system prompt, greedy
+   deterministic decode (`do_sample=False`, `num_beams=1`, `max_new_tokens=96`, fp32, CPU);
+4. **Gemini reference** (the per-line Gemini Live translations already blind-scored in the unseen
+   worksheet — naturalness/meaning reference, cloud).
+
+Model recorded: revision `989aa7980e4cf806f80c7fef2b1adb7bc71aa306`, load ~1 s (cached), per-line
+inference 6.6–17.2 s (mean ~11 s — noted, but the quality gate fails before performance matters).
+
+**Result — DECISIVE FAIL. Small-model naturalizer is far worse than Argos on 15/16 lines.**
+The experiment **stops at the quality gate** (no performance phase, no production change).
+
+| # | English (source) | Argos (baseline) | Argos + frozen 13 rules | Argos + Qwen2.5-1.5B-Instruct | Gemini (reference) |
+|---|---|---|---|---|---|
+| 1 | Hi everyone, I'm Alex, and this is my friend Maya. | Ako si Alex, at ito ang kaibigan kong si Maya. | (unchanged) | Kaya ako Alex, at ito ang kaibigan ko na si Maya. | Hi sa lahat. Ako si Alex, at ito ang kaibigan kong si Maya. |
+| 2 | Welcome back to class. Did you all have a good weekend? | Maligayang pagdating sa klase. Maganda ba ang dulo ng sanlinggo ninyo? | (unchanged) | Ang malaking pangyayari ay maaaring maipagdadalaw sa klasa. Kaya, mayroon ka pa bang dulo na siyang sanlanggian? | Maligayang pagbabalik sa klase. Nagkaroon ba kayo ng magandang weekend? |
+| 3 | Today let's talk about everyday plans and simple requests. | Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan. | (unchanged) | Ang nag-usap namin ay maaaring magkakaiba-saklaw sa pagtuturo ng mga planong at mga kahilingang simpleng mga tao. | Ngayon pag-usapan natin ang mga pang-araw-araw na plano at simpleng kahilingan. |
+| 4 | First, who can tell me the time? It's almost nine thirty. | Una, sino ang makapagsasabi sa akin ng oras? Halos siyam na putbol na ito. | (unchanged) | Kaya kong mabuti ka pa rin magtanda sa akin? Hindi ko maayos nang matatagpuan. | Una, sino ang makapagsasabi sa akin ng oras? Ito ay halos 9:30. |
+| 5 | My birthday falls on the twenty first of December, and I just turned thirty. | Ang aking kaarawan ay pumapatak sa dalawampung unang bahagi ng Disyembre, at ako'y naging tatlumpu. | (unchanged) | Ang kanyang taon ay tumutukoy sa iba't ibang araw na nagpapakita sa Disyembre, at siya'y maaaring matatagpuan. | Ang kaarawan ko ay sa ika-21 ng Disyembre. At nag-30 na ako. |
+| 6 | Could you please pass me the notes from yesterday's meeting? | Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon? | (unchanged) | Kaya ka ba na magpasa sa akin ang mga note natin ngayon? | Pwede mo bang ipasa ang mga notes mula sa meeting kahapon? |
+| 7 | Sure, here you go. Thanks a lot, I really appreciate it. | Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito. | (unchanged) | **Okay, here's the revised caption in more natural Tagalog:** Sure thing. Thanks for your kind words, really appreciated this. (English + added explanation + meaning lost) | Sige. Heto. Maraming salamat. Talagang naa-appreciate ko. |
+| 8 | The Green Valley Cooking Club meets every Saturday at the community center. | Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa komunidad center. | (unchanged) | Ang Green Valley Cooking Club ay nagpupulong sa komunidad tungkol sa sabado, sa sentrong lugar. | Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa Community Center. |
+| 9 | She said he would bring his guitar, but we never saw it arrive. | Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hindi namin nakita ang pagdating nito. | (unchanged) | Nagpapakita niyang dadalhin ng gitara natin, pero hindi kami nagkakaiba sa pagtanda nito. | Siya ay nagsabing dadalhin niya ang kanyang gitara. Pero hindi namin nakita na dumating. |
+| 10 | I'm feeling a bit under the weather today, so I'll take it easy. | Medyo masama ang pakiramdam ko ngayon, kaya madali lang. | (unchanged) | Kahit malaki pa ang problema ko, maaaring maipakiramdam. | Medyo masama ang pakiramdam ko ngayon, kaya magpapahinga na lang ako. |
+| 11 | That joke you told earlier was hilarious. I couldn't stop laughing. | Nakagigitla ang birong sinabi mo noon. Hindi ko mapigil ang pagtawa. | (unchanged) | Ang tawa namin ay nagkagigitla sa iyong mga pinuno. Kaya kung paano ka mabuti na magpapahayag? | Ang biro na sinabi mo kanina ay nakakatawa. Hindi ko mapigilan ang pagtawa. |
+| 12 | We're running a little behind schedule, so please bear with us. | Medyo nahuhuli na tayo, kaya pakisuyong pagtiisan mo kami. | (unchanged) | Nakakalimutan natin ang mas maayos na magkakaiba ka sa akin. | Medyo nahuhuli na tayo sa iskedyul. Kaya pasensya na muna kayo sa amin. |
+| 13 | Take care on your way home, and see you around soon. | Mag - ingat sa iyong pag - uwi, at makita ka agad. | (unchanged) | Kaya kung may problema o nag - maganda ang iyo, nais ka bang ma - solve? | Mag-ingat ka sa pag-uwi. At magkita tayo ulit sa lalong madaling panahon. |
+| 14 | Let's catch up over lunch sometime. It's been a while since we talked. | Paminsan - minsan, kumain tayo. Mula nang kami'y mag - usap. | (unchanged) | Kahit pa rin, mayroon ka na. Kaya kami ay nag-usap. | Mag-usap tayo sa tanghalian minsan. Matagal na simula nung nag-usap tayo. |
+| 15 | Could you speak up a little? The projector is a bit noisy today. | Puwede ka bang magsalita nang kaunti? Ang projector ay medyo maingay ngayon. | (unchanged) | Maaari ko ba talaga na siyang magtutulong sa pagkakataong salita kahit pa rin ang projector? | Pwede mo bang lakasan nang kaunti? Ang projector ay medyo maingay ngayon. |
+| 16 | Alright, that's all for today. Thanks for coming, and have a great week. | Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating, at mayroon po kayong isang malaking linggo. | (unchanged) | Kaya kini ang lugar na naisipin ko. Salamat rin sa inyo na nagpapakita, at mahalaga ka lang talaga ang iyong pagsasama-sama. | Sige, yun lang para sa araw na ito. Salamat sa pagpunta, at magandang linggo sa inyo. |
+
+**Findings (2026-08-07).**
+
+- **F1 — The small model is catastrophically worse than Argos on 15/16 lines (only #1 is arguably
+  close).** Qwen2.5-1.5B-Instruct's outputs are largely **not valid Tagalog** (e.g. #4, #10, #12,
+  #15, #16), and even where grammatical they destroy the meaning (#5 birthday/December/thirty all
+  gone; #6 "yesterday's meeting" → "natin ngayon"; #8 "every Saturday at the community center" →
+  "tungkol sa sabado, sa sentrong lugar"; #9 guitar-arrival lost; #11 "joke you told" → "iyong mga
+  pinuno").
+- **F2 — Contract violation on #7:** the model answered in **English** with an added meta-note
+  ("Okay, here's the revised caption in more natural Tagalog:") instead of outputting only the
+  corrected Tagalog caption. This breaks the guardrail contract even beyond the meaning loss.
+- **F3 — No hallucination-protection capability at 1.5B:** invented pronouns/possessives (#2
+  "sanlanggian", #16 "kini"), dropped the actual content, and introduced unrelated phrasing. The
+  model cannot both preserve meaning and naturalize at this size; it simply re-generates.
+- **F4 — Inference ~2 orders of magnitude above caption cadence:** mean ~11 s/line (6.6–17.2 s) at
+  fp32 on this 12-core machine vs Argos ~0.11 s/line. Even if quality passed, the streaming
+  gate would fail; the quality gate fails first, so no performance phase is run.
+- **F5 — Frozen 13 rules confirmed faithful & inert on unseen content:** the ported rule table
+  reproduced **all 13 C# unit-test vectors exactly** (PARITY OK) and rewrote **0/16** of these
+  unseen lines — consistent with the 0/23 finding from the audio-pipeline unseen test.
+
+**Decision (recorded 2026-08-07, per the user's quality gate).** The small instruction-following
+model tested (**Qwen2.5-1.5B-Instruct**, greedy/deterministic) does **not** produce better
+human-rated Tagalog than Argos + the frozen 13 rules — it produces invalid Tagalog and destroys
+meaning. **The experiment stops at the quality gate.** No performance/streaming phase. **No
+production change** (baseline remains `Whisper → Argos → frozen 13-rule naturalizer → Caption`).
+The naturalization-gap conclusion now stands on three independent lines of evidence: the
+deterministic rules (0/23 unseen recall), a small instruction-following model (this probe, 15/16
+worse + contract violation), and the M2M family (0/16 translation). Remaining un-tested naturalizer
+options would be a materially larger permissive LLM (contra the user's "very small model"
+preference) or a dedicated Tagalog-rewrite fine-tune of a small model (a new training experiment,
+out of scope for a probe).
+
+**Evidence:** `artifacts/reports/translatelive/naturalizer_qwen2.5-1.5b_instruct_2026-08-07.json`
+(raw model rows + revision `989aa7980e4cf806f80c7fef2b1adb7bc71aa306`, per-line inference times,
+decode settings); `naturalizer_probe_qwen.py` (probe script incl. the parity-checked frozen-rule
+port); Argos column from `artifacts/reports/translatelive/argos_baseline_unseen_2026-08-07.json`;
+Gemini reference from the already-scored `unseen_ab_worksheet_2026-08-07.md` + key. Raw outputs
+outside the repo under `%TEMP%\opencode\txbench\out\`.

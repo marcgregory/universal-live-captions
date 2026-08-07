@@ -17,6 +17,25 @@ Last updated: 2026-08-06
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.28 - 2026-08-07
+
+### Translation research (no production-code changes)
+
+- **Small-model Tagalog naturalizer quality probe (2026-08-07).** Per the user's next experiment,
+  tested whether a small permissive instruction-following model can naturalize Argos en→tl output
+  (contract: "given an existing Tagalog translation, improve naturalness while preserving meaning";
+  guardrails: no name/number/information changes, no explanations, output only the corrected Tagalog).
+  **Qwen/Qwen2.5-1.5B-Instruct** (Apache-2.0, ungated) given the Argos Tagalog line only, greedy
+  deterministic decode, on the same 16 unseen lines vs 4 columns (Argos / Argos + frozen 13 rules /
+  Argos + small model / Gemini reference). **DECISIVE FAIL at the quality gate (user's rule: stop
+  if not visibly better):** 15/16 lines are invalid Tagalog or meaning-destroyed, and #7 violates
+  the output contract (English + added explanation). Inference ~11 s/line mean (fp32, 12-core) —
+  quality fails before performance would matter. The frozen-rule column was parity-verified against
+  all 13 C# unit-test vectors and rewrote 0/16 (consistent with the 0/23 unseen finding). **No
+  production change**; baseline remains `Whisper → Argos → frozen 13-rule naturalizer → Caption`.
+  Evidence committed `100fbae` + this entry; report section + raw JSON in `BENCHMARK_REPORT.md` and
+  `artifacts/reports/translatelive/naturalizer_qwen2.5-1.5b_instruct_2026-08-07.json`.
+
 ## v0.5.27 - 2026-08-07
 
 ### Translation research (no production-code changes)

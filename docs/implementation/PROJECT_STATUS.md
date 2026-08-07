@@ -19,6 +19,23 @@ This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
 
+**Small-model Tagalog naturalizer — quality probe FAILED (2026-08-07).** Per the user's next
+experiment, tested whether a small permissive instruction-following model can naturalize Argos
+en→tl output (contract: improve naturalness while preserving meaning; guardrails enforced in the
+prompt). **Qwen/Qwen2.5-1.5B-Instruct** (Apache-2.0, ungated, 1.5B) given the Argos Tagalog line
+only, greedy deterministic decode, on the same 16 unseen lines vs 4 columns (Argos / Argos + frozen
+13 rules / Argos + small model / Gemini reference). **DECISIVE FAIL at the quality gate (user's
+rule: stop if not visibly better):** 15/16 lines are invalid Tagalog or meaning-destroyed; #7
+violates the output contract (English + added explanation); inference ~11 s/line mean. Frozen-rule
+column parity-verified against all 13 C# test vectors (0/16 rewrites, consistent with 0/23 unseen).
+**No production change** — baseline remains `Whisper → Argos → frozen 13-rule naturalizer →
+Caption`. The naturalization gap now has three independent failure lines: deterministic rules
+(0/23 unseen recall), small instruction-following model (15/16 worse), M2M family (0/16). Remaining
+untested options would need a materially larger permissive LLM (contra the user's "very small
+model" preference) or a dedicated Tagalog-rewrite fine-tune (new training experiment). Evidence:
+BENCHMARK_REPORT (Small-Model Tagalog Naturalizer section), `naturalizer_qwen2.5-1.5b_instruct_
+2026-08-07.json`, commits `100fbae`.
+
 **Translation research phase — offline model-selection investigation CLOSED (2026-08-07).** User
 decision: **stop searching for another offline MT model.** Evidence chain (all recorded in
 `BENCHMARK_REPORT.md`): Argos/OPUS-MT en→tl (production offline baseline, frozen, ~0.11 s/line),
