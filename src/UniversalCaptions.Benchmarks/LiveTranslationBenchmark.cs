@@ -57,7 +57,9 @@ internal static class LiveTranslationBenchmark
         double PartialWindowSeconds,
         double TailSeconds,
         string? CsvPath,
-        string? ChromeRefPath);
+        string? ChromeRefPath,
+        bool Naturalize,
+        string? GeminiRefCsv);
 
     private sealed record CaptionRow(double EmitSec, double SourceStartSec, double TranslateMs, string Kind, string Text);
 
@@ -75,7 +77,9 @@ internal static class LiveTranslationBenchmark
         double WorkerCpuFraction,
         double PeakRamMb,
         string? Error,
-        List<CaptionRow> Rows);
+        List<CaptionRow> Rows,
+        int NaturalizedCaptions,
+        List<CaptionRow>? NaturalizedRows);
 
     private sealed record GeminiLegResult(
         int OutputCaptions,
@@ -175,6 +179,24 @@ internal static class LiveTranslationBenchmark
         PrintComparison(argos, gemini, audioSeconds, legs);
         PrintCaptionStreams(argos, gemini);
 
+        if (argos is not null && legs.Naturalize)
+        {
+            PrintNaturalization(argos);
+        }
+
+        if (argos is not null && gemini is null && legs.GeminiRefCsv is not null)
+        {
+            List<CaptionRow>? reference = LoadGeminiReferenceCsv(legs.GeminiRefCsv);
+            if (reference is not null)
+            {
+                PrintNaturalnessTable(argos, reference);
+            }
+            else
+            {
+                Console.WriteLine($"  (no gemini reference rows found in {legs.GeminiRefCsv})");
+            }
+        }
+
         if (tagalogEcho is not null)
         {
             PrintTagalogControl(tagalogEcho);
@@ -207,6 +229,8 @@ internal static class LiveTranslationBenchmark
         double tailSeconds = 5.0;
         string? csvPath = null;
         string? chromeRef = null;
+        bool naturalize = true;
+        string? geminiRefCsv = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -262,6 +286,12 @@ internal static class LiveTranslationBenchmark
                 case "--chrome-ref" when i + 1 < args.Length:
                     chromeRef = args[++i];
                     break;
+                case "--no-naturalize":
+                    naturalize = false;
+                    break;
+                case "--gemini-ref-csv" when i + 1 < args.Length:
+                    geminiRefCsv = args[++i];
+                    break;
                 case "--help":
                     PrintUsage();
                     break;
@@ -285,7 +315,9 @@ internal static class LiveTranslationBenchmark
             partialWindowSeconds,
             tailSeconds,
             csvPath,
-            chromeRef);
+            chromeRef,
+            naturalize,
+            geminiRefCsv);
     }
 
     private static string ResolvePythonEnv(string envName, string venvDir)
@@ -411,6 +443,19 @@ internal static class LiveTranslationBenchmark
         int duplicates = ConsecutiveDuplicates(rows);
         int unterminated = rows.Count(r => !EndsTerminal(r.Text));
 
+        List<CaptionRow>? naturalizedRows = null;
+        int naturalizedCaptions = 0;
+        if (legs.Naturalize)
+        {
+            naturalizedRows = rows
+                .Select(r => r with { Text = TagalogNaturalizer.Naturalize(r.Text) })
+                .ToList();
+            naturalizedCaptions = rows
+                .Where((r, i) => !string.Equals(r.Text, naturalizedRows[i].Text, StringComparison.Ordinal))
+                .Count();
+            Console.WriteLine($"  naturalizer: {naturalizedCaptions}/{rows.Count} captions rewritten by the rule table");
+        }
+
         var summary = monitor.Stop();
         double procCpu = summary.SelfCpuFraction;
         double workerCpu = summary.WorkerCpuFraction;
@@ -438,7 +483,9 @@ internal static class LiveTranslationBenchmark
             workerCpu,
             peakRam,
             sttError,
-            rows);
+            rows,
+            naturalizedCaptions,
+            naturalizedRows);
     }
 
     private static async Task TranslatePumpAsync(
@@ -668,6 +715,10 @@ internal static class LiveTranslationBenchmark
             Console.WriteLine($"  repeated bigrams             {I(argos.RepeatedBigrams),13}  {I(gemini.RepeatedBigrams),14}");
             Console.WriteLine($"  consecutive duplicates       {I(argos.ConsecutiveDuplicates),13}  {I(gemini.ConsecutiveDuplicates),14}");
             Console.WriteLine($"  unterminated captions        {I(argos.Unterminated),13}  {I(gemini.Unterminated),14}");
+            if (legs.Naturalize)
+            {
+                Console.WriteLine($"  captions naturalized        {I(argos.NaturalizedCaptions),13}  {"n/a",14}  rule-based TagalogNaturalizer");
+            }
             Console.WriteLine($"  proc CPU % machine           {F(argos.ProcCpuFraction * 100),13}  {F(gemini.ProcCpuFraction * 100),14}");
             Console.WriteLine($"  worker CPU % machine         {F(argos.WorkerCpuFraction * 100),13}  {"0.00",14}  Argos=local python; Gemini=none local");
             Console.WriteLine($"  peak RAM MB                  {F(argos.PeakRamMb),13}  {F(gemini.PeakRamMb),14}");
@@ -712,6 +763,160 @@ internal static class LiveTranslationBenchmark
         {
             Console.WriteLine($"  [{row.EmitSec,6:0.00}s] {row.Text}");
         }
+    }
+
+    private static void PrintNaturalization(ArgosLegResult argos)
+    {
+        if (argos.NaturalizedRows is null || argos.NaturalizedRows.Count == 0)
+        {
+            return;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"--- ARGOS NATURALIZATION (TagalogNaturalizer; {argos.NaturalizedCaptions}/{argos.Rows.Count} rewritten) ---");
+        for (int i = 0; i < argos.Rows.Count; i++)
+        {
+            string original = argos.Rows[i].Text;
+            string naturalized = argos.NaturalizedRows[i].Text;
+            if (string.Equals(original, naturalized, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Console.WriteLine($"  [{argos.Rows[i].EmitSec,6:0.00}s] {Truncate(original, 64)}");
+            Console.WriteLine($"                       → {Truncate(naturalized, 64)}");
+        }
+    }
+
+    private static void PrintNaturalnessTable(ArgosLegResult argos, List<CaptionRow> geminiReference)
+    {
+        Console.WriteLine();
+        Console.WriteLine("--- NATURALIZED ARGOS vs GEMINI REFERENCE (rows from a prior --gemini-ref-csv run) ---");
+        if (geminiReference.Count == 0)
+        {
+            Console.WriteLine("  (reference stream is empty)");
+            return;
+        }
+
+        string argosStream = string.Join(" ", argos.Rows.Select(r => r.Text));
+        string naturalizedStream = string.Join(" ", (argos.NaturalizedRows ?? argos.Rows).Select(r => r.Text));
+        string geminiStream = string.Join(" ", geminiReference.Select(r => r.Text));
+
+        double origVsRef = CharSimilarity(argosStream, geminiStream);
+        double natVsRef = CharSimilarity(naturalizedStream, geminiStream);
+
+        Console.WriteLine("  full-stream char similarity (Levenshtein, 0..1) vs Gemini reference:");
+        Console.WriteLine($"    Argos original : {origVsRef:0.000}");
+        Console.WriteLine($"    Argos naturalized: {natVsRef:0.000}   ({natVsRef - origVsRef:+0.000})");
+        Console.WriteLine();
+        Console.WriteLine("  index-aligned lines (Argos sentence FINALs vs nearest Gemini increments):");
+        int max = Math.Max(argos.Rows.Count, geminiReference.Count);
+        for (int i = 0; i < max; i++)
+        {
+            string aText = i < argos.Rows.Count ? $"[{argos.Rows[i].EmitSec,6:0.00}s] {argos.Rows[i].Text}" : string.Empty;
+            string gText = i < geminiReference.Count ? $"[{geminiReference[i].EmitSec,6:0.00}s] {geminiReference[i].Text}" : string.Empty;
+            Console.WriteLine($"  {aText,-62} | {gText}");
+        }
+    }
+
+    private static List<CaptionRow>? LoadGeminiReferenceCsv(string path)
+    {
+        if (!File.Exists(path))
+        {
+            Console.WriteLine($"  --gemini-ref-csv file not found: {path}");
+            return null;
+        }
+
+        var rows = new List<CaptionRow>();
+        foreach (string line in File.ReadAllLines(path))
+        {
+            if (!line.StartsWith("gemini,", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string[] fields = ParseCsvLine(line);
+            if (fields.Length < 7)
+            {
+                continue;
+            }
+
+            double emitSec = double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double e)
+                ? e
+                : 0;
+            rows.Add(new CaptionRow(emitSec, -1, 0, fields[5], fields[6]));
+        }
+
+        return rows;
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var current = new StringBuilder();
+        bool inQuotes = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (inQuotes)
+            {
+                if (c == '"' && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                }
+                else if (c == '"')
+                {
+                    inQuotes = false;
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+            else if (c == '"')
+            {
+                inQuotes = true;
+            }
+            else if (c == ',')
+            {
+                fields.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        fields.Add(current.ToString());
+        return fields.ToArray();
+    }
+
+    private static double CharSimilarity(string a, string b)
+    {
+        int[,] d = new int[a.Length + 1, b.Length + 1];
+        for (int i = 0; i <= a.Length; i++)
+        {
+            d[i, 0] = i;
+        }
+
+        for (int j = 0; j <= b.Length; j++)
+        {
+            d[0, j] = j;
+        }
+
+        for (int i = 1; i <= a.Length; i++)
+        {
+            for (int j = 1; j <= b.Length; j++)
+            {
+                int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
+            }
+        }
+
+        int max = Math.Max(a.Length, b.Length);
+        return max == 0 ? 1.0 : 1.0 - (double)d[a.Length, b.Length] / max;
     }
 
     private static async Task FeedAsync(
@@ -888,9 +1093,10 @@ internal static class LiveTranslationBenchmark
         double audioSeconds)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("leg,index,emit_s,source_start_s,translate_ms,kind,text");
+        sb.AppendLine("leg,index,emit_s,source_start_s,translate_ms,kind,text,naturalized");
         if (argos is not null)
         {
+            List<CaptionRow>? naturalized = argos.NaturalizedRows;
             for (int i = 0; i < argos.Rows.Count; i++)
             {
                 var r = argos.Rows[i];
@@ -901,7 +1107,8 @@ internal static class LiveTranslationBenchmark
                     Csv(r.SourceStartSec.ToString("0.000", CultureInfo.InvariantCulture)),
                     Csv(r.TranslateMs.ToString("0", CultureInfo.InvariantCulture)),
                     Csv(r.Kind),
-                    Csv(r.Text)));
+                    Csv(r.Text),
+                    Csv(naturalized is not null ? naturalized[i].Text : string.Empty)));
             }
         }
 
@@ -917,7 +1124,8 @@ internal static class LiveTranslationBenchmark
                     Csv(""),
                     Csv(""),
                     Csv(r.Kind),
-                    Csv(r.Text)));
+                    Csv(r.Text),
+                    Csv("")));
             }
         }
 
@@ -933,12 +1141,13 @@ internal static class LiveTranslationBenchmark
                     Csv(""),
                     Csv(""),
                     Csv(r.Kind),
-                    Csv(r.Text)));
+                    Csv(r.Text),
+                    Csv("")));
             }
         }
 
         sb.AppendLine();
-        sb.AppendLine("summary,leg,audio_s,first_caption_s,committed,updates,cadence_per120s,median_translate_ms,tail_after_feed_s,repeated_bigrams,duplicates,unterminated,proc_cpu_pct,worker_cpu_pct,peak_ram_mb,up_mb,down_mb,cost_usd,cost_usd_per_hour,connect_s,setup_s,error");
+        sb.AppendLine("summary,leg,audio_s,first_caption_s,committed,updates,cadence_per120s,median_translate_ms,tail_after_feed_s,repeated_bigrams,duplicates,unterminated,proc_cpu_pct,worker_cpu_pct,peak_ram_mb,up_mb,down_mb,cost_usd,cost_usd_per_hour,connect_s,setup_s,error,naturalized_captions");
         if (argos is not null)
         {
             sb.AppendLine(string.Join(',',
@@ -963,7 +1172,8 @@ internal static class LiveTranslationBenchmark
                 Csv(""),
                 Csv(""),
                 Csv(""),
-                Csv(argos.Error ?? string.Empty)));
+                Csv(argos.Error ?? string.Empty),
+                Csv(argos.NaturalizedCaptions.ToString(CultureInfo.InvariantCulture))));
         }
 
         if (gemini is not null)
@@ -990,7 +1200,8 @@ internal static class LiveTranslationBenchmark
                 Csv(gemini.CostUsdPerHour.ToString("0.00", CultureInfo.InvariantCulture)),
                 Csv(FormatValue(gemini.ConnectSec)),
                 Csv(FormatValue(gemini.SetupCompleteSec)),
-                Csv(gemini.SessionError ?? string.Empty)));
+                Csv(gemini.SessionError ?? string.Empty),
+                Csv("")));
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -1025,6 +1236,9 @@ internal static class LiveTranslationBenchmark
         Console.WriteLine("  --max-segment/hangover/partial-interval/partial-window  Argos-leg STT knobs");
         Console.WriteLine("  --tail-s <sec>       Gemini tail-flush window after the last chunk (default 5)");
         Console.WriteLine("  --csv <path>         write per-caption + summary CSV");
+        Console.WriteLine("  --no-naturalize      disable the deterministic Tagalog naturalizer on Argos captions (default: on)");
+        Console.WriteLine("  --gemini-ref-csv <p> load a prior translatelive CSV's gemini rows as the offline comparison");
+        Console.WriteLine("                       reference instead of running the online leg (requires --legs argos)");
         Console.WriteLine("Requires GEMINI_API_KEY env var for the Gemini leg (never stored/committed).");
     }
 
@@ -1106,8 +1320,15 @@ internal static class LiveTranslationBenchmark
                     try
                     {
                         using var p = Process.GetProcessById(pid);
-                        workerCpu += p.TotalProcessorTime.TotalSeconds;
-                        workerWs += p.WorkingSet64;
+                        try
+                        {
+                            workerCpu += p.TotalProcessorTime.TotalSeconds;
+                            workerWs += p.WorkingSet64;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Process exited between enumeration and sampling.
+                        }
                     }
                     catch (ArgumentException)
                     {
