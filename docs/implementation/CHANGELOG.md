@@ -17,6 +17,22 @@ Last updated: 2026-08-06
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.29 - 2026-08-07
+
+### Translation research CLOSED (no production-code changes)
+
+- **Translation & naturalizer investigation closed by user (2026-08-07).** Evidence is conclusive
+  and the user stops both the offline-MT search and the naturalizer-model search. Three independent
+  failure lines: deterministic 13 rules (0/23 unseen recall), M2M-100-418M (0/16 + 20–40× slower),
+  Qwen2.5-1.5B-Instruct small-LLM naturalizer (15/16 worse + contract violation); NLLB-600M is
+  quality-excellent but CC-BY-NC (not production-eligible); Gemini Live is the cloud quality/realtime
+  reference. **Production path frozen (no code changes):** `WASAPI → Whisper → Argos OPUS-MT en→tl →
+  13-rule deterministic naturalizer → Caption overlay`. Optional experimental path: `Audio → Gemini
+  Live Translate` (user's own API key). A larger LLM or a dedicated Tagalog-rewrite fine-tune is
+  explicitly deferred as a future research/training project, not an MVP optimization. **Next phase:
+  release/landing-page work.** Evidence: BENCHMARK_REPORT (Final Decision — Translation &
+  Naturalizer Investigation CLOSED), entries v0.5.27–v0.5.28.
+
 ## v0.5.28 - 2026-08-07
 
 ### Translation research (no production-code changes)

@@ -1406,3 +1406,34 @@ decode settings); `naturalizer_probe_qwen.py` (probe script incl. the parity-che
 port); Argos column from `artifacts/reports/translatelive/argos_baseline_unseen_2026-08-07.json`;
 Gemini reference from the already-scored `unseen_ab_worksheet_2026-08-07.md` + key. Raw outputs
 outside the repo under `%TEMP%\opencode\txbench\out\`.
+
+---
+
+## Final Decision — Translation & Naturalizer Investigation CLOSED (2026-08-07, user decision)
+
+**The user closes the translation-quality investigation entirely.** The evidence is conclusive:
+
+| Approach | Result |
+|---|---|
+| **Argos + deterministic 13 rules** | Improves known phrases; **0/23 unseen recall** |
+| **M2M-100-418M** (MIT offline MT) | Fails quality (0/16), ~20–40× slower |
+| **Qwen2.5-1.5B-Instruct** (small-LLM naturalizer) | Catastrophic quality failure (15/16 worse, contract violation) |
+| **NLLB-600M** (offline MT) | Excellent quality but **CC-BY-NC → not production-eligible** |
+| **Gemini Live Translate** | Strong naturalness + realtime (cloud) |
+
+Both open questions are now answered:
+- *"Can another permissively-licensed offline MT model beat Argos?"* **No**, across the evaluated candidates.
+- *"Can a tiny general-purpose model cheaply naturalize Argos?"* **No**, per the Qwen probe.
+
+**Frozen production path (unchanged, no production code changes):**
+`WASAPI → Whisper → Argos OPUS-MT en→tl → 13-rule deterministic naturalizer → Caption overlay`.
+
+**Optional experimental path (product-level, not core):**
+`Audio → Gemini Live Translate → Natural Tagalog + realtime` (requires the user's own Gemini API key;
+documented tradeoff: naturalness + realtime vs offline + privacy + cost).
+
+**Not pursued (user decision):** a larger permissive LLM or a dedicated Tagalog-rewrite fine-tune is
+explicitly **not** a sensible "next optimization" for the current MVP — it would be a new research/
+training project (needs a large high-quality en→natural-TL corpus, held-out eval data,
+semantic-preservation tests, hallucination tests, streaming-latency measurements, a permissive
+license, and quantization for target hardware). **Release/landing-page work is the next phase.**

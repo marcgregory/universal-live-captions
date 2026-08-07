@@ -19,6 +19,18 @@ This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
 
+**Translation & naturalizer investigation CLOSED (2026-08-07); next phase = release/landing-page
+work.** The user closed both the offline-MT search and the naturalizer-model search. Conclusive
+evidence: Argos + deterministic 13 rules (0/23 unseen recall), M2M-100-418M (0/16 + 20–40× slower),
+Qwen2.5-1.5B-Instruct naturalizer (15/16 worse + contract violation), NLLB-600M (quality-excellent
+but CC-BY-NC → not production-eligible), Gemini Live (cloud quality/realtime reference). **Frozen
+production path (no code changes):** `WASAPI → Whisper → Argos OPUS-MT en→tl → 13-rule
+deterministic naturalizer → Caption overlay`. Optional experimental path: `Audio → Gemini Live
+Translate` (user's own API key; naturalness + realtime vs offline + privacy + cost). Larger-LLM /
+Tagalog-fine-tune explicitly deferred as a future research project, not an MVP optimization.
+Evidence: BENCHMARK_REPORT (Final Decision — Translation & Naturalizer Investigation CLOSED),
+CHANGELOG v0.5.29.
+
 **Small-model Tagalog naturalizer — quality probe FAILED (2026-08-07).** Per the user's next
 experiment, tested whether a small permissive instruction-following model can naturalize Argos
 en→tl output (contract: improve naturalness while preserving meaning; guardrails enforced in the
