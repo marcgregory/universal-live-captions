@@ -1105,3 +1105,99 @@ verbatim and double the tally without adding independent evidence.
    +0.107**) is corroborated by the human pass but is **not** the optimization target.
 3. Next phase: evaluate the naturalizer on a larger unseen conversational-Tagalog set per F2–F4
    before any rule expansion or production wiring.
+
+# Tagalog Naturalizer — Unseen-Set Generalization Test, Argos vs Gemini (2026-08-07)
+
+Follow-up to the human-rated quality pass (seen practice-session corpus). Purpose: test whether the
+**frozen 13-rule naturalizer generalizes to unseen conversational content**, and to get a decoded
+(per-system) Argos vs Gemini quality reading on that content. The new script was deliberately written
+to **avoid all 13 rule triggers**.
+
+## Method
+
+- New unseen sample: `artifacts/samples/english_unseen_90s_16k.wav` (92.85 s, 16 scripted lines),
+  synthesized with `gen_english_unseen_wav.ps1` (SAPI female, Rate −2) — same pipeline as the seen
+  corpus, fresh conversational script (greetings/intros with names, classroom Q&A, time/date/
+  numbers, requests with pronouns, casual exchanges, idioms, group/proper name, closing).
+- Same-audio legs on that sample: Argos offline (faster-whisper-native `small` → Argos en→tl,
+  23 FINAL captions, first caption 14.3–15.6 s, no backlog) and Gemini Live (88 stream fragments,
+  target `fil`).
+- **Naturalizer on the unseen set: 0/23 captions rewritten; full-stream char similarity vs Gemini
+  0.586 → 0.586 (+0.000)** (vs +0.107 on the seen set). The "Naturalized Argos" candidate is
+  therefore byte-identical to raw Argos here — the A/B comparison below is effectively
+  **Argos vs Gemini**.
+- Blinded scoring: one Filipino evaluator scored the 16 lines as A/B with labels **shuffled per
+  line** (key held in `artifacts/reports/translatelive/unseen_ab_key_2026-08-07.md`, closed during
+  scoring). Naturalness 1–5, Meaning 1–5, Preference A/B/Tie.
+
+## Raw (blinded) scores
+
+| # | A Nat | B Nat | A Mean | B Mean | Pref |
+|--:|--:|--:|--:|--:|:--:|
+| 1 | 4 | 5 | 5 | 5 | B |
+| 2 | 4 | 2 | 5 | 2 | A |
+| 3 | 5 | 3 | 5 | 5 | A |
+| 4 | 4 | 4 | 4 | 5 | B |
+| 5 | 5 | 2 | 5 | 3 | A |
+| 6 | 4 | 5 | 5 | 5 | B |
+| 7 | 2 | 2 | 5 | 2 | A |
+| 8 | 5 | 5 | 5 | 5 | Tie |
+| 9 | 3 | 3 | 3 | 5 | B |
+| 10 | 5 | 2 | 5 | 4 | A |
+| 11 | 2 | 4 | 3 | 5 | B |
+| 12 | 5 | 3 | 5 | 5 | A |
+| 13 | 5 | 1 | 5 | 2 | A |
+| 14 | 2 | 4 | 2 | 4 | B |
+| 15 | 3 | 5 | 3 | 5 | B |
+| 16 | 5 | 1 | 5 | 2 | A |
+
+Submitted column tally: A 7 / B 8 / Tie 1. Direct recount of the preference column: **A 8 / B 7 /
+Tie 1**. Neither column number is a per-system measure — both blind columns mix systems (column A =
+7 Argos + 9 Gemini; column B = 9 Argos + 7 Gemini). The decoded table below is authoritative.
+
+## Decoded per-system (key applied)
+
+| Metric | Argos (offline) | Gemini Live |
+|---|---:|---:|
+| Naturalness (mean /16) | **2.69** | **4.44** |
+| Meaning (mean /16) | **3.56** | **4.81** |
+| Preferences (winning lines) | **1** (line 9) | **14** |
+| Ties | 1 (line 8) | 1 (line 8) |
+
+Decoded line map (winner): 1 G, 2 G, 3 G, 4 G, 5 G, 6 G, 7 G, 8 Tie, 9 A, 10 G, 11 G, 12 G, 13 G,
+14 G, 15 G, 16 G.
+
+## Findings
+
+- **F1 — The blind columns masked the result; decoded, this is a decisive Gemini victory.**
+  Gemini 14/16, Argos 1/16, 1 tie. The near-even column tally (8/7) hid a lopsided per-system
+  result because both columns contained a mix of the two systems.
+- **F2 — The evaluator's own qualitative lists, decoded, attribute the failures to Argos.**
+  The "more conversational" wins they listed — #1 `Hi sa lahat`, #6 `notes`/`meeting`, #11
+  `nakakatawa`, #14 `Mag-usap tayo sa tanghalian`, #15 `lakasan nang kaunti` — are all **Gemini**.
+  The "obvious translation failures" — #2 `dulo ng sanlinggo`, #7 `Totoo, narito ka`, #13
+  `makita ka agad`, #16 `malaking linggo` — are all **Argos**.
+- **F3 — The frozen naturalizer gives zero coverage on unseen content (0/23), so it cannot close
+  the gap.** This reverses the seen-set impression (4N/5G/3Tie). Argos's remaining problems are not
+  cosmetic: literal translation (#16 `malaking linggo`), semantic mis-interpretation (#7 `Totoo,
+  narito ka`), over-formal vocabulary (#9 `subalit`), code-switching choices (#6 `mga nota`/`pulong`
+  vs `notes`/`meeting`), and broken phrase rendering (#13 `makita ka agad`). Correcting these needs
+  **translation-level changes, not output phrase patches** — exactly the user's next research
+  question: improve Argos's translation itself while staying offline (cf. the NLLB / MADLAD-400-3B
+  offline-candidate evaluations above).
+- **F4 — Single-evaluator caveat (stated by the evaluator).** These are one Filipino listener's
+  scores; they should not be the sole benchmark evidence. The worksheet
+  (`artifacts/reports/translatelive/unseen_ab_worksheet_2026-08-07.md`) is kept blank and ready for
+  a **second independent blind scoring**; if a second evaluator reproduces the same pattern, the
+  conclusion "a frozen deterministic phrase-rewrite layer does not generalize to broad
+  conversational translation" is much stronger.
+
+## Decision (recorded 2026-08-07)
+
+1. **Keep the 13-rule table frozen.** The unseen test shows the phrase-table approach does not
+   generalize to open-ended conversation; line-by-line rule expansion would chase an unbounded
+   surface.
+2. **Do not promote the naturalizer to production** on the strength of the seen set alone.
+3. Next investigation (user's question): **improve the offline translation itself** — evaluate
+   candidates (offline MT models / pipeline changes, not output patching) against this unseen
+   sample, with a second evaluator scoring the same blinded worksheet first.

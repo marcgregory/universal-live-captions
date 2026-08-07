@@ -1,0 +1,27 @@
+leg,index,emit_s,source_start_s,translate_ms,kind,text,naturalized
+argos,1,15.555,0.150,289,caption,"Ako si Alex, at ito ang kaibigan kong si Maya.","Ako si Alex, at ito ang kaibigan kong si Maya."
+argos,2,27.408,5.610,144,caption,Maligayang pagdating sa klase.,Maligayang pagdating sa klase.
+argos,3,33.580,8.270,180,caption,Maganda ba ang dulo ng sanlinggo ninyo?,Maganda ba ang dulo ng sanlinggo ninyo?
+argos,4,43.411,11.140,276,caption,Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.,Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.
+argos,5,46.294,16.330,174,caption,"Una, sino ang makapagsasabi sa akin ng oras?","Una, sino ang makapagsasabi sa akin ng oras?"
+argos,6,49.030,19.880,117,caption,Halos 9.30.,Halos 9.30.
+argos,7,54.721,22.580,255,caption,"Ang aking kaarawan ay pumapatak sa ika - 21 ng Disyembre, at ako'y 30 na lamang.","Ang aking kaarawan ay pumapatak sa ika - 21 ng Disyembre, at ako'y 30 na lamang."
+argos,8,57.521,28.950,228,caption,Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?,Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?
+argos,9,62.604,33.390,78,caption,"Totoo, narito ka.","Totoo, narito ka."
+argos,10,68.023,36.360,113,caption,"Maraming salamat, talagang pinahahalagahan ko ito.","Maraming salamat, talagang pinahahalagahan ko ito."
+argos,11,75.900,40.350,332,caption,Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa Community Center.,Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa Community Center.
+argos,12,83.453,45.880,159,caption,"Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hindi namin nakita ang pagdating nito.","Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hindi namin nakita ang pagdating nito."
+argos,13,91.906,51.230,222,caption,"Medyo masama ang pakiramdam ko ngayon, kaya madali lang.","Medyo masama ang pakiramdam ko ngayon, kaya madali lang."
+argos,14,97.725,56.500,131,caption,Nakagigitla ang birong sinabi mo noon.,Nakagigitla ang birong sinabi mo noon.
+argos,15,102.487,60.400,89,caption,Hindi ko mapigil ang pagtawa.,Hindi ko mapigil ang pagtawa.
+argos,16,110.520,62.970,139,caption,"Medyo nahuhuli na tayo, kaya pakisuyong pagtiisan mo kami.","Medyo nahuhuli na tayo, kaya pakisuyong pagtiisan mo kami."
+argos,17,118.307,68.300,159,caption,"Mag - ingat sa iyong pag - uwi, at makita ka agad.","Mag - ingat sa iyong pag - uwi, at makita ka agad."
+argos,18,123.494,73.130,141,caption,"Paminsan - minsan, kumain tayo.","Paminsan - minsan, kumain tayo."
+argos,19,128.633,76.550,114,caption,Mula nang kami'y mag - usap.,Mula nang kami'y mag - usap.
+argos,20,133.753,79.670,87,caption,Puwede ka bang magsalita nang kaunti?,Puwede ka bang magsalita nang kaunti?
+argos,21,139.017,82.280,97,caption,Ang projector ay medyo maingay ngayon.,Ang projector ay medyo maingay ngayon.
+argos,22,144.096,85.480,106,caption,"O sige, para lang sa ngayon.","O sige, para lang sa ngayon."
+argos,23,149.361,89.080,97,caption,"Salamat sa inyong pagdating, at mayroon po kayong isang malaking linggo.","Salamat sa inyong pagdating, at mayroon po kayong isang malaking linggo."
+
+summary,leg,audio_s,first_caption_s,committed,updates,cadence_per120s,median_translate_ms,tail_after_feed_s,repeated_bigrams,duplicates,unterminated,proc_cpu_pct,worker_cpu_pct,peak_ram_mb,up_mb,down_mb,cost_usd,cost_usd_per_hour,connect_s,setup_s,error,naturalized_captions
+,argos,92.85,15.555,23,24,29.7,141,,2,0,0,0.5,29.7,1175.3,,,,,,,,0
