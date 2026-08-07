@@ -521,6 +521,72 @@ public sealed class GeminiLiveTranslateEngineTests
         Assert.Equal("Paalam na", finals[0].TranslatedText);
     }
 
+    // ----- sessionResumptionUpdate: engine must not fatal -----
+
+    [Fact]
+    public async Task SessionResumptionUpdateFrame_IsNoOp_AndSubsequentFramesContinue()
+    {
+        // Real-wire spike (2026-08-08): the server emits sessionResumptionUpdate AFTER a final
+        // translation. A5 used to misclassify it as "Unrecognized top-level frame" and the engine
+        // killed the session, dropping subsequent translations. After the fix the engine must
+        // treat the frame as a no-op, continue receiving, and emit the next translation cleanly.
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        var errors = new List<LiveTranslationError>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+        engine.TranslationFailed += (_, e) => errors.Add(e);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // First turn: a partial + turnComplete final.
+        channel.QueueServerFrame(BuildServerContent("Una", partial: true, turnComplete: true));
+
+        // The sessionResumptionUpdate arrives interleaved with translations. The engine must
+        // ignore it: no TranslationFailed, no flush of the accumulator.
+        channel.QueueServerFrame("""{"sessionResumptionUpdate":{"resumable":true,"newHandle":"opaque-handle"}}""");
+
+        // Second turn arrives cleanly after the resumption update.
+        channel.QueueServerFrame(BuildServerContent("Ikalawa", partial: true, turnComplete: true));
+
+        await WaitForAsync(() => finals.Count == 2, timeoutMs: 4000);
+
+        Assert.Empty(errors);
+        Assert.Equal(2, finals.Count);
+        Assert.Equal("Una", finals[0].TranslatedText);
+        Assert.Equal("Ikalawa", finals[1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task SessionResumptionUpdateFrame_DoesNotFlushAccumulator()
+    {
+        // Belt-and-braces: a resumption update arrives between a partial and its turnComplete.
+        // The engine must NOT treat the resumption update as a turn boundary (that would
+        // prematurely flush "Pending" as a final and drop the actual final that comes next).
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel);
+        var finals = new List<FinalTranslation>();
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Pending", partial: true, turnComplete: false));
+        channel.QueueServerFrame("""{"sessionResumptionUpdate":{"resumable":false}}""");
+        channel.QueueServerFrame(BuildServerContent("Pending final", partial: true, turnComplete: true));
+
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 4000);
+
+        // The committed final must be the text from the turnComplete frame — not the resumption
+        // update, which has no text at all. A6 must keep the accumulator intact across the
+        // resumption update.
+        Assert.Single(finals);
+        Assert.Equal("Pending final", finals[0].TranslatedText);
+    }
+
     // ----- API key privacy -----
 
     [Fact]

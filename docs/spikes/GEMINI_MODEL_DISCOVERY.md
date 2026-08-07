@@ -2,11 +2,13 @@
 
 **Date opened:** 2026-08-08
 **Status:** A1–A4 setup contract confirmed PASS against the live Google service. A5 protocol
-parser is fail-soft with a structural diagnostic for unknown top-level shapes (so the next run
-tells us what A5 needs to add rather than "Unrecognized top-level frame"). Real-wire spike
-classified as **REAL-WIRE: PARTIAL PASS / PROTOCOL FAIL** — connection, setup, audio, and
-translation output are all verified; an unknown-but-non-fatal server frame after the final
-translation is the only remaining gap. 469/469 deterministic tests pass.
+parser now recognizes `serverContent`, `error`, `setupComplete`, `goAway`, **and
+`sessionResumptionUpdate`** (Google-documented Live API control frame,
+https://ai.google.dev/api/live#sessionresumptionupdate). The engine treats the resumption frame
+as a no-op (Live Translate doesn't accept resumption configuration, so the frame is
+informational). Real-wire spike classified as **READY for the next end-to-end run** — only
+remaining gap is corpus coverage (12/16 sample files) and observing an error-free session over
+the full corpus. 476/476 deterministic tests pass.
 
 ## What the spike told us
 
@@ -21,6 +23,7 @@ Two rounds of real-wire spike runs against `wss://generativelanguage.googleapis.
 | 4 | Server returned `InvalidPayloadData — Unknown name "outputAudioTranscription" at 'setup.generation_config': Cannot find field.` | The docs WebSocket example puts `outputAudioTranscription` inside `generationConfig`, but the real server says that's the wrong path. The REST API reference at https://ai.google.dev/api/live places `outputAudioTranscription` as a TOP-LEVEL sibling of `model` and `generationConfig` on `BidiGenerateContentSetup` — not nested inside `generationConfig`. The `translationConfig` field stays inside `generationConfig` (different path). | **Fixed** — `outputAudioTranscription` moved to the `setup` top level. Apex docs/server discrepancy resolved. |
 | 5 | `InvalidOperationException: Gemini Live Translate protocol does not use binary frames; the server sent one.` | `ClientWebSocketGeminiChannel.ReceiveTextAsync` only accepted `WebSocketMessageType.Text` and rejected `Binary` frames outright. The real server sends binary frames for the translated audio path; the side-channel text still arrives in JSON over those binary frames. | **Fixed** — channel now accepts Binary frames, decodes UTF-8 JSON when the payload starts with `{` or `[`, and falls back to a metadata-only diagnostic (`payloadLength` + first 16 bytes hex + UTF-8 attempt + JSON attempt) on failure. No payload bytes are logged. |
 | 6 | A5 protocol parser reports `Unrecognized top-level frame (no serverContent, error, setupComplete, or goAway)` after a final translation has already arrived. | A5 only knows four top-level frame shapes (`serverContent`, `error`, `setupComplete`, `goAway`). The real server emits at least one additional top-level shape after the final translation (the runner saw translation → unknown frame → engine fatal). The unknown frame is NON-blocking — the translation was already delivered — but A5 treats it as fatal. | **Diagnostic-only fix** — `TryParseServerFrame` now emits a structural fingerprint of the unknown top-level frame (`topLevelKeys=[name:ValueKind, name:ValueKind, ...]`, no payload bytes) so the next run tells us exactly what A5 needs to add. Behavior is unchanged on the engine side (`TranslationFailed` still fires for malformed frames; the spike runner still records the diagnostic verbatim in the per-utterance error list). 3 new protocol tests pin the diagnostic shape. |
+| 7 | Real wire identified the unknown frame as `sessionResumptionUpdate` (Google-documented Live API control message, https://ai.google.dev/api/live#sessionresumptionupdate). | A5's union handling was incomplete — the server emits `{"sessionResumptionUpdate":{"resumable":true,"newHandle":"…"}}` on the Live Translate surface even though Live Translate doesn't accept `sessionResumption` configuration today. The frame is informational, not a fatal error. | **Fixed** — added `GeminiServerMessage.SessionResumptionUpdate(NewHandle, Resumable)` typed case + a no-op switch branch in the engine receive loop. 7 new tests pin the behavior (4 protocol: resumable=true / resumable=false / empty object / wrong type; 2 engine: no-op across a final-translation boundary and across a partial → update → turnComplete boundary; 1 tightened diagnostic test asserts the known shapes no longer leak into the diagnostic). 476/476 deterministic tests pass. |
 
 ## The corrected setup frame
 

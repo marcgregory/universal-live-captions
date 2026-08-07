@@ -471,6 +471,74 @@ public sealed class GeminiLiveTranslateProtocolTests
         Assert.IsType<GeminiServerMessage.GoAway>(message);
     }
 
+    // ----- Server frame parsing: sessionResumptionUpdate -----
+
+    [Fact]
+    public void SessionResumptionUpdate_ResumableTrue_IsParsed()
+    {
+        // Real-wire spike (2026-08-08) confirmed Google emits
+        // `{"sessionResumptionUpdate":{"resumable":true,"newHandle":"…"}}` on the Live Translate
+        // surface, even though Live Translate does not accept sessionResumption configuration.
+        // A5 MUST recognize this frame so the session isn't torn down after a successful translation.
+        const string json = """
+            {
+              "sessionResumptionUpdate": {
+                "resumable": true,
+                "newHandle": "opaque-handle-bytes-not-logged-here"
+              }
+            }
+            """;
+
+        bool ok = GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        Assert.True(ok);
+        var update = Assert.IsType<GeminiServerMessage.SessionResumptionUpdate>(message);
+        Assert.True(update.Resumable);
+        Assert.Equal("opaque-handle-bytes-not-logged-here", update.NewHandle);
+    }
+
+    [Fact]
+    public void SessionResumptionUpdate_ResumableFalse_IsParsed()
+    {
+        const string json = """{"sessionResumptionUpdate":{"resumable":false}}""";
+
+        bool ok = GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        Assert.True(ok);
+        var update = Assert.IsType<GeminiServerMessage.SessionResumptionUpdate>(message);
+        Assert.False(update.Resumable);
+        Assert.Null(update.NewHandle);
+    }
+
+    [Fact]
+    public void SessionResumptionUpdate_EmptyObject_IsParsed_WithDefaults()
+    {
+        // Both fields are optional — the server may omit either. Default: Resumable=false,
+        // NewHandle=null. A5 still accepts the frame; A6 treats it as a no-op.
+        const string json = """{"sessionResumptionUpdate":{}}""";
+
+        bool ok = GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        Assert.True(ok);
+        var update = Assert.IsType<GeminiServerMessage.SessionResumptionUpdate>(message);
+        Assert.False(update.Resumable);
+        Assert.Null(update.NewHandle);
+    }
+
+    [Fact]
+    public void SessionResumptionUpdate_WrongType_ReturnsFalse()
+    {
+        // `"sessionResumptionUpdate":"oops"` is not a recognized shape. The protocol must surface
+        // a parse error rather than silently parsing into the no-op case.
+        const string json = """{"sessionResumptionUpdate":"oops"}""";
+
+        bool ok = GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out var error);
+
+        Assert.False(ok);
+        Assert.Null(message);
+        Assert.NotNull(error);
+    }
+
     // ----- Server frame parsing: error frame -----
 
     [Fact]
@@ -627,6 +695,34 @@ public sealed class GeminiLiveTranslateProtocolTests
         Assert.Contains("Unrecognized", error);
         Assert.Contains("usageMetadata:Object", error);
         Assert.Contains("toolCall:Object", error);
+    }
+
+    [Fact]
+    public void UnrecognizedFrame_DiagnosticDoesNotListKnownShapes()
+    {
+        // The four + one known top-level frame shapes must NEVER appear in the diagnostic's
+        // topLevelKeys=[...] payload list — if they ever do, A5 has regressed and forgotten to
+        // handle a shape it already knows. Adding `sessionResumptionUpdate` here pins the fix
+        // for the 2026-08-08 spike. We assert only the list portion, because the human-readable
+        // prefix legitimately enumerates the known shapes ("…no serverContent, error,…").
+        const string json = """{"someUnknownFrame":{"x":1}}""";
+
+        GeminiLiveTranslateProtocol.TryParseServerFrame(json, out _, out var error);
+
+        Assert.NotNull(error);
+        int listStart = error.IndexOf("topLevelKeys=[", StringComparison.Ordinal);
+        Assert.True(listStart >= 0, $"diagnostic should contain topLevelKeys=[…]: {error}");
+        string list = error.Substring(listStart);
+
+        Assert.Contains("someUnknownFrame:Object", list);
+        Assert.DoesNotContain("serverContent", list);
+        Assert.DoesNotContain("setupComplete", list);
+        Assert.DoesNotContain("goAway", list);
+        Assert.DoesNotContain("sessionResumptionUpdate", list);
+        // `error` is both a property name (a known shape) and a substring of the prefix; check it
+        // only inside the list, not the human-readable message body.
+        Assert.DoesNotContain("\"error\":", list);
+        Assert.DoesNotContain("error:Object", list);
     }
 
     [Fact]
