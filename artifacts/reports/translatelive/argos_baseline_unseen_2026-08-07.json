@@ -1,0 +1,87 @@
+{
+  "model": "Argos translate-en_tl-1_9 (OPUS-MT en-tl, bundled)",
+  "source_language": "en",
+  "target_language": "tl",
+  "rows": [
+    {
+      "input_line": "Hi everyone, I'm Alex, and this is my friend Maya.",
+      "output_line": "Ako si Alex, at ito ang kaibigan kong si Maya.",
+      "inference_time_s": 2.4429
+    },
+    {
+      "input_line": "Welcome back to class. Did you all have a good weekend?",
+      "output_line": "Maligayang pagdating sa klase. Maganda ba ang dulo ng sanlinggo ninyo?",
+      "inference_time_s": 0.0795
+    },
+    {
+      "input_line": "Today let's talk about everyday plans and simple requests.",
+      "output_line": "Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.",
+      "inference_time_s": 0.1301
+    },
+    {
+      "input_line": "First, who can tell me the time? It's almost nine thirty.",
+      "output_line": "Una, sino ang makapagsasabi sa akin ng oras? Halos siyam na putbol na ito.",
+      "inference_time_s": 0.1074
+    },
+    {
+      "input_line": "My birthday falls on the twenty first of December, and I just turned thirty.",
+      "output_line": "Ang aking kaarawan ay pumapatak sa dalawampung unang bahagi ng Disyembre, at ako'y naging tatlumpu.",
+      "inference_time_s": 0.1326
+    },
+    {
+      "input_line": "Could you please pass me the notes from yesterday's meeting?",
+      "output_line": "Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?",
+      "inference_time_s": 0.1147
+    },
+    {
+      "input_line": "Sure, here you go. Thanks a lot, I really appreciate it.",
+      "output_line": "Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito.",
+      "inference_time_s": 0.09
+    },
+    {
+      "input_line": "The Green Valley Cooking Club meets every Saturday at the community center.",
+      "output_line": "Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa sentro ng komunidad.",
+      "inference_time_s": 0.1002
+    },
+    {
+      "input_line": "She said he would bring his guitar, but we never saw it arrive.",
+      "output_line": "Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hindi namin nakita ang pagdating nito.",
+      "inference_time_s": 0.1144
+    },
+    {
+      "input_line": "I'm feeling a bit under the weather today, so I'll take it easy.",
+      "output_line": "Medyo masama ang pakiramdam ko ngayon, kaya madali lang.",
+      "inference_time_s": 0.1469
+    },
+    {
+      "input_line": "That joke you told earlier was hilarious. I couldn't stop laughing.",
+      "output_line": "Nakagigitla ang birong sinabi mo noon. Hindi ko mapigil ang pagtawa.",
+      "inference_time_s": 0.1126
+    },
+    {
+      "input_line": "We're running a little behind schedule, so please bear with us.",
+      "output_line": "Medyo nahuhuli na tayo, kaya pakisuyong pagtiisan mo kami.",
+      "inference_time_s": 0.0907
+    },
+    {
+      "input_line": "Take care on your way home, and see you around soon.",
+      "output_line": "Mag - ingat sa iyong pag - uwi, at makita ka agad.",
+      "inference_time_s": 0.1188
+    },
+    {
+      "input_line": "Let's catch up over lunch sometime. It's been a while since we talked.",
+      "output_line": "Paminsan - minsan, kumain tayo. Mula nang kami'y mag - usap.",
+      "inference_time_s": 0.102
+    },
+    {
+      "input_line": "Could you speak up a little? The projector is a bit noisy today.",
+      "output_line": "Puwede ka bang magsalita nang kaunti? Ang projector ay medyo maingay ngayon.",
+      "inference_time_s": 0.0906
+    },
+    {
+      "input_line": "Alright, that's all for today. Thanks for coming, and have a great week.",
+      "output_line": "Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating, at mayroon po kayong isang malaking linggo.",
+      "inference_time_s": 0.121
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "model": "facebook/m2m100_418M",
+  "model_revision_sha": "55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636",
+  "source_language": "en",
+  "target_language": "tl",
+  "load_time_s": 3.841,
+  "rows": [
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Hi everyone, I'm Alex, and this is my friend Maya.",
+      "output_line": "Hi lahat, ako ay Alex, at ito ay ang aking kaibigan Maya.",
+      "inference_time_s": 2.1835
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Welcome back to class. Did you all have a good weekend?",
+      "output_line": "Welcome back to class.Hindi ka ba ang lahat ng weekend?",
+      "inference_time_s": 2.5101
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Today let's talk about everyday plans and simple requests.",
+      "output_line": "Sa ngayon, makipag-ugnay sa mga araw-araw na mga plano at simpleng mga pagsasanay.",
+      "inference_time_s": 3.1223
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "First, who can tell me the time? It's almost nine thirty.",
+      "output_line": "Alam mo na ba kung ano ang nakaraang oras? ang nakaraang taon.",
+      "inference_time_s": 2.4257
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "My birthday falls on the twenty first of December, and I just turned thirty.",
+      "output_line": "Ang aking birthday ay nakakaalam sa 21st ng Disyembre, at ako ay nakakaalam ng 30.",
+      "inference_time_s": 2.7849
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Could you please pass me the notes from yesterday's meeting?",
+      "output_line": "Gusto mo bang mag-iisip sa akin ang mga notes mula sa meeting ng araw?",
+      "inference_time_s": 2.3258
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Sure, here you go. Thanks a lot, I really appreciate it.",
+      "output_line": "Siguro, dito ang iyong pag-ibig. salamat sa maraming, gusto ko na ito.",
+      "inference_time_s": 2.5322
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "The Green Valley Cooking Club meets every Saturday at the community center.",
+      "output_line": "Ang Green Valley Cooking Club ay matatagpuan sa komunidad center sa araw-araw.",
+      "inference_time_s": 2.6929
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "She said he would bring his guitar, but we never saw it arrive.",
+      "output_line": "Nagsimula niya na siya ay nagsisimula ang kanyang guitar, ngunit hindi kami nakikita na ito nagsisimula.",
+      "inference_time_s": 3.5455
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "I'm feeling a bit under the weather today, so I'll take it easy.",
+      "output_line": "I feel a little under the weather today, so I’ll take it easy. – I feel a little under the weather today, so I’ll take it easy.",
+      "inference_time_s": 4.2061
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "That joke you told earlier was hilarious. I couldn't stop laughing.",
+      "output_line": "Ito ang jokes na sinabi mo sa loob ay hilarious. hindi ko mag-stay laughing.",
+      "inference_time_s": 2.9702
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "We're running a little behind schedule, so please bear with us.",
+      "output_line": "Kami ay nag-aalok sa loob ng isang oras, so please bear with us.",
+      "inference_time_s": 2.899
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Take care on your way home, and see you around soon.",
+      "output_line": "Tingnan mo sa iyong bahay, at makikita mo sa loob ng isang araw.",
+      "inference_time_s": 2.373
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Let's catch up over lunch sometime. It's been a while since we talked.",
+      "output_line": "Nagsimula kami ng lunch sa loob ng isang taon na ang nakalipas.",
+      "inference_time_s": 3.4447
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Could you speak up a little? The projector is a bit noisy today.",
+      "output_line": "Ang proyektong ito ay isang maliit na rumor ngayon.",
+      "inference_time_s": 1.7054
+    },
+    {
+      "model": "facebook/m2m100_418M",
+      "model_revision_sha": "resolved_at_runtime",
+      "source_language": "en",
+      "target_language": "tl",
+      "input_line": "Alright, that's all for today. Thanks for coming, and have a great week.",
+      "output_line": "Salamat, totoo ang lahat para sa ngayon. thanks for coming, and have a great week.",
+      "inference_time_s": 2.663
+    }
+  ]
+}

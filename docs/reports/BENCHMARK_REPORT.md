@@ -1201,3 +1201,84 @@ Decoded line map (winner): 1 G, 2 G, 3 G, 4 G, 5 G, 6 G, 7 G, 8 Tie, 9 A, 10 G, 
 3. Next investigation (user's question): **improve the offline translation itself** — evaluate
    candidates (offline MT models / pipeline changes, not output patching) against this unseen
    sample, with a second evaluator scoring the same blinded worksheet first.
+
+---
+
+## M2M-100-418M — Offline en→tl Quality Probe (2026-08-07)
+
+**Context.** Following the unseen-set result, the user's next question is whether an **offline
+translation model** can produce more natural English→Tagalog than the Argos+naturalizer baseline
+without destroying realtime viability. Per the user's decision gate, the first step is **quality
+only** — a native, untuned translation probe — and the investigation **stops** if the candidate is
+not clearly more natural than Argos. Prior candidates: NLLB-200-distilled-600M (best quality but
+CC-BY-NC → not production-eligible), MADLAD-400-3B-MT (Apache-2.0 but disqualified: 2.8 s avg /
+22.7 s max / verbose / 2.8 GB). First permissive-license candidate: **facebook/m2m100_418M** (MIT,
+covers `tl`; larger sibling m2m100-1.2B also MIT).
+
+**Method.** Translation-only (no STT variable): the **exact 16 unseen English lines** from
+`gen_english_unseen_wav.ps1` were translated by (a) M2M-100-418M via `transformers` in the argos
+venv (`m2m_probe_unseen.py`) and (b) the bundled Argos `argos_translate_server.py`
+(`argos_corpus_unseen.py`) — identical input, both en→tl. **No post-processing, no naturalizer, no
+prompt/decoding tuning** on either side, per the user's measurement rule (the naturalizer applies
+0/23 rewrites on unseen content anyway, so it cannot affect this comparison). M2M decode: greedy,
+`forced_bos_token_id=tl`, sentencepiece tokenizer, CPU, argos venv torch. Model revision recorded:
+`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636`; load 3.841 s.
+
+**Result — M2M-100-418M loses all 16/16 lines. Decision gate: STOP (do not benchmark streaming).**
+
+| # | English (exact unseen line) | Argos (baseline) | M2M-100-418M (native) |
+|---|---|---|---|
+| 1 | Hi everyone, I'm Alex, and this is my friend Maya. | Ako si Alex, at ito ang kaibigan kong si Maya. | Hi lahat, ako ay Alex, at ito ay ang aking kaibigan Maya. |
+| 2 | Welcome back to class. Did you all have a good weekend? | Maligayang pagdating sa klase. Maganda ba ang dulo ng sanlinggo ninyo? | Welcome back to class.Hindi ka ba ang lahat ng weekend? |
+| 3 | Today let's talk about everyday plans and simple requests. | Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan. | Sa ngayon, makipag-ugnay sa mga araw-araw na mga plano at simpleng mga pagsasanay. |
+| 4 | First, who can tell me the time? It's almost nine thirty. | Una, sino ang makapagsasabi sa akin ng oras? Halos siyam na putbol na ito. | Alam mo na ba kung ano ang nakaraang oras? ang nakaraang taon. |
+| 5 | My birthday falls on the twenty first of December, and I just turned thirty. | Ang aking kaarawan ay pumapatak sa dalawampung unang bahagi ng Disyembre, at ako'y naging tatlumpu. | Ang aking birthday ay nakakaalam sa 21st ng Disyembre, at ako ay nakakaalam ng 30. |
+| 6 | Could you please pass me the notes from yesterday's meeting? | Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon? | Gusto mo bang mag-iisip sa akin ang mga notes mula sa meeting ng araw? |
+| 7 | Sure, here you go. Thanks a lot, I really appreciate it. | Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito. | Siguro, dito ang iyong pag-ibig. salamat sa maraming, gusto ko na ito. |
+| 8 | The Green Valley Cooking Club meets every Saturday at the community center. | Ang Green Valley Cooking Club ay nagpupulong tuwing Sabado sa sentro ng komunidad. | Ang Green Valley Cooking Club ay matatagpuan sa komunidad center sa araw-araw. |
+| 9 | She said he would bring his guitar, but we never saw it arrive. | Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hindi namin nakita ang pagdating nito. | Nagsimula niya na siya ay nagsisimula ang kanyang guitar, ngunit hindi kami nakikita na ito nagsisimula. |
+| 10 | I'm feeling a bit under the weather today, so I'll take it easy. | Medyo masama ang pakiramdam ko ngayon, kaya madali lang. | I feel a little under the weather today, so I’ll take it easy. – I feel a little under the weather today, so I’ll take it easy. |
+| 11 | That joke you told earlier was hilarious. I couldn't stop laughing. | Nakagigitla ang birong sinabi mo noon. Hindi ko mapigil ang pagtawa. | Ito ang jokes na sinabi mo sa loob ay hilarious. hindi ko mag-stay laughing. |
+| 12 | We're running a little behind schedule, so please bear with us. | Medyo nahuhuli na tayo, kaya pakisuyong pagtiisan mo kami. | Kami ay nag-aalok sa loob ng isang oras, so please bear with us. |
+| 13 | Take care on your way home, and see you around soon. | Mag - ingat sa iyong pag - uwi, at makita ka agad. | Tingnan mo sa iyong bahay, at makikita mo sa loob ng isang araw. |
+| 14 | Let's catch up over lunch sometime. It's been a while since we talked. | Paminsan - minsan, kumain tayo. Mula nang kami'y mag - usap. | Nagsimula kami ng lunch sa loob ng isang taon na ang nakalipas. |
+| 15 | Could you speak up a little? The projector is a bit noisy today. | Puwede ka bang magsalita nang kaunti? Ang projector ay medyo maingay ngayon. | Ang proyektong ito ay isang maliit na rumor ngayon. |
+| 16 | Alright, that's all for today. Thanks for coming, and have a great week. | Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating, at mayroon po kayong isang malaking linggo. | Salamat, totoo ang lahat para sa ngayon. thanks for coming, and have a great week. |
+
+**Findings (2026-08-07).**
+
+- **F1 — M2M-100-418M is decisively worse than Argos on every unseen line (0/16).** The baseline
+  wins even on lines where Argos has known faults (#13 `makita ka agad`, #16 `malaking linggo`);
+  M2M adds whole-utterance semantic breaks.
+- **F2 — Complete untranslated passthrough (line 10):** `I feel a little under the weather today, so
+  I'll take it easy. – I feel a little under the weather today, so I'll take it easy.` — the entire
+  caption is returned verbatim in English (doubled). This is a hard failure for a caption product.
+- **F3 — Word-sense catastrophes:** "here you go" → `pag-ibig` (love, #7); "nine thirty" → `nakaraang
+  taon` (last year, #4); "falls on" → `nakakaalam` (knows, #5); "pass me" → `mag-iisip` (think, #6);
+  "meets every Saturday" → `araw-araw` (daily, #8); "bring" → `nagsisimula` (starts, #9); "noisy" →
+  `rumor` (#15); "catch up over lunch" → `nagsimula kami ng lunch` (#14).
+- **F4 — Code-switching / English leakage throughout:** #2 `Welcome back to class`, #5 `21st`, #6
+  `notes`/`meeting`, #11 `jokes`/`hilarious`/`mag-stay`, #12 `so please bear with us`, #14 `lunch`,
+  #16 `thanks for coming`.
+- **F5 — Inference ~20–40× slower than Argos and already beyond caption cadence:** M2M mean 2.76 s /
+  line (range 1.71–4.21 s) vs Argos mean ~0.11 s / line (range 0.08–0.15 s after warmup; the 2.44 s
+  first-call in the probe is Argos model load, not translation). Even ignoring quality, M2M-100-418M
+  cannot meet the live-caption cadence, so the streaming/performance phase is moot.
+
+**Decision (recorded 2026-08-07).** Per the user's gate ("if M2M is not clearly more natural than
+Argos: stop, no need to benchmark streaming"), the M2M-100 family is **rejected at the quality
+probe** — the larger m2m100-1.2B is not probed because it shares the same architecture/training and
+would not fix the observed word-sense and passthrough error class (same rationale as MADLAD
+disqualification). **Argos+naturalizer remains the offline production baseline**; the permissive-
+license offline MT space (OPUS-MT/Argos, M2M-100, MADLAD-400) is now evaluated and none beats Argos
+on en→tl. Remaining options for "more natural Tagalog" are the license-blocked NLLB family
+(CC-BY-NC, quality ceiling reference) or a general-LLM lane (Gemma 3 permissive, but weak on
+low-resource translation pairs per research). **Open question for the user** before any further
+candidate work: whether to accept Argos+naturalizer as final, or pursue a different approach to the
+Tagalog naturalness gap (e.g., evaluating the small permissive LLM lane despite expected weakness).
+
+**Evidence:** `artifacts/reports/translatelive/m2m_100_418m_unseen_2026-08-07.json` (M2M raw rows +
+revision `55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636`, load 3.841 s, per-row inference times);
+`artifacts/reports/translatelive/argos_baseline_unseen_2026-08-07.json` (Argos raw rows, identical
+input); probe scripts `m2m_probe_unseen.py` + `argos_corpus_unseen.py` (repo root). Raw corpora/
+outputs outside the repo under `%TEMP%\opencode\txbench\`.
