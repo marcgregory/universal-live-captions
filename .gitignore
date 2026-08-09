@@ -44,6 +44,10 @@ artifacts/samples/
 # Argos Python venv + translation model packages downloaded locally for dev
 artifacts/argos/
 
+# Spike raw audio (local input WAVs; JSON/CSV/log evidence is committed, audio is not)
+artifacts/spike-corpus/*.wav
+artifacts/spike-compare/*.wav
+
 # Generated smoke/diagnostic outputs (re-runnable, not permanent evidence)
 smoke_captions_*.txt
 smoke_diag_*.txt
