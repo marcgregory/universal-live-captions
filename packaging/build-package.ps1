@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Stage = "$env:TEMP\opencode\uc_pkg\Stage",          # staging root (built fresh each run)
     [string]$Version = "0.5.25",
     [switch]$SkipPublish,                                        # reuse existing Stage\UniversalCaptions
@@ -57,7 +57,9 @@ Get-ChildItem $pyStage -Directory -Recurse -Filter "__pycache__" -ErrorAction Si
     ForEach-Object { cmd /c rd /s /q "\\?\$($_.FullName)" 2>&1 | Out-Null }
 
 Write-Host "=== 4/6 stage model + argos packages ==="
+New-Item -ItemType Directory -Force -Path "$Stage\models", "$Stage\argos-packages" | Out-Null
 $hfSnapshot = Get-ChildItem "$env:USERPROFILE\.cache\huggingface\hub\models--Systran--faster-whisper-small\snapshots" -Directory | Select-Object -First 1
+New-Item -ItemType Directory -Force -Path "$Stage\models\faster-whisper-small" | Out-Null
 Copy-Item -Path "$($hfSnapshot.FullName)\*" -Destination "$Stage\models\faster-whisper-small" -Recurse -Force
 Copy-Item "$root\artifacts\models\ggml-base.bin" "$Stage\models\ggml-base.bin" -Force
 Copy-Item "$env:USERPROFILE\.local\share\argos-translate\packages\translate-en_tl-1_9" "$Stage\argos-packages" -Recurse -Force
