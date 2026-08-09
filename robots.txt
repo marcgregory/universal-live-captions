@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://marcgregory.github.io/universal-live-captions/sitemap.xml
