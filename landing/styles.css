@@ -956,11 +956,6 @@ a {
 .planned-meta a:hover {
   text-decoration: underline;
 }
-  width: 15px;
-  height: 15px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
 
 /* ---------- Download ---------- */
 
@@ -1335,6 +1330,29 @@ a {
 
   .nav {
     padding: 0 16px;
+  }
+
+  .nav-actions .btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .nav-actions .btn svg {
+    margin: 0;
+  }
+
+  .nav-actions .btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .brand-name {
