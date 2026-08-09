@@ -1,0 +1,25 @@
+seq,captured_s,committed_s,start_s,complete_s,e2e_s,kind,source,translated
+2,0.000,12.902,12.907,13.209,13.209,final,"Hi everyone, I'm Alex, and this is my friend Maya.  Welcome back to class.","Ako si Alex, at ito ang kaibigan kong si Maya. Maligayang pagdating sa klase."
+4,8.000,20.562,20.562,20.917,12.917,final,Did you all have a good weekend?  Today let's talk about everyday plans and simple requests.,Maganda ba ang dulo ng sanlinggo ninyo? Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.
+6,16.000,28.767,28.767,29.067,13.067,final,"First, who can tell me the time?  It's almost 9.30.  My birthday falls on the 20th.","Una, sino ang makapagsasabi sa akin ng oras? Halos 9.30. Ang aking kaarawan ay pumapatak sa ika - 20."
+8,24.500,36.759,36.759,37.048,12.548,final,"31st of December, and I just turned 30.  Could you please pass me the notes from yesterday's meeting?","Ika - 31 ng Disyembre, at 30 anyos na lamang ako. Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?"
+10,33.000,45.953,45.953,46.435,13.435,final,"Sure, here you go.  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-","Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val-"
+12,41.000,53.674,53.674,54.104,13.104,final,"Ali Cooking Club meets every Saturday at the community center.  She said he would bring his guitar, but we never...","Ang Ali Cooking Club ay nagpupulong tuwing Sabado sa sentro ng pamayanan. Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hinding - hindi namin..."
+14,49.000,62.050,62.050,62.487,13.487,final,"I never saw it arrive.  I'm feeling a bit under the weather today, so I'll take it easy.  That joke you told-","Hindi ko nakita ang pagdating nito. Medyo masama ang pakiramdam ko ngayon, kaya madali lang. Ang birong iyon ay sinabi mo-"
+16,57.500,70.176,70.176,70.333,12.833,final,I couldn't stop laughing.  We're running a little behind schedule.,Hindi ko mapigil ang pagtawa. Medyo nahuhuli na tayo.
+18,65.500,77.862,77.862,78.271,12.771,final,"So please bear with us.  Take care on your way home, and see you around soon.  Let's ca-","Kaya pakisuyong pagtiisan mo kami. Mag - ingat sa iyong pag - uwi, at makita ka agad. Tayo na ang ca-"
+20,73.500,85.803,85.804,86.049,12.549,final,Catch up over lunch sometime.  It's been a while since we talked.  Could you speak up a little?,Maghapunan. Mula nang kami'y mag - usap. Puwede ka bang magsalita nang kaunti?
+23,82.000,97.466,97.466,97.692,15.692,final,"The projector is a bit noisy today.  Alright, that's all for today.  Thanks for coming.","Ang projector ay medyo maingay ngayon. Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating."
+24,90.500,101.086,101.087,101.165,10.665,final,and have a great week.,at magkaroon ng isang malaking linggo.
+1,1.000,1.000,11.977,12.226,11.226,active,"I'm Alex, and this is my friend Maya.","Ako si Alex, at ito ang kaibigan kong si Maya."
+3,8.000,8.000,16.577,16.723,8.723,active,Did you all have a good one?,Mabuti ba ang inyong lahat?
+5,16.000,16.000,24.349,24.422,8.422,active,first,una
+7,24.500,24.500,32.312,32.372,7.872,active,first of December.,una ng Disyembre.
+9,33.000,33.000,40.265,40.304,7.304,active,Sure.,Tiyak iyan.
+11,41.000,41.000,49.457,49.524,8.524,active,Kelly Cooking Club,Kelly Cooking Club
+13,49.000,49.000,57.518,57.633,8.633,active,never saw it arrive.,Hindi ito kailanman nakita.
+15,57.500,57.500,65.732,65.834,8.334,active,earlier was,naunang nabanggit
+17,65.500,65.500,73.704,73.782,8.282,active,So please bear,Kaya pakisuyong magbata
+19,73.500,73.500,81.386,81.446,7.946,active,catch up over life,Pagiging abala sa buhay
+21,82.000,82.000,89.361,89.423,7.423,active,The projector,Ang projector
+22,86.000,86.000,93.370,93.527,7.527,active,That's all for today.  Thanks for coming.,Iyan ay para sa ngayon. Salamat sa inyong pagdating.

@@ -42,6 +42,11 @@ if (args.Length > 0 && args[0] == "translatelive")
     return await LiveTranslationBenchmark.RunAsync(args[1..], CancellationToken.None);
 }
 
+if (args.Length > 0 && args[0] == "captionwire")
+{
+    return await CaptionPipelineBenchmark.RunAsync(args[1..], CancellationToken.None);
+}
+
 if (args.Length > 0 && args[0] == "resample")
 {
     return await ResamplerBenchmark.RunAsync(args[1..], CancellationToken.None);

@@ -1,0 +1,6 @@
+leg,index,emit_s,source_start_s,translate_ms,kind,source,text,naturalized
+argos,1,18.746,0.100,301,caption,"And so, my fellow Americans, ask not what your country can do for you and...","Kaya, mga kapuwa ko Amerikano, huwag mong tanungin kung ano ang magagawa ng inyong bansa para sa inyo at...","Kaya, mga kapuwa ko Amerikano, huwag mong tanungin kung ano ang magagawa ng inyong bansa para sa inyo at..."
+argos,2,25.196,8.330,121,caption,ask what you can do for your country.,tanungin kung ano ang magagawa mo para sa inyong bansa.,tanungin kung ano ang magagawa mo para sa inyong bansa.
+
+summary,leg,audio_s,first_caption_s,committed,updates,cadence_per120s,median_translate_ms,tail_after_feed_s,repeated_bigrams,duplicates,unterminated,proc_cpu_pct,worker_cpu_pct,peak_ram_mb,up_mb,down_mb,cost_usd,cost_usd_per_hour,connect_s,setup_s,error,naturalized_captions
+,argos,11.00,18.746,2,5,21.8,211,,6,0,0,0.6,2.8,1037.1,,,,,,,,0

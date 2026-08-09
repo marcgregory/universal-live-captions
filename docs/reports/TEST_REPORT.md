@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-06
+Last updated: 2026-08-09
 
 ## Metadata
 
@@ -16,6 +16,8 @@ Last updated: 2026-08-06
 ---
 
 ## Summary
+
+**Argos cold-start first-caption latency fix + production-wiring measurement (2026-08-09): full suite now 557/557 passing** (106 Audio + 72 Captions + 42 Translation + 111 Speech + 124 App + 102 Speech.Gemini), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. New additive benchmark leg `captionwire` drives the exact production composition (FasterWhisper native → `CaptionService` en→tl → single-gate `ArgosTranslationEngine`) and proves: Argos per-caption caller-visible p50 **0.27–0.30 s** (max 0.48 s) with a ~0 ms commit→translate queue (no backlog) and **E2E dominated by STT cadence** (first FINAL ≈ 11 s, E2E p50 ≈ 13 s). The ~18–20 s first-caption symptom reproduces **only on a cold Argos process** (python import ≈ 5.75 s + first-translate lazy stanza load ≈ 2.8 s inline); with pre-warm the first visible translated caption is **3.83 s**. Fix (code-behind): `ArgosTranslationEngine.TranslateAsync` awaits an in-flight same-target warm-up before issuing its own request (`AwaitInFlightWarmupAsync`), and `ControlWindow.OnLoaded` now pre-warms Argos at startup when translation is persisted (previously the `_initializing` toggle assignment skipped the pre-warm). Re-measured via the exact App startup path (`--prewarm-race`): first visible **12.0–12.2 s** (was 18.94 s), Argos max **0.48 s** (was 7.23 s inline-cold), 0 errors. 3 new `ArgosTranslationEngineTests` pin the await-in-flight behavior. CPU split measured per python worker: **STT ≈ 30–31 %, Argos ≈ 3.4–4.1 %** of the machine — the "Argos ≈ 51 % CPU" report is not supported. Evidence CSV: `artifacts/reports/captionwire/argos_wire_2026-08-09.csv`, `argos_wire_noprewarm_2026-08-09.csv`, `argos_wire_prewarmrace_fixed_2026-08-09.csv`.
 
 **Installer & distribution + `UC_FW_MODEL` (2026-08-06): full suite now 384/384 passing** (77 Audio + 72 Captions + 111 Speech + 27 Translation + 97 App), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. Two new `SpeechEngineFactoryTests` cover the approved additive seam: `NativeModel_Unset_DefaultsToSmall` and `NativeModel_Override_IsRespected` (worker receives `--model <path>`). The frozen v0.5.25 core is otherwise untouched — the rest of this entry is packaging/launcher-only. **Installed-bundle acceptance PASS** (see the Installer section below): clean install exit 0 to `%LocalAppData%\UniversalCaptions` (1,634.5 MB, Setup.exe 795.5 MB); worker cmdlines verified installed-only (`py\python.exe … faster_whisper_worker.py --model <install>\models\faster-whisper-small --compute int8 --threads 4 --beam-size 5`; Argos server on the same bundled python — no `%TEMP%\fwv`/`argosv`, no `huggingface`, no repo refs); real audio via WASAPI loopback produced live partials + committed translated Tagalog (`EN || TL` badge) with first caption ≈4.1–4.7 s warm; settings persist; clean Start/Stop/Exit 0 orphans; **clean uninstall exit 0 leaving only the app's own `settings.json`** (`PYTHONDONTWRITEBYTECODE=1` prevents stdlib `.pyc` leftovers).
 

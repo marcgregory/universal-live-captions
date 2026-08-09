@@ -1437,3 +1437,63 @@ explicitly **not** a sensible "next optimization" for the current MVP — it wou
 training project (needs a large high-quality en→natural-TL corpus, held-out eval data,
 semantic-preservation tests, hallucination tests, streaming-latency measurements, a permissive
 license, and quantization for target hardware). **Release/landing-page work is the next phase.**
+
+---
+
+# `captionwire` — Production-wiring translation latency & CPU measurement + Argos cold-start fix (2026-08-09)
+
+**Motivation.** The reported ~20 s first-caption latency and "Argos ≈ 51 % CPU" were never measured
+against the real composition. This additive measurement drives the *exact* production composition —
+`FasterWhisperNativeStreamingEngine` → `CaptionService` (en→tl, one in-flight translation slot) →
+`ArgosTranslationEngine` (single-gate process) — feeding `artifacts/samples/english_unseen_90s_16k.wav`
+(92.85 s, unseen English) at 1× realtime with per-caption stamps (captured → committed →
+translation-started → completed) and a per-python-worker CPU split. Nothing in production is
+touched during measurement.
+
+## Scenario legs (A/B)
+
+| leg | first visible translated caption | Argos caller-visible max | commit→start queue | E2E p50 / max | max concurrent callers | errors |
+|---|---|---|---|---|---|---|
+| **pre-warm awaited** | **3.83 s** | 0.47 s | p50 0.000 s (max 0.006) | 13.6 / 16.2 s | 1 | 0 |
+| **no pre-warm (cold)** | **18.94 s** | **7.26 s** | p50 ≈ 0 (max 0.006) | 15.0 / 23.8 s | 2 | 0 |
+| **pre-warm race (= App startup) after fix** | **12.0–12.2 s** | **0.48 s** | p50 0.000 s (max 0.006) | 13.0 / 15.9 s | 1 | 0 |
+
+## Root cause
+
+1. **STT dominates first-caption E2E.** First STT FINAL ≈ 11 s (frozen 8 s native segment cap +
+   trailing decode window); E2E p50 ≈ 13 s is STT cadence, **not** translation.
+2. **Cold Argos creates the ~18–20 s cliff.** python import ≈ 5.75 s + first-translate lazy stanza
+   load ≈ 2.8 s (fresh process: request #1 ≈ 2.8 s, request #2 ≈ 0.09 s) are paid **inline on the
+   first real caption** whenever the pre-warm is not already done.
+3. **App missed the pre-warm on the common boot path.** `OnLoaded` set the translation toggle under
+   `_initializing`, so `OnTranslationToggled` returned early and `ApplyTranslationSettings` (which
+   fires the pre-warm) was never called for a persisted-on translation — the session could start
+   with a cold, ice-warmed translation.
+
+## Fix (code-behind, engine + App)
+
+- `ArgosTranslationEngine.TranslateAsync` now awaits an in-flight same-target warm-up before
+  issuing its own request (`AwaitInFlightWarmupAsync`), so a caption that arrives mid-warmup reuses
+  the warmed process instead of racing the warm-up through the request gate and paying the cold
+  model-load inline; a warm-up fault/cancel falls back to the lazy path.
+- `ControlWindow.OnLoaded` fires `PreheatInBackgroundAsync` at startup when translation is
+  persisted enabled — the user-visible first-caption cost of a cold process is eliminated.
+- No new timeouts, no UI hiding, no post-processing; production worker protocol untouched.
+
+## CPU attribution (measured, not assumed)
+
+| python worker | share of machine |
+|---|---|
+| faster-whisper STT worker | **30.3–30.9 %** |
+| Argos server | **3.4–4.1 %** |
+| benchmark/App | 1.3–1.5 % |
+
+"Argos ≈ 51 % CPU" is **not supported** — the heavy Python consumer is the faster-whisper STT
+worker (already capped at 4 decode threads, Entry 16), not Argos. Peak working set 613–751 MB;
+STT FINALs 11–12, partials 13–16 per run.
+
+## Evidence
+
+`artifacts/reports/captionwire/argos_wire_2026-08-09.csv` (pre-warm awaited),
+`argos_wire_noprewarm_2026-08-09.csv` (cold), `argos_wire_prewarmrace_fixed_2026-08-09.csv`
+(post-fix race). CHANGELOG v0.5.30, TEST_REPORT 2026-08-09.

@@ -1,0 +1,29 @@
+seq,captured_s,committed_s,start_s,complete_s,e2e_s,kind,source,translated
+2,0.000,11.154,11.157,11.391,11.391,final,"Hi everyone, I'm Alex, and this is my friend Maya.  Welcome back to class.","Ako si Alex, at ito ang kaibigan kong si Maya. Maligayang pagdating sa klase."
+5,8.000,21.680,21.682,21.997,13.997,final,Did you all have a good weekend?  Today let's talk about everyday plans and simple requests.,Maganda ba ang dulo ng sanlinggo ninyo? Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.
+7,16.000,28.877,28.877,29.126,13.126,final,"First, who can tell me the time?  It's almost 9.30.  My birthday falls on the 20th.","Una, sino ang makapagsasabi sa akin ng oras? Halos 9.30. Ang aking kaarawan ay pumapatak sa ika - 20."
+9,24.500,36.455,36.455,36.747,12.247,final,"31st of December, and I just turned 30.  Could you please pass me the notes from yesterday's meeting?","Ika - 31 ng Disyembre, at 30 anyos na lamang ako. Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?"
+12,33.000,48.714,48.714,49.182,16.182,final,"Sure, here you go.  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-","Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val-"
+14,41.000,56.197,56.197,56.528,15.528,final,"Ali Cooking Club meets every Saturday at the community center.  She said he would bring his guitar, but we never...","Ang Ali Cooking Club ay nagpupulong tuwing Sabado sa sentro ng pamayanan. Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hinding - hindi namin..."
+16,49.000,63.912,63.912,64.340,15.340,final,"I never saw it arrive.  I'm feeling a bit under the weather today, so I'll take it easy.  That joke you told-","Hindi ko nakita ang pagdating nito. Medyo masama ang pakiramdam ko ngayon, kaya madali lang. Ang birong iyon ay sinabi mo-"
+18,57.500,70.763,70.763,70.999,13.499,final,I couldn't stop laughing.  We're running a little behind schedule.,Hindi ko mapigil ang pagtawa. Medyo nahuhuli na tayo.
+20,65.500,77.864,77.864,78.160,12.660,final,"So please bear with us.  Take care on your way home, and see you around soon.  Let's ca-","Kaya pakisuyong pagtiisan mo kami. Mag - ingat sa iyong pag - uwi, at makita ka agad. Tayo na ang ca-"
+23,73.500,88.426,88.426,88.619,15.119,final,Catch up over lunch sometime.  It's been a while since we talked.  Could you speak up a little?,Maghapunan. Mula nang kami'y mag - usap. Puwede ka bang magsalita nang kaunti?
+25,82.000,95.554,95.554,95.725,13.725,final,"The projector is a bit noisy today.  Alright, that's all for today.  Thanks for coming.","Ang projector ay medyo maingay ngayon. Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating."
+27,90.500,102.254,102.254,102.344,11.844,final,and have a great week.,at magkaroon ng isang malaking linggo.
+0,0.000,0.000,3.757,3.827,3.827,active,Hi everyone.,Hihin ang lahat.
+1,0.500,0.500,7.401,7.586,7.086,active,"Everyone, I'm Alex, and this is my friend Maya.","Ako si Alex, at kaibigan kong Maya ito."
+3,8.000,8.000,14.452,14.535,6.535,active,Did you all have-,Lahat ba kayo ay may-
+4,11.000,11.000,18.004,18.244,7.244,active,Today let's talk about everyday plans and simple requests.,Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.
+6,16.000,16.000,25.068,25.212,9.212,active,"First, who can tell me the time?","Una, sino ang makapagsasabi sa akin ng oras?"
+8,24.500,24.500,32.104,32.156,7.656,active,first of December.,una ng Disyembre.
+10,33.000,33.000,39.664,39.713,6.713,active,Sure.,Tiyak iyan.
+11,36.500,36.500,43.682,43.828,7.328,active,"Thanks a lot, I really appreciate it.","Maraming salamat, talagang pinahahalagahan ko ito."
+13,41.000,41.000,52.298,52.517,11.517,active,Alley Cooking Club meets every Saturday at the Community Center.,Ang Alley Cooking Club ay nagpupulong tuwing Sabado sa Community Center.
+15,49.000,49.000,59.907,60.046,11.046,active,I never saw it arrive.  I'm feeling a bit under the weather.,Hindi ko nakita ang pagdating nito. Medyo masama ang pakiramdam ko.
+17,57.500,57.500,67.180,67.301,9.801,active,earlier was hilarious,Maaga pa rito ay nakatutuwa
+19,65.500,65.500,74.100,74.268,8.768,active,So please bear with us.,Kaya pakisuyong pagtiisan mo kami.
+21,73.500,73.500,81.048,81.103,7.603,active,catch up over life,Pagiging abala sa buhay
+22,77.500,77.500,84.585,84.726,7.226,active,since we talked.  Could you speak up a little?,mula nang kami'y mag - usap. Puwede ka bang magsalita nang kaunti?
+24,82.000,82.000,91.780,91.881,9.881,active,The projector is a bit noisy today.,Ang projector ay medyo maingay ngayon.
+26,90.500,90.500,98.826,98.911,8.411,active,and have a great week!,at magkaroon ng isang malaking linggo!

@@ -60,7 +60,7 @@ internal static class LiveTranslationBenchmark
         bool Naturalize,
         string? GeminiRefCsv);
 
-    private sealed record CaptionRow(double EmitSec, double SourceStartSec, double TranslateMs, string Kind, string Text);
+    private sealed record CaptionRow(double EmitSec, double SourceStartSec, double TranslateMs, string Kind, string Text, string? SourceText = null);
 
     private sealed record ArgosLegResult(
         int Captions,
@@ -505,7 +505,7 @@ internal static class LiveTranslationBenchmark
                 swTrans.Stop();
                 translateTimesMs.Add(swTrans.Elapsed.TotalMilliseconds);
                 double emitSec = sw.Elapsed.TotalSeconds;
-                rows.Add(new CaptionRow(emitSec, item.StartSec, swTrans.Elapsed.TotalMilliseconds, "caption", result.Text));
+                rows.Add(new CaptionRow(emitSec, item.StartSec, swTrans.Elapsed.TotalMilliseconds, "caption", result.Text, item.Text));
                 Console.WriteLine($"    TL[{rows.Count,3}] emit {emitSec,6:0.00}s segStart {item.StartSec,6:0.00}s +{swTrans.ElapsedMilliseconds,5}ms | {Truncate(result.Text, 90)}");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -835,7 +835,7 @@ internal static class LiveTranslationBenchmark
             }
 
             string[] fields = ParseCsvLine(line);
-            if (fields.Length < 7)
+            if (fields.Length < 8)
             {
                 continue;
             }
@@ -843,7 +843,7 @@ internal static class LiveTranslationBenchmark
             double emitSec = double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double e)
                 ? e
                 : 0;
-            rows.Add(new CaptionRow(emitSec, -1, 0, fields[5], fields[6]));
+            rows.Add(new CaptionRow(emitSec, -1, 0, fields[5], fields[7]));
         }
 
         return rows;
@@ -1022,7 +1022,7 @@ internal static class LiveTranslationBenchmark
         double audioSeconds)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("leg,index,emit_s,source_start_s,translate_ms,kind,text,naturalized");
+        sb.AppendLine("leg,index,emit_s,source_start_s,translate_ms,kind,source,text,naturalized");
         if (argos is not null)
         {
             List<CaptionRow>? naturalized = argos.NaturalizedRows;
@@ -1036,6 +1036,7 @@ internal static class LiveTranslationBenchmark
                     Csv(r.SourceStartSec.ToString("0.000", CultureInfo.InvariantCulture)),
                     Csv(r.TranslateMs.ToString("0", CultureInfo.InvariantCulture)),
                     Csv(r.Kind),
+                    Csv(r.SourceText ?? string.Empty),
                     Csv(r.Text),
                     Csv(naturalized is not null ? naturalized[i].Text : string.Empty)));
             }
@@ -1053,6 +1054,7 @@ internal static class LiveTranslationBenchmark
                     Csv(""),
                     Csv(""),
                     Csv(r.Kind),
+                    Csv(""),
                     Csv(r.Text),
                     Csv("")));
             }
@@ -1070,6 +1072,7 @@ internal static class LiveTranslationBenchmark
                     Csv(""),
                     Csv(""),
                     Csv(r.Kind),
+                    Csv(""),
                     Csv(r.Text),
                     Csv("")));
             }

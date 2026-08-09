@@ -128,6 +128,20 @@ public partial class ControlWindow : Window
 
             TranslationToggle.IsChecked = translationEnabled;
 
+            // Startup pre-warm: OnLoaded sets the toggle above while _initializing, so
+            // OnTranslationToggled returns early and would otherwise never fire the Argos pre-warm
+            // until the user toggles translation again. With translation persisted enabled, boot the
+            // engine in the background now so the first real caption reuses a warm process instead
+            // of paying the cold Argos import + lazy model-load inline (the ~19 s first-caption).
+            if (translationEnabled)
+            {
+                string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
+                if (!string.IsNullOrWhiteSpace(target))
+                {
+                    _ = PreheatInBackgroundAsync(target!);
+                }
+            }
+
             ProviderCombo.ItemsSource = TranslationProviders;
             ProviderCombo.SelectedIndex = FindProviderIndex(_settings.Provider ?? TranslationProvider.Argos);
             UpdateGeminiKeyPanelState();

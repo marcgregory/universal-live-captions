@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 
 ## Metadata
 
@@ -18,6 +18,14 @@ Last updated: 2026-08-08
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
 ## v0.5.30 - 2026-08-08 (in progress)
+
+### Argos cold-start first-caption latency fix + measurement evidence (2026-08-09)
+
+- **Root cause of the ~20 s first-caption latency identified and fixed by measurement, not theory.** A new additive production-wiring benchmark leg (`captionwire` in `src/UniversalCaptions.Benchmarks/CaptionPipelineBenchmark.cs`) drives the EXACT App composition — `FasterWhisperNativeStreamingEngine` → `CaptionService` (en→tl, one in-flight translation slot) → `ArgosTranslationEngine` (single-gate process) — feeding 92.85 s of unseen English (±3.5 s realtime) with per-line stamps and a per-python-worker CPU split. Findings: (1) **Argos steady-state is NOT the latency problem** — caller-visible p50 **0.27–0.35 s**, max 0.48 s, commit→start queue p50 ≈ 0 (no backlog); (2) **E2E is dominated by STT segment cadence** (p50 ≈ 13 s, first FINAL ≈ 11 s — the frozen 8 s caption cap + native-streaming trailing window); (3) **the ~20 s symptom reproduces ONLY on a cold Argos process** — python import ≈ 5.75 s + first-translate lazy stanza model-load ≈ 2.8 s paid inline on the first real caption (forensics: fresh-process translate #1 2.8 s, translate #2 0.088 s, `[ARGOS-DIAG]` pre-warm ready 8.6–17.6 s). With warm Argos, first VISIBLE translated caption (live active line) = **3.83 s**; without pre-warm = **18.94 s**.
+- **CPU attribution corrected by measurement.** `captionwire` splits per-worker CPU: faster-whisper STT python ≈ **30–31 %** of the machine vs Argos python ≈ **3.4–4.1 %** (App/benchmark ≈ 1.3–1.5 %). The "Argos ≈51 %" hypothesis is NOT supported — the heavy Python consumer is the faster-whisper STT worker (already caped at 4 decode threads, Entry 16), not Argos. Peak working set 613–751 MB during a live 92 s clip.
+- **Fix (code-behind, engine + App):** (1) `ArgosTranslationEngine.TranslateAsync` now awaits an in-flight `warm-up` for the same target (`AwaitInFlightWarmupAsync`) so a first caption arriving while the pre-warm is still loading the lazy model reuses the warmed process instead of racing it through the request gate and paying the cold cost inline; a warm-up fault/cancel falls back to the lazy path (`ArgosTranslationEngine.cs`). (2) `ControlWindow.OnLoaded` now fires the Argos pre-warm at startup when translation is persisted enabled — previously the toggle was set under `_initializing` so `OnTranslationToggled` returned early and the pre-warm never fired until a manual toggle (cold-start inline on the first caption). No timeout changes, no async hiding, no post-process masking.
+- **Re-measured after fix (fire-and-forget pre-warm racing the feed = exact App startup path, `--prewarm-race`):** first visible translated caption **11.88–12.23 s** (was 18.94 s cold), Argos caller-visible p50 0.30 s / max **0.48 s** (was max 7.23 s inline-cold), queue p50 0.000 s / max 0.006 s, max concurrent callers = 1, 0 errors, STT 30.3–30.9 % / Argos 3.6–4.1 %. Effectively the App no longer lands the first caption in the 18–20 s cold zone; Argos translates ~45–50 captions with a 0.3 s per-caption service time.
+- **Tests:** 3 new `ArgosTranslationEngineTests` (`RealTranslation_DuringWarmup_Awaits`, `DoesNotRaceIt`, `ForDifferentTarget_DoesNotAwait`) pin the new await-in-flight behavior with a deterministic fake process. **Full suite 557/557** (106 Audio + 72 Captions + 42 Translation + 111 Speech + 124 App + 102 Speech.Gemini), Release 0 warnings/0 errors, `dotnet format` clean. `captionwire` leg is additive; production worker protocol untouched. Evidence: `artifacts/reports/captionwire/argos_wire_2026-08-09.csv` (pre-warm awaited), `argos_wire_noprewarm_2026-08-09.csv` (cold), `argos_wire_prewarmrace_fixed_2026-08-09.csv` (post-fix).
 
 ### Gemini API key → Windows Credential Manager (task #24)
 

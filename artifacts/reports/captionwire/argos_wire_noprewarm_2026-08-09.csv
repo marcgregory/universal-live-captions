@@ -1,0 +1,24 @@
+seq,captured_s,committed_s,start_s,complete_s,e2e_s,kind,source,translated
+2,0.000,11.585,11.590,18.815,18.815,final,"Hi everyone, I'm Alex, and this is my friend Maya.  Welcome back to class.","Ako si Alex, at ito ang kaibigan kong si Maya. Maligayang pagdating sa klase."
+4,8.000,19.562,19.563,19.942,11.942,final,Did you all have a good weekend?  Today let's talk about everyday plans and simple requests.,Maganda ba ang dulo ng sanlinggo ninyo? Pag - usapan natin ngayon ang tungkol sa pang - araw - araw na mga plano at simpleng mga kahilingan.
+7,16.000,30.196,30.197,30.470,14.470,final,"First, who can tell me the time?  It's almost 9.30.  My birthday falls on the 20th.","Una, sino ang makapagsasabi sa akin ng oras? Halos 9.30. Ang aking kaarawan ay pumapatak sa ika - 20."
+9,24.500,37.478,37.478,37.765,13.265,final,"31st of December, and I just turned 30.  Could you please pass me the notes from yesterday's meeting?","Ika - 31 ng Disyembre, at 30 anyos na lamang ako. Puwede mo bang ipasa sa akin ang mga nota mula sa pulong kahapon?"
+11,33.000,45.593,45.593,46.121,13.121,final,"Sure, here you go.  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-  Thanks a lot, I really appreciate it.  The green val-","Totoo, narito ka. Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val- Maraming salamat, talagang pinahahalagahan ko ito. Ang berdeng val-"
+13,41.000,52.730,52.730,53.012,12.012,final,"Ali Cooking Club meets every Saturday at the community center.  She said he would bring his guitar, but we never...","Ang Ali Cooking Club ay nagpupulong tuwing Sabado sa sentro ng pamayanan. Sinabi niya na dadalhin ng lalaki ang gitara nito, subalit hinding - hindi namin..."
+16,49.000,64.487,64.487,64.932,15.932,final,"I never saw it arrive.  I'm feeling a bit under the weather today, so I'll take it easy.  That joke you told-","Hindi ko nakita ang pagdating nito. Medyo masama ang pakiramdam ko ngayon, kaya madali lang. Ang birong iyon ay sinabi mo-"
+18,57.500,72.307,72.307,72.495,14.995,final,I couldn't stop laughing.  We're running a little behind schedule.,Hindi ko mapigil ang pagtawa. Medyo nahuhuli na tayo.
+20,65.500,82.137,82.137,82.644,17.144,final,"So please bear with us.  Take care on your way home, and see you around soon.  Let's ca-","Kaya pakisuyong pagtiisan mo kami. Mag - ingat sa iyong pag - uwi, at makita ka agad. Tayo na ang ca-"
+22,73.500,93.575,93.575,94.121,20.621,final,Catch up over lunch sometime.  It's been a while since we talked.  Could you speak up a little?,Maghapunan. Mula nang kami'y mag - usap. Puwede ka bang magsalita nang kaunti?
+24,82.000,105.164,105.164,105.779,23.779,final,"The projector is a bit noisy today.  Alright, that's all for today.  Thanks for coming.","Ang projector ay medyo maingay ngayon. Alam mo, iyan ay para sa ngayon. Salamat sa inyong pagdating."
+3,8.000,8.000,18.605,18.939,10.939,active,Did you all have-,Lahat ba kayo ay may-
+5,16.000,16.000,22.809,22.843,6.843,active,First,Una
+6,19.500,19.500,26.257,26.373,6.873,active,It's almost 9 30 my birthday,Halos 9 30 na ang kaarawan ko
+8,24.500,24.500,33.699,33.843,9.343,active,"first of December, and I just...","una ng Disyembre, at ako lamang..."
+10,33.000,33.000,40.604,40.673,7.673,active,Sure.,Tiyak iyan.
+12,41.000,41.000,48.844,48.978,7.978,active,Kelly Cooking Club,Kelly Cooking Club
+14,49.000,49.000,56.061,56.133,7.133,active,never saw it arrive.,Hindi ito kailanman nakita.
+15,53.000,53.000,60.113,60.278,7.278,active,"today, so I'll take it easy.  That joke.","Ngayon, para madali lang. Ang birong iyon."
+17,57.500,57.500,68.153,68.330,10.830,active,earlier was hilarious. I couldn't...,Maaga pa rito ay nakatutuwa. Hindi ko magawa...
+19,65.500,65.500,76.297,76.475,10.975,active,So please bear with us.  Take care on,Kaya pakisuyong pagtiisan mo kami. Alagaan
+21,73.500,73.500,87.098,87.230,13.730,active,catch up over lunch sometime it's been,tapos ng pananghalian
+23,83.500,83.500,99.033,99.267,15.767,active,"noisy today.  Alright, that's all for today.","maingay ngayon. Alam mo, iyan ay para sa ngayon."

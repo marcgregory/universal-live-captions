@@ -81,6 +81,13 @@ public sealed class ArgosTranslationEngine : ITranslationEngine, IDisposable
         await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
 
         var normalizedTarget = NormalizeLanguageCode(targetLanguage);
+        // A real caption arriving while a pre-warm for the same target is still in flight must wait
+        // for that warm-up (its throwaway translate loads the lazy model into the process) instead of
+        // racing it through the request gate and paying the cold model-load inline on the first
+        // caption. Warm-up failures are swallowed by RunWarmUpAsync; a faulting warm task falls back
+        // to the normal lazy path below.
+        await AwaitInFlightWarmupAsync(normalizedTarget).ConfigureAwait(false);
+
         var startedUtc = DateTime.UtcNow;
         ArgosResponse response;
         try
@@ -182,6 +189,42 @@ public sealed class ArgosTranslationEngine : ITranslationEngine, IDisposable
 
             _startTask = StartCoreAsync(cancellationToken);
             return _startTask;
+        }
+    }
+
+    /// <summary>
+    /// When a pre-warm for the same target language is still in progress, awaits it so the warm-up's
+    /// throwaway translation (which loads the lazy model into the process) completes before the real
+    /// caption issues its own request. Without this, a real request arriving mid-warm-up races the
+    /// warm-up through the single request gate and can pay the cold model-load inline on the first
+    /// caption. Awaiting is safe: the warm task runs to completion (failures are swallowed), and a
+    /// warm-up that faults from cancellation falls back to the lazy path.
+    /// </summary>
+    private async Task AwaitInFlightWarmupAsync(string? normalizedTarget)
+    {
+        if (normalizedTarget is null)
+        {
+            return;
+        }
+
+        Task? warmTask;
+        lock (_warmLock)
+        {
+            warmTask = !string.Equals(_warmedTarget, normalizedTarget, StringComparison.OrdinalIgnoreCase) ? null : _warmTask;
+        }
+
+        if (warmTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await warmTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled warm-up is a no-op; the lazy path below remains the fallback.
         }
     }
 

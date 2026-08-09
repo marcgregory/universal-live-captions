@@ -253,6 +253,54 @@ public sealed class ArgosTranslationEngineTests
     }
 
     [Fact]
+    public async Task RealTranslation_DuringWarmup_AwaitsWarmUp_DoesNotRaceIt()
+    {
+        var process = new FakeArgosProcess();
+        process.AddTranslateDelay(TimeSpan.FromMilliseconds(250));
+        process.SetHandler(req => new ArgosResponse(true, $"[{req.Target}] {req.Text}", null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        // A slow warm-up is in flight; the real caption arrives right after. The engine must await
+        // the in-flight warm-up (its throwaway translate pays the cold model-load) so the real
+        // request reuses the warmed process instead of racing the warm-up through the gate. While
+        // the warm-up is still running, only its single request may be in flight; the real request
+        // may only be issued after the warm-up completes.
+        var warmTask = fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        Assert.Single(process.Requests); // warm-up request issued immediately
+
+        var realTask = fixture.Engine.TranslateAsync("Real caption", "en", "tl");
+        Assert.Single(process.Requests); // real request must NOT race the warm-up
+
+        await realTask;
+        Assert.Equal("The quick brown fox jumps over the lazy dog.", process.Requests[0].Text);
+        Assert.Equal("Real caption", process.Requests[1].Text);
+        await warmTask;
+
+        Assert.Equal(2, process.Requests.Count);
+        Assert.Equal(1, process.StartCount);
+    }
+
+    [Fact]
+    public async Task RealTranslation_DuringWarmup_ForDifferentTarget_DoesNotAwait()
+    {
+        var process = new FakeArgosProcess();
+        process.AddTranslateDelay(TimeSpan.FromMilliseconds(250));
+        process.SetHandler(req => new ArgosResponse(true, $"[{req.Target}] {req.Text}", null, false, null, null, null, null));
+        using var fixture = CreateFixture(process);
+
+        // Warm-up targets 'tl'; a real translation for a *different* target must not be blocked by
+        // that warm-up (it gets its own lazy process start/request). The real request is issued
+        // while the slow warm-up is still in flight, so it must not have awaited it.
+        var warmTask = fixture.Engine.TriggerPreWarmAsync("en", "tl");
+        var real = await fixture.Engine.TranslateAsync("Hallo", "en", "de");
+        await warmTask;
+
+        Assert.Single(process.Requests.Where(r => r.Target == "de"));
+        Assert.Single(process.Requests.Where(r => r.Target == "tl"));
+        Assert.Contains(process.Requests, r => r.Target == "tl" && r.Text == "The quick brown fox jumps over the lazy dog.");
+    }
+
+    [Fact]
     public async Task TriggerPreWarm_StartFailure_IsSwallowed_RealTranslationStillFallsBackToLazyStart()
     {
         var process = new FakeArgosProcess();
