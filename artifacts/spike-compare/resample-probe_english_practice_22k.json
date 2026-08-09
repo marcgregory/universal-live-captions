@@ -1,0 +1,346 @@
+{
+  "StartedAtUtc": "2026-08-09T08:12:54.6199092Z",
+  "KeyFingerprint": "AQ.Ab8RN",
+  "TargetLanguage": "tl",
+  "Wav": "english_practice_40s.wav",
+  "MaxAudioSeconds": 120,
+  "SampleRate": 22050,
+  "Channels": 1,
+  "SourceDurationMs": 26420,
+  "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+  "Nearest": {
+    "VariantLabel": "nearest",
+    "FinalText": " na linggo.",
+    "FirstOutputMs": 3809,
+    "FirstOutputText": "Kamusta at maligayang",
+    "FinalOutputMs": 29762,
+    "AudioFramesSent": 265,
+    "AudioBytesSent": 845470,
+    "SetupCompleteObserved": true,
+    "TurnCompleteObserved": false,
+    "Provenance": {
+      "ServerContentFrames": 220,
+      "GeminiAudioFrames": 120,
+      "ServerContentFramesWithAudio": 120,
+      "GeminiAudioBytes": 1440000,
+      "AudioMimeTypes": [
+        "audio/pcm;rate=24000"
+      ],
+      "OutputTranscriptionFrames": 25,
+      "GeminiOutputTranscription": " na linggo.",
+      "ModelTurnTextParts": 0,
+      "TurnCompleteFrames": 0,
+      "PartialFrames": 0,
+      "SetupCompleteFrames": 1,
+      "GoAwayFrames": 0,
+      "SessionResumptionFrames": 21,
+      "ErrorFrames": 0,
+      "UnknownFrames": 0,
+      "UnknownFingerprints": [],
+      "MalformedFrames": 0,
+      "ArgosCalls": 0,
+      "ArgosOutput": "NONE",
+      "ProvenanceVerified": true,
+      "FinalTextMatchesOutputTranscription": true
+    },
+    "Outputs": [
+      {
+        "Text": "Kamusta at maligayang",
+        "IsPartial": false,
+        "Ms": 3809
+      },
+      {
+        "Text": " pagdating sa unang",
+        "IsPartial": false,
+        "Ms": 4527
+      },
+      {
+        "Text": " pulong ng aming",
+        "IsPartial": false,
+        "Ms": 5765
+      },
+      {
+        "Text": " conversational Tagalog",
+        "IsPartial": false,
+        "Ms": 6762
+      },
+      {
+        "Text": " practice group.",
+        "IsPartial": false,
+        "Ms": 7762
+      },
+      {
+        "Text": " Ang pangalan",
+        "IsPartial": false,
+        "Ms": 9010
+      },
+      {
+        "Text": " ko ay Maria.",
+        "IsPartial": false,
+        "Ms": 10108
+      },
+      {
+        "Text": " Ano",
+        "IsPartial": false,
+        "Ms": 11265
+      },
+      {
+        "Text": " ang pangalan mo?",
+        "IsPartial": false,
+        "Ms": 12265
+      },
+      {
+        "Text": " Magandang",
+        "IsPartial": false,
+        "Ms": 13263
+      },
+      {
+        "Text": " umaga sa inyong",
+        "IsPartial": false,
+        "Ms": 14531
+      },
+      {
+        "Text": " lahat.",
+        "IsPartial": false,
+        "Ms": 15521
+      },
+      {
+        "Text": " Ngayon ay",
+        "IsPartial": false,
+        "Ms": 16527
+      },
+      {
+        "Text": " mag-eensayo tayo",
+        "IsPartial": false,
+        "Ms": 17762
+      },
+      {
+        "Text": " ng pagbati at",
+        "IsPartial": false,
+        "Ms": 18762
+      },
+      {
+        "Text": " pagpapakilala.",
+        "IsPartial": false,
+        "Ms": 20008
+      },
+      {
+        "Text": " Pakibuksan",
+        "IsPartial": false,
+        "Ms": 21017
+      },
+      {
+        "Text": " ang inyong mga notebook",
+        "IsPartial": false,
+        "Ms": 22039
+      },
+      {
+        "Text": " sa unang",
+        "IsPartial": false,
+        "Ms": 23378
+      },
+      {
+        "Text": " pahina.",
+        "IsPartial": false,
+        "Ms": 24265
+      },
+      {
+        "Text": " Salamat",
+        "IsPartial": false,
+        "Ms": 25271
+      },
+      {
+        "Text": " sa pakikinig.",
+        "IsPartial": false,
+        "Ms": 26513
+      },
+      {
+        "Text": " Magpapatuloy",
+        "IsPartial": false,
+        "Ms": 27633
+      },
+      {
+        "Text": " tayo sa susunod",
+        "IsPartial": false,
+        "Ms": 28775
+      },
+      {
+        "Text": " na linggo.",
+        "IsPartial": false,
+        "Ms": 29762
+      }
+    ],
+    "Errors": []
+  },
+  "Linear": {
+    "VariantLabel": "linear",
+    "FinalText": " na linggo.",
+    "FirstOutputMs": 3659,
+    "FirstOutputText": "Kamusta at maligayang",
+    "FinalOutputMs": 29621,
+    "AudioFramesSent": 265,
+    "AudioBytesSent": 845470,
+    "SetupCompleteObserved": true,
+    "TurnCompleteObserved": false,
+    "Provenance": {
+      "ServerContentFrames": 221,
+      "GeminiAudioFrames": 121,
+      "ServerContentFramesWithAudio": 121,
+      "GeminiAudioBytes": 1452000,
+      "AudioMimeTypes": [
+        "audio/pcm;rate=24000"
+      ],
+      "OutputTranscriptionFrames": 25,
+      "GeminiOutputTranscription": " na linggo.",
+      "ModelTurnTextParts": 0,
+      "TurnCompleteFrames": 0,
+      "PartialFrames": 0,
+      "SetupCompleteFrames": 1,
+      "GoAwayFrames": 0,
+      "SessionResumptionFrames": 20,
+      "ErrorFrames": 0,
+      "UnknownFrames": 0,
+      "UnknownFingerprints": [],
+      "MalformedFrames": 0,
+      "ArgosCalls": 0,
+      "ArgosOutput": "NONE",
+      "ProvenanceVerified": true,
+      "FinalTextMatchesOutputTranscription": true
+    },
+    "Outputs": [
+      {
+        "Text": "Kamusta at maligayang",
+        "IsPartial": false,
+        "Ms": 3659
+      },
+      {
+        "Text": " pagdating sa unang",
+        "IsPartial": false,
+        "Ms": 4365
+      },
+      {
+        "Text": " pulong ng ating",
+        "IsPartial": false,
+        "Ms": 5370
+      },
+      {
+        "Text": " conversational Tagalog",
+        "IsPartial": false,
+        "Ms": 6611
+      },
+      {
+        "Text": " practice group.",
+        "IsPartial": false,
+        "Ms": 7620
+      },
+      {
+        "Text": " Ang pangalan",
+        "IsPartial": false,
+        "Ms": 8855
+      },
+      {
+        "Text": " ko ay Maria.",
+        "IsPartial": false,
+        "Ms": 9861
+      },
+      {
+        "Text": " Ano",
+        "IsPartial": false,
+        "Ms": 11113
+      },
+      {
+        "Text": " ang pangalan mo?",
+        "IsPartial": false,
+        "Ms": 12188
+      },
+      {
+        "Text": " Magandang",
+        "IsPartial": false,
+        "Ms": 13115
+      },
+      {
+        "Text": " umaga sa inyong",
+        "IsPartial": false,
+        "Ms": 14370
+      },
+      {
+        "Text": " lahat.",
+        "IsPartial": false,
+        "Ms": 15354
+      },
+      {
+        "Text": " Ngayon ay",
+        "IsPartial": false,
+        "Ms": 16363
+      },
+      {
+        "Text": " mag-eensayo tayo",
+        "IsPartial": false,
+        "Ms": 17621
+      },
+      {
+        "Text": " ng pagbati",
+        "IsPartial": false,
+        "Ms": 18612
+      },
+      {
+        "Text": " at pagpapakilala.",
+        "IsPartial": false,
+        "Ms": 19865
+      },
+      {
+        "Text": " Pakibuksan",
+        "IsPartial": false,
+        "Ms": 20867
+      },
+      {
+        "Text": " ang inyong mga notebook",
+        "IsPartial": false,
+        "Ms": 21865
+      },
+      {
+        "Text": " sa unang",
+        "IsPartial": false,
+        "Ms": 23123
+      },
+      {
+        "Text": " pahina.",
+        "IsPartial": false,
+        "Ms": 24121
+      },
+      {
+        "Text": " Salamat",
+        "IsPartial": false,
+        "Ms": 25115
+      },
+      {
+        "Text": " sa pakikinig.",
+        "IsPartial": false,
+        "Ms": 26383
+      },
+      {
+        "Text": " Magpapatuloy",
+        "IsPartial": false,
+        "Ms": 27617
+      },
+      {
+        "Text": " tayo sa susunod",
+        "IsPartial": false,
+        "Ms": 28623
+      },
+      {
+        "Text": " na linggo.",
+        "IsPartial": false,
+        "Ms": 29621
+      }
+    ],
+    "Errors": [
+      "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+    ]
+  },
+  "FinalTextIdentical": true,
+  "OutputCountIdentical": true,
+  "Errors": [
+    "linear | WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+  ]
+}

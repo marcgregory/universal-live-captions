@@ -27,6 +27,49 @@ All notable project changes should be documented here. Keep this file versioned 
 - **Re-measured after fix (fire-and-forget pre-warm racing the feed = exact App startup path, `--prewarm-race`):** first visible translated caption **11.88–12.23 s** (was 18.94 s cold), Argos caller-visible p50 0.30 s / max **0.48 s** (was max 7.23 s inline-cold), queue p50 0.000 s / max 0.006 s, max concurrent callers = 1, 0 errors, STT 30.3–30.9 % / Argos 3.6–4.1 %. Effectively the App no longer lands the first caption in the 18–20 s cold zone; Argos translates ~45–50 captions with a 0.3 s per-caption service time.
 - **Tests:** 3 new `ArgosTranslationEngineTests` (`RealTranslation_DuringWarmup_Awaits`, `DoesNotRaceIt`, `ForDifferentTarget_DoesNotAwait`) pin the new await-in-flight behavior with a deterministic fake process. **Full suite 557/557** (106 Audio + 72 Captions + 42 Translation + 111 Speech + 124 App + 102 Speech.Gemini), Release 0 warnings/0 errors, `dotnet format` clean. `captionwire` leg is additive; production worker protocol untouched. Evidence: `artifacts/reports/captionwire/argos_wire_2026-08-09.csv` (pre-warm awaited), `argos_wire_noprewarm_2026-08-09.csv` (cold), `argos_wire_prewarmrace_fixed_2026-08-09.csv` (post-fix).
 
+### Gemini provenance spike diagnostics (2026-08-09)
+
+- **The direct-wire spike now proves Gemini itself generated the caption text** — a
+  spike/diagnostics-layer-only provenance harness (`ProvenanceObservingChannel` decorator +
+  `ProvenanceAccumulator` + `UtteranceProvenance`, all inside
+  `tests/UniversalCaptions.Speech.Gemini.Tests/Spikes/GeminiDirectWireSpike.cs`). It observes every
+  raw server frame through the FROZEN production channel and records structural metadata only (no
+  payload bytes, no audio contents): `serverContent`/`modelTurn`/`parts`/`inlineData`/
+  `outputTranscription`/`turnComplete` frame counts, generated-audio evidence (`GeminiAudioFrames`,
+  `GeminiAudioBytes`, distinct MIME types), and the `outputTranscription.text` side-channel value.
+  `ArgosCalls = 0` / `ArgosOutput = NONE` are pinned per utterance — this spike has NO Argos process,
+  NO Whisper STT, and NO text leg, so the caption text is provably Gemini's generated-audio
+  side-channel (English WAV → Gemini WebSocket → serverContent → generated audio →
+  outputAudioTranscription → FinalText). The spike now exits **71** when provenance is not verified
+  (existing: 70 = API-key leak, 0 = clean).
+- **11 new deterministic `ProvenanceObservingChannelTests`** (hand-crafted frames; no API key, no
+  network) pin the structural rules incl. `ProvenanceVerified` and
+  `FinalTextMatchesOutputTranscription`, plus **11 `AbRegressionHarnessTests`** covering the
+  `--ab` A/B harness (variant wiring, final/partial/output-sequence equality, aggregate outcome,
+  mismatch/empty-detection edge cases, MIME `application/json` gutter). Full suite now **557/557**
+  (106 Audio + 72 Captions + 111 Speech + 42 Translation + 124 App + 102 Speech.Gemini), Release
+  0 warnings/0 errors, `dotnet format` clean.
+- **No production-code change.** `ClientWebSocketGeminiChannel`, `GeminiLiveTranslateProtocol`,
+  `GeminiLiveTranslateEngine`, `GeminiLiveTranslateEngineOptions` remain the frozen A1–A6
+  implementation. The next real-wire spike run (fresh API key) must return Provenance PASS before
+  any Gemini output-quality claim (e.g. `chat sa BT`) can be attributed to Gemini rather than the
+  Argos path. Full notes in `docs/spikes/GEMINI_MODEL_DISCOVERY.md`.
+- **Real-wire provenance gate PASSED (2026-08-09).** 3-utterance English corpus, 10 s cap →
+  `wicp`-live-translate → `fil`: authentication/setupComplete/outputTranscription/turnComplete all
+  PASS; **provenance PASS** (`TotalGeminiAudioFrames = 118`, audio bytes 1416000,
+  `ArgosCalls = 0`/`ArgosOutput = NONE`), `ProvenanceVerified = true`,
+  `AllFinalTextsMatchOutputTranscription = true`, no API-key leakage, exit 0. The spike now resolves
+  the key from Windows Credential Manager (`UniversalCaptions:GeminiApiKey`, its own `CredReadW`
+  P/Invoke — spike layer only; env var remains an explicit fallback).
+- **A/B gate PASS — `inputAudioTranscription` does NOT matter (2026-08-09).** `--ab` mode on the
+  same corpus: variant A (frozen setup, no `inputAudioTranscription`) vs variant B (+ the top-level
+  field the old benchmark client sent): `BothVariantsProven = true`,
+  **`AllSequencesMatch = true` + `AllFinalTextsMatch = true`** across all utterances (identical
+  partials/finals). Benign `WebSocketException` close-handshake teardown noise recorded (server
+  closes after the last output; finals/provenance still proven). **Decision: no production code
+  change — variant A is the validated frozen path.** Evidence: `artifacts/spike-result/spike-result.json`
+  + `ab-result.json`.
+
 ### Gemini API key → Windows Credential Manager (task #24)
 
 - **Windows Credential Manager is now the single source of truth for the Gemini API key in the App**

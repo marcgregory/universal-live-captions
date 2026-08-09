@@ -1,0 +1,305 @@
+﻿=== translatelive: Argos (offline) vs Gemini Live Translate (online) on the same captured audio ===
+Machine: Microsoft Windows NT 10.0.19045.0
+CPU: 12 logical cores
+WAV: C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\artifacts\spike-compare\english_sustained_90s_16k.wav (88.15s, 2,820,708 PCM16 bytes)
+Target (Gemini): fil; Argos target: tl
+Legs: gemini
+Feed: realtime; STT model: small (threads 4); Gemini chunk: 100ms; tail flush: 5s
+STT python: C:\Users\TOGODB~1\AppData\Local\Temp\fwv\Scripts\python.exe
+Argos python: C:\Users\TOGODB~1\AppData\Local\Temp\argosv\Scripts\python.exe
+
+=== LEG 2: Gemini Live Translate (online) ΓÇö same PCM audio ΓåÆ output transcription as captions ===
+dotnet : [GEMINI-DIAG] ws connected in 473 ms
+At line:1 char:219
++ ... ; exit 1 }; dotnet run --project src/UniversalCaptions.Benchmarks -c  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([GEMINI-DIAG] ws connected in 473 ms:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    input-new       3.65s | Hello and welcome to the first
+    output-new      3.83s | Kamusta at maligayang
+    input-new       4.29s |  meeting of our
+    output-new      4.52s |  pagdating sa unang
+    input-new       5.27s |  conversational
+    output-new      5.55s |  pulong ng ating
+    input-new       6.35s |  Tagalog practice
+    output-new      6.53s |  conversational Tagalog
+    input-new       7.23s |  group.
+    output-new      7.53s |  practice group.
+    input-new       8.28s |  My name
+    output-new      8.63s |  Ang pangalan
+    input-new       9.25s |  is Maria.
+    output-new      9.53s |  ko ay Maria.
+    input-new      10.27s |  What is
+    output-new     10.55s |  Ano
+    input-new      11.26s |  your name?
+    output-new     11.54s |  ang pangalan mo?
+    input-new      12.26s |  Good
+    output-new     12.54s |  Magandang
+    input-new      13.25s |  morning
+    output-new     13.54s |  umaga sa inyong
+    input-new      14.23s |  everyone.
+    output-new     14.54s |  lahat.
+    input-new      15.21s |  Today we will
+    output-new     15.53s |  Ngayon ay
+    input-new      16.24s |  practice
+    output-new     16.53s |  mag-eensayo tayo
+    input-new      17.26s |  greetings and
+    output-new     17.53s |  ng pagbati
+    input-new      18.38s |  introductions.
+    output-new     18.52s |  at pagpapakilala.
+    input-new      19.21s |  Please
+    output-new     19.53s |  Pakibuksan
+    input-new      20.31s |  open your notebooks
+    output-new     20.54s |  ang inyong mga notebook
+    input-new      21.25s |  to the first
+    output-new     21.53s |  sa unang
+    input-new      22.23s |  page.
+    output-new     22.53s |  pahina.
+    input-new      23.24s |  Thank you
+    output-new     23.53s |  Salamat
+    input-new      24.26s |  for listening.
+    output-new     24.53s |  sa pakikinig.
+    input-new      25.24s |  We
+    output-new     25.53s |  Magpapatuloy
+    input-new      26.28s |  will see you next
+    output-new     26.54s |  tayo sa susunod
+    input-new      27.25s |  week.
+    output-new     27.62s |  na linggo.
+    input-new      28.24s |  Remember
+    output-new     28.54s |  Tandaan
+    input-new      29.24s |  to speak
+    output-new     29.53s |  na magsalita
+    input-new      30.30s |  slowly and clearly.
+    output-new     30.54s |  ng dahan-dahan at
+    input-new      31.28s |  and to
+    output-new     31.53s |  malinaw.
+    input-new      32.29s |  listen carefully to
+    output-new     32.54s |  At makinig nang mabuti
+    input-new      33.28s |  each other.
+    output-new     33.54s |  sa isa't isa.
+    input-new      34.26s |  We will
+    output-new     34.66s |  Magsisimula
+    input-new      35.24s |  start with the
+    output-new     35.65s |  tayo sa mga
+    input-new      36.29s |  numbers 1 through
+    output-new     36.53s |  numero 1 hanggang
+    input-new      37.32s |  10, then
+    output-new     37.53s |  10, pagkatapos
+    input-new      38.29s |  move on to the days
+    output-new     38.53s |  ay lilipat sa
+    input-new      39.27s |  of the week.
+    output-new     39.53s |  mga araw ng linggo.
+    input-new      40.24s |  Great.
+    output-new     40.52s |  Magaling.
+    input-new      41.26s |  work
+    output-new     41.53s |  Magandang trabaho
+    input-new      42.29s |  everyone. That is
+    output-new     42.53s |  sa inyong lahat.
+    input-new      43.30s |  the end of today's
+    output-new     43.54s |  Iyan ang katapusan
+    input-new      44.24s |  practice
+    output-new     44.52s |  ng ating sesyon
+    input-new      45.23s |  session.
+    output-new     45.54s |  sa pagsasanay ngayon.
+    input-new      46.23s |  Hello and
+    output-new     46.67s |  Kamusta
+    input-new      47.27s |  welcome to the first
+    output-new     47.53s |  at maligayang pagdating
+    input-new      48.29s |  meeting of our
+    output-new     48.53s |  sa unang pulong
+    input-new      49.22s |  conversational
+    output-new     49.54s |  ng ating conversational
+    input-new      50.26s |  Tagalog practice
+    output-new     50.53s |  Tagalog practice
+    input-new      51.20s |  group.
+    output-new     51.54s |  group.
+    input-new      52.31s |  My name
+    output-new     52.53s |  Ang pangalan
+    input-new      53.25s |  is Maria.
+    output-new     53.56s |  ko ay Maria.
+    input-new      54.22s |  What
+    output-new     54.53s |  Ano
+    input-new      55.26s |  is your name?
+    output-new     55.53s |  ang pangalan mo?
+    input-new      56.20s |  Good
+    output-new     56.53s |  Magandang
+    input-new      57.25s |  morning
+    output-new     57.53s |  umaga sa inyong
+    input-new      58.26s |  everyone.
+    output-new     58.53s |  lahat.
+    input-new      59.28s |  Today we
+    output-new     59.54s |  Ngayon ay
+    input-new      60.28s |  will practice
+    output-new     60.53s |  mag-eensayo tayo
+    input-new      61.25s |  greetings and
+    output-new     61.53s |  ng pagbati
+    input-new      62.25s |  introductions.
+    output-new     62.53s |  at pagpapakilala.
+    input-new      63.22s |  Please
+    output-new     63.52s |  Pakibuksan
+    input-new      64.31s |  open your notebooks
+    output-new     64.53s |  ang inyong mga notebook
+    input-new      65.25s |  to the first
+    output-new     65.54s |  sa unang
+    input-new      66.23s |  page.
+    output-new     66.53s |  pahina.
+    input-new      67.22s |  Thank you
+    output-new     67.53s |  Salamat
+    input-new      68.31s |  for listening.
+    output-new     68.53s |  sa pakikinig.
+    input-new      69.78s |  We
+    output-new     69.85s |  Magpapatuloy
+    input-new      70.72s |  will see you next
+    output-new     71.03s |  tayo sa susunod
+    input-new      71.71s |  week.
+    output-new     72.04s |  na linggo.
+    input-new      72.87s |  Remember
+    output-new     73.03s |  Tandaan
+    input-new      73.83s |  to speak
+    output-new     74.03s |  na magsalita
+    input-new      74.84s |  slowly and
+    output-new     75.03s |  ng dahan-dahan
+    input-new      75.85s |  clearly and to
+    output-new     76.02s |  at malinaw
+    input-new      76.85s |  listen carefully to
+    output-new     77.05s |  at makinig nang mabuti
+    input-new      77.97s |  each other.
+    output-new     78.02s |  sa isa't isa.
+    input-new      78.83s |  We will
+    output-new     79.05s |  Magsisimula
+    input-new      79.85s |  start with the
+    output-new     80.05s |  tayo sa mga
+    input-new      80.87s |  numbers 1 through
+    output-new     81.06s |  numero 1 hanggang
+    input-new      81.88s |  10, then
+    output-new     82.02s |  10, pagkatapos
+    input-new      82.82s |  move on to the
+    output-new     83.03s |  ay lilipat sa
+    input-new      83.86s |  days of the week.
+    output-new     84.03s |  mga araw ng linggo.
+    input-new      84.79s |  Great
+    output-new     85.02s |  Magaling.
+    input-new      86.00s |  work
+    output-new     86.28s |  Magandang trabaho
+    input-new      87.02s |  everyone. That is
+    output-new     87.27s |  sa inyong lahat.
+    input-new      88.03s |  the end of today's
+    output-new     88.28s |  Iyan ang katapusan
+[GEMINI-DIAG] audio feed complete at 88.79s; draining tail for 5s
+    input-new      88.98s |  practice
+    output-new     89.28s |  ng ating sesyon
+[GEMINI-DIAG] tail flush complete at 94.32s; closing session
+
+  connect: 0.50s; setupComplete: 0.78s
+  first output transcript: 3.831s (from feed start)
+  last output transcript:  89.279s; 1.13s after feed end (tail)
+  output captions:         86 new + 0 updates; 0 turn completes
+  cadence:                 117.1 new captions per 120 s
+  input side:              86 new + 0 updates (Gemini's own English STT)
+  output language:         fil
+  repeated bigrams:        102; consecutive duplicates: 0; unterminated: 60
+  cpu: benchmark 0.5% of machine; peak RAM 1226.1 MB
+  network: up 4.00 MB / down 5.69 MB; 922.0 kbps combined
+  audio payload: up 2.69 MB / down 4.17 MB
+  usage: 2175 input / 0 output tokens; cost $0.0076 (0.31/hr at this rate)
+
+========================= COMPARISON (enΓåÆtl, same audio) =========================
+  sample: artifacts/spike-compare/english_sustained_90s_16k.wav (88.15s)   Gemini target: fil
+
+  Metric                        Argos          Gemini Live     note
+  ----------------------------  -------------  --------------  ----------------
+  (Argos leg not run; offline comparison unavailable)
+==================================================================================
+  Naturalness / meaning preservation: review the side-by-side caption streams below
+  (Chrome reference from appval_chrome_captions.txt is a different recording and is
+  qualitative context only, not a same-audio numeric baseline.)
+
+--- SIDE-BY-SIDE CAPTION STREAMS ---
+   | [  3.83s] Kamusta at maligayang
+   | [  4.52s]  pagdating sa unang
+   | [  5.55s]  pulong ng ating
+   | [  6.53s]  conversational Tagalog
+   | [  7.53s]  practice group.
+   | [  8.63s]  Ang pangalan
+   | [  9.53s]  ko ay Maria.
+   | [ 10.55s]  Ano
+   | [ 11.54s]  ang pangalan mo?
+   | [ 12.54s]  Magandang
+   | [ 13.54s]  umaga sa inyong
+   | [ 14.54s]  lahat.
+   | [ 15.53s]  Ngayon ay
+   | [ 16.53s]  mag-eensayo tayo
+   | [ 17.53s]  ng pagbati
+   | [ 18.52s]  at pagpapakilala.
+   | [ 19.53s]  Pakibuksan
+   | [ 20.54s]  ang inyong mga notebook
+   | [ 21.53s]  sa unang
+   | [ 22.53s]  pahina.
+   | [ 23.53s]  Salamat
+   | [ 24.53s]  sa pakikinig.
+   | [ 25.53s]  Magpapatuloy
+   | [ 26.54s]  tayo sa susunod
+   | [ 27.62s]  na linggo.
+   | [ 28.54s]  Tandaan
+   | [ 29.53s]  na magsalita
+   | [ 30.54s]  ng dahan-dahan at
+   | [ 31.53s]  malinaw.
+   | [ 32.54s]  At makinig nang mabuti
+   | [ 33.54s]  sa isa't isa.
+   | [ 34.66s]  Magsisimula
+   | [ 35.65s]  tayo sa mga
+   | [ 36.53s]  numero 1 hanggang
+   | [ 37.53s]  10, pagkatapos
+   | [ 38.53s]  ay lilipat sa
+   | [ 39.53s]  mga araw ng linggo.
+   | [ 40.52s]  Magaling.
+   | [ 41.53s]  Magandang trabaho
+   | [ 42.53s]  sa inyong lahat.
+   | [ 43.54s]  Iyan ang katapusan
+   | [ 44.52s]  ng ating sesyon
+   | [ 45.54s]  sa pagsasanay ngayon.
+   | [ 46.67s]  Kamusta
+   | [ 47.53s]  at maligayang pagdating
+   | [ 48.53s]  sa unang pulong
+   | [ 49.54s]  ng ating conversational
+   | [ 50.53s]  Tagalog practice
+   | [ 51.54s]  group.
+   | [ 52.53s]  Ang pangalan
+   | [ 53.56s]  ko ay Maria.
+   | [ 54.53s]  Ano
+   | [ 55.53s]  ang pangalan mo?
+   | [ 56.53s]  Magandang
+   | [ 57.53s]  umaga sa inyong
+   | [ 58.53s]  lahat.
+   | [ 59.54s]  Ngayon ay
+   | [ 60.53s]  mag-eensayo tayo
+   | [ 61.53s]  ng pagbati
+   | [ 62.53s]  at pagpapakilala.
+   | [ 63.52s]  Pakibuksan
+   | [ 64.53s]  ang inyong mga notebook
+   | [ 65.54s]  sa unang
+   | [ 66.53s]  pahina.
+   | [ 67.53s]  Salamat
+   | [ 68.53s]  sa pakikinig.
+   | [ 69.85s]  Magpapatuloy
+   | [ 71.03s]  tayo sa susunod
+   | [ 72.04s]  na linggo.
+   | [ 73.03s]  Tandaan
+   | [ 74.03s]  na magsalita
+   | [ 75.03s]  ng dahan-dahan
+   | [ 76.02s]  at malinaw
+   | [ 77.05s]  at makinig nang mabuti
+   | [ 78.02s]  sa isa't isa.
+   | [ 79.05s]  Magsisimula
+   | [ 80.05s]  tayo sa mga
+   | [ 81.06s]  numero 1 hanggang
+   | [ 82.02s]  10, pagkatapos
+   | [ 83.03s]  ay lilipat sa
+   | [ 84.03s]  mga araw ng linggo.
+   | [ 85.02s]  Magaling.
+   | [ 86.28s]  Magandang trabaho
+   | [ 87.27s]  sa inyong lahat.
+   | [ 88.28s]  Iyan ang katapusan
+   | [ 89.28s]  ng ating sesyon
+CSV written to C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\artifacts\spike-compare\old_leg_gemini.csv

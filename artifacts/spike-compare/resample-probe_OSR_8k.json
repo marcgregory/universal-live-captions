@@ -1,0 +1,416 @@
+{
+  "StartedAtUtc": "2026-08-09T08:14:42.9986921Z",
+  "KeyFingerprint": "AQ.Ab8RN",
+  "TargetLanguage": "tl",
+  "Wav": "OSR_us_000_0010_8k.wav",
+  "MaxAudioSeconds": 120,
+  "SampleRate": 8000,
+  "Channels": 1,
+  "SourceDurationMs": 33623,
+  "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+  "Nearest": {
+    "VariantLabel": "nearest",
+    "FinalText": " sukat at medyas",
+    "FirstOutputMs": 4131,
+    "FirstOutputText": "Ang bangkang birch",
+    "FinalOutputMs": 37587,
+    "AudioFramesSent": 337,
+    "AudioBytesSent": 1075940,
+    "SetupCompleteObserved": true,
+    "TurnCompleteObserved": false,
+    "Provenance": {
+      "ServerContentFrames": 278,
+      "GeminiAudioFrames": 150,
+      "ServerContentFramesWithAudio": 150,
+      "GeminiAudioBytes": 1800000,
+      "AudioMimeTypes": [
+        "audio/pcm;rate=24000"
+      ],
+      "OutputTranscriptionFrames": 32,
+      "GeminiOutputTranscription": " sukat at medyas",
+      "ModelTurnTextParts": 0,
+      "TurnCompleteFrames": 0,
+      "PartialFrames": 0,
+      "SetupCompleteFrames": 1,
+      "GoAwayFrames": 0,
+      "SessionResumptionFrames": 26,
+      "ErrorFrames": 0,
+      "UnknownFrames": 0,
+      "UnknownFingerprints": [],
+      "MalformedFrames": 0,
+      "ArgosCalls": 0,
+      "ArgosOutput": "NONE",
+      "ProvenanceVerified": true,
+      "FinalTextMatchesOutputTranscription": true
+    },
+    "Outputs": [
+      {
+        "Text": "Ang bangkang birch",
+        "IsPartial": false,
+        "Ms": 4131
+      },
+      {
+        "Text": " ay dumausdos sa makinis",
+        "IsPartial": false,
+        "Ms": 4838
+      },
+      {
+        "Text": " na tabla.",
+        "IsPartial": false,
+        "Ms": 5845
+      },
+      {
+        "Text": " Idikit ang",
+        "IsPartial": false,
+        "Ms": 7178
+      },
+      {
+        "Text": " papel sa madilim",
+        "IsPartial": false,
+        "Ms": 8087
+      },
+      {
+        "Text": " na asul na background.",
+        "IsPartial": false,
+        "Ms": 9082
+      },
+      {
+        "Text": " Madali",
+        "IsPartial": false,
+        "Ms": 10336
+      },
+      {
+        "Text": " lang malaman ang lalim",
+        "IsPartial": false,
+        "Ms": 11340
+      },
+      {
+        "Text": " ng balon.",
+        "IsPartial": false,
+        "Ms": 12584
+      },
+      {
+        "Text": " Ngayon",
+        "IsPartial": false,
+        "Ms": 13584
+      },
+      {
+        "Text": " araw, ang binti",
+        "IsPartial": false,
+        "Ms": 14599
+      },
+      {
+        "Text": " ng manok ay isang",
+        "IsPartial": false,
+        "Ms": 15846
+      },
+      {
+        "Text": " bihirang ulam.",
+        "IsPartial": false,
+        "Ms": 16843
+      },
+      {
+        "Text": " Ang bigas",
+        "IsPartial": false,
+        "Ms": 17846
+      },
+      {
+        "Text": " ay madalas ihain",
+        "IsPartial": false,
+        "Ms": 19086
+      },
+      {
+        "Text": " sa mga bilog na mangkok.",
+        "IsPartial": false,
+        "Ms": 20089
+      },
+      {
+        "Text": " Ang katas",
+        "IsPartial": false,
+        "Ms": 21087
+      },
+      {
+        "Text": " ng lemon ay gumagawa",
+        "IsPartial": false,
+        "Ms": 22342
+      },
+      {
+        "Text": " ng masarap na punch.",
+        "IsPartial": false,
+        "Ms": 23329
+      },
+      {
+        "Text": " Ang kahon",
+        "IsPartial": false,
+        "Ms": 24586
+      },
+      {
+        "Text": " ay itinapon sa tabi",
+        "IsPartial": false,
+        "Ms": 25579
+      },
+      {
+        "Text": " ng trak ng parke.",
+        "IsPartial": false,
+        "Ms": 26593
+      },
+      {
+        "Text": " Ang mga",
+        "IsPartial": false,
+        "Ms": 27838
+      },
+      {
+        "Text": " baboy ay pinapakain",
+        "IsPartial": false,
+        "Ms": 28833
+      },
+      {
+        "Text": " ng tinadtad na mais",
+        "IsPartial": false,
+        "Ms": 30088
+      },
+      {
+        "Text": " at basura.",
+        "IsPartial": false,
+        "Ms": 30837
+      },
+      {
+        "Text": " Sa loob",
+        "IsPartial": false,
+        "Ms": 32084
+      },
+      {
+        "Text": " ng ilang oras, ang",
+        "IsPartial": false,
+        "Ms": 33104
+      },
+      {
+        "Text": " tuloy-tuloy na trabaho",
+        "IsPartial": false,
+        "Ms": 34341
+      },
+      {
+        "Text": " ang nagligtas sa amin.",
+        "IsPartial": false,
+        "Ms": 35453
+      },
+      {
+        "Text": " Ang malaking",
+        "IsPartial": false,
+        "Ms": 36349
+      },
+      {
+        "Text": " sukat at medyas",
+        "IsPartial": false,
+        "Ms": 37587
+      }
+    ],
+    "Errors": []
+  },
+  "Linear": {
+    "VariantLabel": "linear",
+    "FinalText": " ng medyas ay mahirap",
+    "FirstOutputMs": 5187,
+    "FirstOutputText": "Ang bangkang birch",
+    "FinalOutputMs": 38643,
+    "AudioFramesSent": 337,
+    "AudioBytesSent": 1075940,
+    "SetupCompleteObserved": true,
+    "TurnCompleteObserved": false,
+    "Provenance": {
+      "ServerContentFrames": 278,
+      "GeminiAudioFrames": 150,
+      "ServerContentFramesWithAudio": 150,
+      "GeminiAudioBytes": 1800000,
+      "AudioMimeTypes": [
+        "audio/pcm;rate=24000"
+      ],
+      "OutputTranscriptionFrames": 32,
+      "GeminiOutputTranscription": " ng medyas ay mahirap",
+      "ModelTurnTextParts": 0,
+      "TurnCompleteFrames": 0,
+      "PartialFrames": 0,
+      "SetupCompleteFrames": 1,
+      "GoAwayFrames": 0,
+      "SessionResumptionFrames": 26,
+      "ErrorFrames": 0,
+      "UnknownFrames": 0,
+      "UnknownFingerprints": [],
+      "MalformedFrames": 0,
+      "ArgosCalls": 0,
+      "ArgosOutput": "NONE",
+      "ProvenanceVerified": true,
+      "FinalTextMatchesOutputTranscription": true
+    },
+    "Outputs": [
+      {
+        "Text": "Ang bangkang birch",
+        "IsPartial": false,
+        "Ms": 5187
+      },
+      {
+        "Text": " ay dumausdos sa makinis",
+        "IsPartial": false,
+        "Ms": 5896
+      },
+      {
+        "Text": " na tabla.",
+        "IsPartial": false,
+        "Ms": 6893
+      },
+      {
+        "Text": " Idikit ang papel",
+        "IsPartial": false,
+        "Ms": 8137
+      },
+      {
+        "Text": " sa madilim na",
+        "IsPartial": false,
+        "Ms": 9147
+      },
+      {
+        "Text": " asul na background.",
+        "IsPartial": false,
+        "Ms": 10142
+      },
+      {
+        "Text": " Madali",
+        "IsPartial": false,
+        "Ms": 11397
+      },
+      {
+        "Text": " lang malaman ang lalim",
+        "IsPartial": false,
+        "Ms": 12410
+      },
+      {
+        "Text": " ng balon.",
+        "IsPartial": false,
+        "Ms": 13389
+      },
+      {
+        "Text": " Sa mga",
+        "IsPartial": false,
+        "Ms": 14642
+      },
+      {
+        "Text": " araw na ito, ang hita",
+        "IsPartial": false,
+        "Ms": 15637
+      },
+      {
+        "Text": " ng manok ay isang",
+        "IsPartial": false,
+        "Ms": 16892
+      },
+      {
+        "Text": " bihirang ulam.",
+        "IsPartial": false,
+        "Ms": 17891
+      },
+      {
+        "Text": " Ang kanin",
+        "IsPartial": false,
+        "Ms": 18890
+      },
+      {
+        "Text": " ay madalas na inihahain",
+        "IsPartial": false,
+        "Ms": 20139
+      },
+      {
+        "Text": " sa mga bilog na mangkok.",
+        "IsPartial": false,
+        "Ms": 21140
+      },
+      {
+        "Text": " Ang katas",
+        "IsPartial": false,
+        "Ms": 22142
+      },
+      {
+        "Text": " ng lemon ay gumagawa",
+        "IsPartial": false,
+        "Ms": 23401
+      },
+      {
+        "Text": " ng masarap na punch.",
+        "IsPartial": false,
+        "Ms": 24383
+      },
+      {
+        "Text": " Ang kahon",
+        "IsPartial": false,
+        "Ms": 25384
+      },
+      {
+        "Text": " ay itinapon sa tabi",
+        "IsPartial": false,
+        "Ms": 26650
+      },
+      {
+        "Text": " ng nakaparadang trak.",
+        "IsPartial": false,
+        "Ms": 27638
+      },
+      {
+        "Text": " Ang mga",
+        "IsPartial": false,
+        "Ms": 28890
+      },
+      {
+        "Text": " baboy ay pinakain",
+        "IsPartial": false,
+        "Ms": 29894
+      },
+      {
+        "Text": " ng tinadtad na mais",
+        "IsPartial": false,
+        "Ms": 30893
+      },
+      {
+        "Text": " at basura.",
+        "IsPartial": false,
+        "Ms": 31891
+      },
+      {
+        "Text": " Apat",
+        "IsPartial": false,
+        "Ms": 33139
+      },
+      {
+        "Text": " na oras ng tuloy-tuloy",
+        "IsPartial": false,
+        "Ms": 34393
+      },
+      {
+        "Text": " na trabaho ang naghihintay",
+        "IsPartial": false,
+        "Ms": 35488
+      },
+      {
+        "Text": " sa amin.",
+        "IsPartial": false,
+        "Ms": 36397
+      },
+      {
+        "Text": " Ang malaking sukat",
+        "IsPartial": false,
+        "Ms": 37382
+      },
+      {
+        "Text": " ng medyas ay mahirap",
+        "IsPartial": false,
+        "Ms": 38643
+      }
+    ],
+    "Errors": [
+      "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+    ]
+  },
+  "FinalTextIdentical": false,
+  "OutputCountIdentical": true,
+  "Errors": [
+    "linear | WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+  ]
+}

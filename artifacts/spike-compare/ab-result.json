@@ -1,0 +1,983 @@
+{
+  "StartedAtUtc": "2026-08-09T07:38:27.5795347Z",
+  "FinishedAtUtc": "2026-08-09T07:41:46.9290503Z",
+  "KeyFingerprint": "AQ.Ab8RN",
+  "Model": "models/gemini-3.5-live-translate-preview",
+  "TargetLanguage": "tl",
+  "Utterances": [
+    {
+      "Index": 1,
+      "File": "english_sustained_90s_16k.wav",
+      "SampleRate": 16000,
+      "DurationMs": 88147,
+      "AudioBytes": 2820708,
+      "ChunkBytes": 3200,
+      "VariantA": {
+        "VariantLabel": "A",
+        "IncludeInputTranscription": false,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 882,
+        "AudioBytesSent": 2820708,
+        "FirstOutputMs": 5422,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 99632,
+        "FinalText": " sesyon sa pagsasanay.",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 5422
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 6145
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 7379
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 8372
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 9409
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 10625
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 11641
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 12639
+          },
+          {
+            "Text": " ang pangalan mo?",
+            "IsPartial": false,
+            "Ms": 13879
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 14876
+          },
+          {
+            "Text": " umaga sa inyong",
+            "IsPartial": false,
+            "Ms": 16140
+          },
+          {
+            "Text": " lahat.",
+            "IsPartial": false,
+            "Ms": 17133
+          },
+          {
+            "Text": " Ngayon ay",
+            "IsPartial": false,
+            "Ms": 18247
+          },
+          {
+            "Text": " mag-eensayo tayo",
+            "IsPartial": false,
+            "Ms": 19482
+          },
+          {
+            "Text": " ng pagbati",
+            "IsPartial": false,
+            "Ms": 20386
+          },
+          {
+            "Text": " at pagpapakilala.",
+            "IsPartial": false,
+            "Ms": 21635
+          },
+          {
+            "Text": " Pakibuksan",
+            "IsPartial": false,
+            "Ms": 22635
+          },
+          {
+            "Text": " ang inyong mga notebook",
+            "IsPartial": false,
+            "Ms": 23811
+          },
+          {
+            "Text": " sa unang",
+            "IsPartial": false,
+            "Ms": 24903
+          },
+          {
+            "Text": " pahina.",
+            "IsPartial": false,
+            "Ms": 25884
+          },
+          {
+            "Text": " Salamat",
+            "IsPartial": false,
+            "Ms": 26869
+          },
+          {
+            "Text": " sa pakikinig.",
+            "IsPartial": false,
+            "Ms": 28141
+          },
+          {
+            "Text": " Magpapatuloy",
+            "IsPartial": false,
+            "Ms": 29143
+          },
+          {
+            "Text": " tayo sa susunod",
+            "IsPartial": false,
+            "Ms": 30379
+          },
+          {
+            "Text": " na linggo.",
+            "IsPartial": false,
+            "Ms": 31483
+          },
+          {
+            "Text": " Tandaan",
+            "IsPartial": false,
+            "Ms": 32388
+          },
+          {
+            "Text": " na magsalita",
+            "IsPartial": false,
+            "Ms": 33627
+          },
+          {
+            "Text": " nang dahan-dahan at",
+            "IsPartial": false,
+            "Ms": 34633
+          },
+          {
+            "Text": " malinaw.",
+            "IsPartial": false,
+            "Ms": 35642
+          },
+          {
+            "Text": " At makinig nang mabuti",
+            "IsPartial": false,
+            "Ms": 36970
+          },
+          {
+            "Text": " sa isa\u0027t isa.",
+            "IsPartial": false,
+            "Ms": 38136
+          },
+          {
+            "Text": " Magsisimula",
+            "IsPartial": false,
+            "Ms": 39154
+          },
+          {
+            "Text": " tayo sa mga",
+            "IsPartial": false,
+            "Ms": 40167
+          },
+          {
+            "Text": " numero 1 hanggang",
+            "IsPartial": false,
+            "Ms": 41382
+          },
+          {
+            "Text": " 10, pagkatapos",
+            "IsPartial": false,
+            "Ms": 42388
+          },
+          {
+            "Text": " ay lilipat",
+            "IsPartial": false,
+            "Ms": 43377
+          },
+          {
+            "Text": " sa mga araw ng linggo.",
+            "IsPartial": false,
+            "Ms": 44654
+          },
+          {
+            "Text": " Magaling.",
+            "IsPartial": false,
+            "Ms": 45639
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 46631
+          },
+          {
+            "Text": " trabaho sa inyong lahat.",
+            "IsPartial": false,
+            "Ms": 47876
+          },
+          {
+            "Text": " Iyan ang",
+            "IsPartial": false,
+            "Ms": 48994
+          },
+          {
+            "Text": " katapusan ng ating",
+            "IsPartial": false,
+            "Ms": 50137
+          },
+          {
+            "Text": " sesyon sa pagsasanay.",
+            "IsPartial": false,
+            "Ms": 51166
+          },
+          {
+            "Text": " Kamusta",
+            "IsPartial": false,
+            "Ms": 52386
+          },
+          {
+            "Text": " at maligayang pagdating",
+            "IsPartial": false,
+            "Ms": 53391
+          },
+          {
+            "Text": " sa unang pulong",
+            "IsPartial": false,
+            "Ms": 54472
+          },
+          {
+            "Text": " ng ating conversational",
+            "IsPartial": false,
+            "Ms": 55636
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 56629
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 57642
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 58879
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 59875
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 60886
+          },
+          {
+            "Text": " ang pangalan mo?",
+            "IsPartial": false,
+            "Ms": 62128
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 63136
+          },
+          {
+            "Text": " umaga sa inyong",
+            "IsPartial": false,
+            "Ms": 64390
+          },
+          {
+            "Text": " lahat.",
+            "IsPartial": false,
+            "Ms": 65375
+          },
+          {
+            "Text": " Ngayon ay",
+            "IsPartial": false,
+            "Ms": 66373
+          },
+          {
+            "Text": " mag-eensayo tayo",
+            "IsPartial": false,
+            "Ms": 67640
+          },
+          {
+            "Text": " ng pagbati",
+            "IsPartial": false,
+            "Ms": 68646
+          },
+          {
+            "Text": " at pagpapakilala.",
+            "IsPartial": false,
+            "Ms": 69875
+          },
+          {
+            "Text": " Pakibuksan",
+            "IsPartial": false,
+            "Ms": 70876
+          },
+          {
+            "Text": " ang inyong mga notebook",
+            "IsPartial": false,
+            "Ms": 71886
+          },
+          {
+            "Text": " sa unang",
+            "IsPartial": false,
+            "Ms": 73129
+          },
+          {
+            "Text": " pahina.",
+            "IsPartial": false,
+            "Ms": 74204
+          },
+          {
+            "Text": " Salamat",
+            "IsPartial": false,
+            "Ms": 75131
+          },
+          {
+            "Text": " sa pakikinig.",
+            "IsPartial": false,
+            "Ms": 76393
+          },
+          {
+            "Text": " Magpapatuloy",
+            "IsPartial": false,
+            "Ms": 77877
+          },
+          {
+            "Text": " tayo sa susunod",
+            "IsPartial": false,
+            "Ms": 78883
+          },
+          {
+            "Text": " na linggo.",
+            "IsPartial": false,
+            "Ms": 79880
+          },
+          {
+            "Text": " Tandaan",
+            "IsPartial": false,
+            "Ms": 81120
+          },
+          {
+            "Text": " na magsalita",
+            "IsPartial": false,
+            "Ms": 82121
+          },
+          {
+            "Text": " nang dahan-dahan",
+            "IsPartial": false,
+            "Ms": 83390
+          },
+          {
+            "Text": " at malinaw at",
+            "IsPartial": false,
+            "Ms": 84385
+          },
+          {
+            "Text": " makinig nang mabuti",
+            "IsPartial": false,
+            "Ms": 85383
+          },
+          {
+            "Text": " sa isa\u0027t isa.",
+            "IsPartial": false,
+            "Ms": 86641
+          },
+          {
+            "Text": " Magsisimula",
+            "IsPartial": false,
+            "Ms": 87636
+          },
+          {
+            "Text": " tayo sa mga",
+            "IsPartial": false,
+            "Ms": 88635
+          },
+          {
+            "Text": " numero 1 hanggang",
+            "IsPartial": false,
+            "Ms": 89873
+          },
+          {
+            "Text": " 10, pagkatapos",
+            "IsPartial": false,
+            "Ms": 90879
+          },
+          {
+            "Text": " ay lilipat",
+            "IsPartial": false,
+            "Ms": 92130
+          },
+          {
+            "Text": " sa mga araw ng linggo.",
+            "IsPartial": false,
+            "Ms": 93198
+          },
+          {
+            "Text": " Magaling.",
+            "IsPartial": false,
+            "Ms": 94124
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 95380
+          },
+          {
+            "Text": " trabaho sa inyong lahat.",
+            "IsPartial": false,
+            "Ms": 96627
+          },
+          {
+            "Text": " Iyan ang",
+            "IsPartial": false,
+            "Ms": 97631
+          },
+          {
+            "Text": " katapusan ng ating",
+            "IsPartial": false,
+            "Ms": 98631
+          },
+          {
+            "Text": " sesyon sa pagsasanay.",
+            "IsPartial": false,
+            "Ms": 99632
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 731,
+          "GeminiAudioFrames": 383,
+          "ServerContentFramesWithAudio": 383,
+          "GeminiAudioBytes": 4596000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 87,
+          "GeminiOutputTranscription": " sesyon sa pagsasanay.",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 70,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
+      },
+      "VariantB": {
+        "VariantLabel": "B",
+        "IncludeInputTranscription": true,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 882,
+        "AudioBytesSent": 2820708,
+        "FirstOutputMs": 3733,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 97673,
+        "FinalText": " ngayon.",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3733
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4427
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5420
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6671
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7674
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8941
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 9936
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 10923
+          },
+          {
+            "Text": " ang pangalan mo?",
+            "IsPartial": false,
+            "Ms": 12173
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 13171
+          },
+          {
+            "Text": " umaga sa inyong",
+            "IsPartial": false,
+            "Ms": 14430
+          },
+          {
+            "Text": " lahat.",
+            "IsPartial": false,
+            "Ms": 15433
+          },
+          {
+            "Text": " Ngayon",
+            "IsPartial": false,
+            "Ms": 16425
+          },
+          {
+            "Text": " mag-eensayo tayo",
+            "IsPartial": false,
+            "Ms": 17676
+          },
+          {
+            "Text": " ng pagbati",
+            "IsPartial": false,
+            "Ms": 18674
+          },
+          {
+            "Text": " at pagpapakilala.",
+            "IsPartial": false,
+            "Ms": 19676
+          },
+          {
+            "Text": " Pakibuksan",
+            "IsPartial": false,
+            "Ms": 20688
+          },
+          {
+            "Text": " ang inyong mga notebook",
+            "IsPartial": false,
+            "Ms": 21919
+          },
+          {
+            "Text": " sa unang",
+            "IsPartial": false,
+            "Ms": 22926
+          },
+          {
+            "Text": " pahina.",
+            "IsPartial": false,
+            "Ms": 23922
+          },
+          {
+            "Text": " Salamat",
+            "IsPartial": false,
+            "Ms": 25188
+          },
+          {
+            "Text": " sa pakikinig.",
+            "IsPartial": false,
+            "Ms": 26176
+          },
+          {
+            "Text": " Magpapatuloy",
+            "IsPartial": false,
+            "Ms": 27422
+          },
+          {
+            "Text": " tayo sa susunod",
+            "IsPartial": false,
+            "Ms": 28426
+          },
+          {
+            "Text": " na linggo.",
+            "IsPartial": false,
+            "Ms": 29428
+          },
+          {
+            "Text": " Tandaan",
+            "IsPartial": false,
+            "Ms": 30425
+          },
+          {
+            "Text": " na magsalita",
+            "IsPartial": false,
+            "Ms": 31677
+          },
+          {
+            "Text": " nang dahan-dahan at",
+            "IsPartial": false,
+            "Ms": 32922
+          },
+          {
+            "Text": " malinaw. At",
+            "IsPartial": false,
+            "Ms": 33930
+          },
+          {
+            "Text": " makinig nang mabuti",
+            "IsPartial": false,
+            "Ms": 34930
+          },
+          {
+            "Text": " sa isa\u0027t isa.",
+            "IsPartial": false,
+            "Ms": 36193
+          },
+          {
+            "Text": " Magsisimula",
+            "IsPartial": false,
+            "Ms": 37177
+          },
+          {
+            "Text": " tayo sa mga",
+            "IsPartial": false,
+            "Ms": 38165
+          },
+          {
+            "Text": " numero 1 hanggang",
+            "IsPartial": false,
+            "Ms": 39424
+          },
+          {
+            "Text": " 10, pagkatapos",
+            "IsPartial": false,
+            "Ms": 40426
+          },
+          {
+            "Text": " ay lilipat sa",
+            "IsPartial": false,
+            "Ms": 41427
+          },
+          {
+            "Text": " mga araw ng linggo.",
+            "IsPartial": false,
+            "Ms": 42675
+          },
+          {
+            "Text": " Magaling.",
+            "IsPartial": false,
+            "Ms": 43684
+          },
+          {
+            "Text": " Magandang trabaho",
+            "IsPartial": false,
+            "Ms": 44681
+          },
+          {
+            "Text": " sa inyong lahat.",
+            "IsPartial": false,
+            "Ms": 45921
+          },
+          {
+            "Text": " Iyon ang katapusan",
+            "IsPartial": false,
+            "Ms": 46922
+          },
+          {
+            "Text": " ng sesyon ng pagsasanay",
+            "IsPartial": false,
+            "Ms": 48177
+          },
+          {
+            "Text": " ngayon.",
+            "IsPartial": false,
+            "Ms": 49192
+          },
+          {
+            "Text": " Kamusta",
+            "IsPartial": false,
+            "Ms": 50268
+          },
+          {
+            "Text": " at maligayang pagdating",
+            "IsPartial": false,
+            "Ms": 51431
+          },
+          {
+            "Text": " sa unang pulong",
+            "IsPartial": false,
+            "Ms": 52425
+          },
+          {
+            "Text": " ng ating conversational",
+            "IsPartial": false,
+            "Ms": 53430
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 54671
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 55668
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 56678
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 57934
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 58921
+          },
+          {
+            "Text": " ang pangalan mo?",
+            "IsPartial": false,
+            "Ms": 60186
+          },
+          {
+            "Text": " Magandang",
+            "IsPartial": false,
+            "Ms": 61173
+          },
+          {
+            "Text": " umaga sa inyong",
+            "IsPartial": false,
+            "Ms": 62518
+          },
+          {
+            "Text": " lahat.",
+            "IsPartial": false,
+            "Ms": 63553
+          },
+          {
+            "Text": " Ngayon",
+            "IsPartial": false,
+            "Ms": 64424
+          },
+          {
+            "Text": " mag-eensayo tayo",
+            "IsPartial": false,
+            "Ms": 65683
+          },
+          {
+            "Text": " ng pagbati",
+            "IsPartial": false,
+            "Ms": 66671
+          },
+          {
+            "Text": " at pagpapakilala.",
+            "IsPartial": false,
+            "Ms": 67776
+          },
+          {
+            "Text": " Pakibuksan",
+            "IsPartial": false,
+            "Ms": 68931
+          },
+          {
+            "Text": " ang inyong mga notebook",
+            "IsPartial": false,
+            "Ms": 69944
+          },
+          {
+            "Text": " sa unang",
+            "IsPartial": false,
+            "Ms": 70924
+          },
+          {
+            "Text": " pahina.",
+            "IsPartial": false,
+            "Ms": 72178
+          },
+          {
+            "Text": " Salamat",
+            "IsPartial": false,
+            "Ms": 73180
+          },
+          {
+            "Text": " sa pakikinig.",
+            "IsPartial": false,
+            "Ms": 74417
+          },
+          {
+            "Text": " Magpapatuloy",
+            "IsPartial": false,
+            "Ms": 75685
+          },
+          {
+            "Text": " tayo sa susunod",
+            "IsPartial": false,
+            "Ms": 76927
+          },
+          {
+            "Text": " na linggo.",
+            "IsPartial": false,
+            "Ms": 78017
+          },
+          {
+            "Text": " Tandaan",
+            "IsPartial": false,
+            "Ms": 78930
+          },
+          {
+            "Text": " na magsalita",
+            "IsPartial": false,
+            "Ms": 80187
+          },
+          {
+            "Text": " nang dahan-dahan",
+            "IsPartial": false,
+            "Ms": 81183
+          },
+          {
+            "Text": " at malinaw at",
+            "IsPartial": false,
+            "Ms": 82432
+          },
+          {
+            "Text": " makinig nang mabuti",
+            "IsPartial": false,
+            "Ms": 83452
+          },
+          {
+            "Text": " sa isa\u0027t isa.",
+            "IsPartial": false,
+            "Ms": 84448
+          },
+          {
+            "Text": " Magsisimula",
+            "IsPartial": false,
+            "Ms": 85678
+          },
+          {
+            "Text": " tayo sa mga",
+            "IsPartial": false,
+            "Ms": 86676
+          },
+          {
+            "Text": " numero 1 hanggang",
+            "IsPartial": false,
+            "Ms": 87688
+          },
+          {
+            "Text": " 10, pagkatapos",
+            "IsPartial": false,
+            "Ms": 88923
+          },
+          {
+            "Text": " ay lilipat sa",
+            "IsPartial": false,
+            "Ms": 89933
+          },
+          {
+            "Text": " mga araw ng linggo.",
+            "IsPartial": false,
+            "Ms": 90934
+          },
+          {
+            "Text": " Magaling.",
+            "IsPartial": false,
+            "Ms": 92174
+          },
+          {
+            "Text": " Magandang trabaho",
+            "IsPartial": false,
+            "Ms": 93182
+          },
+          {
+            "Text": " sa inyong lahat.",
+            "IsPartial": false,
+            "Ms": 94179
+          },
+          {
+            "Text": " Iyon ang katapusan",
+            "IsPartial": false,
+            "Ms": 95424
+          },
+          {
+            "Text": " ng sesyon ng pagsasanay",
+            "IsPartial": false,
+            "Ms": 96419
+          },
+          {
+            "Text": " ngayon.",
+            "IsPartial": false,
+            "Ms": 97673
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 729,
+          "GeminiAudioFrames": 381,
+          "ServerContentFramesWithAudio": 381,
+          "GeminiAudioBytes": 4572000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 87,
+          "GeminiOutputTranscription": " ngayon.",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 71,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
+      },
+      "OutputSequenceEquals": false,
+      "FinalTextsMatch": false,
+      "VariantAHasOutput": true,
+      "FinalSequenceEquals": false,
+      "Errors": []
+    }
+  ],
+  "Errors": [],
+  "AudioFramesSentA": 882,
+  "AudioFramesSentB": 882,
+  "AudioBytesSentA": 2820708,
+  "AudioBytesSentB": 2820708,
+  "BothVariantsProven": true,
+  "AllSequencesMatch": false,
+  "AllFinalTextsMatch": false,
+  "ApiKeyLeakageDetected": false
+}

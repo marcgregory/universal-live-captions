@@ -152,6 +152,88 @@ content side; the Round 7 work was the missing **control-plane** union case.
   no API-key leakage (verified by `CheckForApiKeyLeakage` substring scan over every output
   field).
 
+## Provenance test — Gemini-only chain proof (2026-08-09)
+
+`AuthOk` + `OutputTranscriptionObserved` alone do not prove **Gemini** generated the Filipino text —
+the spike needed to rule out a Whisper→Argos path. The provenance test (spike/diagnostics layer
+only; the frozen production channel/protocol/engine A1–A6 are untouched) wraps the real channel in a
+`ProvenanceObservingChannel` decorator that watches every raw server frame as it passes through
+`ReceiveTextAsync` and records ONLY structural metadata — never audio bytes or payload contents:
+
+- Frame-kind counts: `serverContent` (with `modelTurn` / `parts` / `inlineData` / `outputTranscription`
+  / `partial` / `turnComplete`), `setupComplete`, `goAway`, `sessionResumptionUpdate`, `error`,
+  unknown (structural fingerprint only), malformed.
+- Generated-audio evidence: number of `inlineData` audio parts (`GeminiAudioFrames`), decoded byte
+  count (`GeminiAudioBytes`, base64-length math — no allocation), and distinct MIME types.
+- The `outputTranscription.text` side-channel value (`GeminiOutputTranscription`).
+- `ArgosCalls = 0` / `ArgosOutput = NONE` pinned for every utterance — this runner has NO Argos
+  process, NO Whisper STT, and NO text leg. The chain is provably:
+
+  ```text
+  English WAV
+      ↓
+  Gemini WebSocket
+      ↓
+  Gemini serverContent
+      ↓
+  Gemini generated audio (inlineData)
+      ↓
+  Gemini outputAudioTranscription
+      ↓
+  "FinalText"
+  ```
+
+  and not `English WAV → Whisper → Argos → "FinalText"`.
+
+Per-utterance `ProvenanceVerified` requires `GeminiAudioFrames > 0` AND a non-empty
+`GeminiOutputTranscription` AND `ArgosCalls == 0`; `FinalTextMatchesOutputTranscription` asserts the
+engine-published final equals the raw side-channel text. The spike exits **71** when provenance is
+not verified (existing codes: 70 = API-key leak, 0 = clean). 11 deterministic
+`ProvenanceObservingChannelTests` pin the structural rules with hand-crafted frames (no API key, no
+network).
+
+Status: implementation complete, deterministic suite green (**526/526**, Release 0 warnings/0 errors,
+`dotnet format` clean). **The real-wire provenance run is the next gate** — with a fresh API key,
+`dotnet run --project tools/GeminiDirectWireSpike` must return Provenance PASS (audio frames > 0 +
+outputTranscription text present + ArgosCalls 0) before we can assert Gemini *itself* produced a
+specific output (e.g. `chat sa BT`) rather than the Argos path. Once proven, any remaining quality
+complaint is a Gemini-model quality issue to compare against the standalone Gemini experiment — not a
+routing doubt.
+
+## Real-wire provenance + A/B gate — PASS (2026-08-09)
+
+The spike now resolves the API key from **Windows Credential Manager** (`UniversalCaptions:GeminiApiKey`,
+the ADR-0009 / task #24 target) via its own `CredReadW` P/Invoke — spike layer only, the frozen
+production channel/protocol/engine never change. The legacy `UC_GEMINI_API_KEY` env var remains only
+as an explicit fallback; nothing logs, echoes, or writes the key.
+
+**Direct-wire provenance run — PASS.** 3-utterance corpus (real English WAVs, 10 s cap) against
+`models/gemini-3.5-live-translate-preview` → `fil`:
+
+- authentication: PASS, setupComplete PASS, outputTranscription PASS, turnComplete PASS.
+- **provenance: PASS** — `TotalGeminiAudioFrames = 118`, `TotalGeminiAudioBytes = 1416000`,
+  `ArgosCalls = 0`, `ArgosOutput = NONE` (no Whisper, no Argos, no text leg in this runner).
+- `ProvenanceVerified = true`; every engine final equals Gemini's `outputAudioTranscription`
+  side-channel text (`AllFinalTextsMatchOutputTranscription = true`).
+- api-key leakage: none; exit code 0.
+
+**A/B comparison — `inputAudioTranscription` does NOT matter.** The same corpus, `--ab` mode:
+variant A = frozen production setup frame (no `inputAudioTranscription`), variant B = the same frame
+plus the top-level `inputAudioTranscription` field the old benchmark client sent. Real wire result
+(2026-08-09, same key/model/corpus):
+
+- `BothVariantsProven = true` (variant B also carries Gemini audio + `outputAudioTranscription`).
+- **`AllSequencesMatch = true` + `AllFinalTextsMatch = true`** across all 3 utterances — the two
+  variant output streams are identical (same partials, same finals: `Ang bangkang birch`,
+  `Kamusta at maligayang`, …). The `WebSocketException` close-handshake entries are benign teardown
+  noise (the server closes after the last output; finals/provenance still proven).
+- API-key leakage: none; exit 0.
+
+**Decision: the top-level `inputAudioTranscription` wire variable is confirmed irrelevant — no
+production code change is warranted.** The frozen A1–A6 setup frame (variant A) is the correct,
+validated production path; both variants are provenance-clean Gemini direct-wire. Evidence:
+`artifacts/spike-result/spike-result.json` + `ab-result.json` (2026-08-09).
+
 ## Next step
 
 The A1–A6 implementation is real-wire-validated and frozen. The remaining v0.5.30 acceptance
@@ -161,5 +243,7 @@ work is **NOT** wire-protocol work; it is the production-path / clean-VM accepta
    Settings flow that does not require pasting the key into the App UI.
 2. Promote the `GeminiLiveTranslateEngine` from spike-only to a user-toggleable translation
    engine in the App (Settings → Translation → Provider = Argos | Gemini).
-3. Clean-VM install the v0.5.30 installer, exercise Start/Stop + toggle + Settings, capture
+3. Re-run the direct-wire spike with a fresh API key and confirm the **provenance gate** (PASS) plus
+   the existing A1–A6 gates.
+4. Clean-VM install the v0.5.30 installer, exercise Start/Stop + toggle + Settings, capture
    evidence, ship.

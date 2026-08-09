@@ -1,0 +1,549 @@
+{
+  "StartedAtUtc": "2026-08-09T04:33:25.6646617Z",
+  "FinishedAtUtc": "2026-08-09T04:34:44.4702479Z",
+  "KeyFingerprint": "AQ.Ab8RN",
+  "Model": "models/gemini-3.5-live-translate-preview",
+  "TargetLanguage": "tl",
+  "Utterances": [
+    {
+      "Index": 1,
+      "File": "OSR_us_000_0010_8k.wav",
+      "SampleRate": 8000,
+      "DurationMs": 33623,
+      "AudioBytes": 320000,
+      "ChunkBytes": 3200,
+      "VariantA": {
+        "VariantLabel": "A",
+        "IncludeInputTranscription": false,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 4153,
+        "FirstOutputText": "Ang bangkang birch",
+        "FinalOutputMs": 11607,
+        "FinalText": " lang malaman ang lalim",
+        "Outputs": [
+          {
+            "Text": "Ang bangkang birch",
+            "IsPartial": false,
+            "Ms": 4153
+          },
+          {
+            "Text": " ay dumausdos sa makinis",
+            "IsPartial": false,
+            "Ms": 4850
+          },
+          {
+            "Text": " na tabla.",
+            "IsPartial": false,
+            "Ms": 5858
+          },
+          {
+            "Text": " Idikit ang",
+            "IsPartial": false,
+            "Ms": 7107
+          },
+          {
+            "Text": " papel sa madilim",
+            "IsPartial": false,
+            "Ms": 8111
+          },
+          {
+            "Text": " na asul na background.",
+            "IsPartial": false,
+            "Ms": 9355
+          },
+          {
+            "Text": " Madali",
+            "IsPartial": false,
+            "Ms": 10352
+          },
+          {
+            "Text": " lang malaman ang lalim",
+            "IsPartial": false,
+            "Ms": 11607
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 70,
+          "GeminiAudioFrames": 38,
+          "ServerContentFramesWithAudio": 38,
+          "GeminiAudioBytes": 456000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " lang malaman ang lalim",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 7,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
+      },
+      "VariantB": {
+        "VariantLabel": "B",
+        "IncludeInputTranscription": true,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 4138,
+        "FirstOutputText": "Ang bangkang birch",
+        "FinalOutputMs": 11333,
+        "FinalText": " lang malaman ang lalim",
+        "Outputs": [
+          {
+            "Text": "Ang bangkang birch",
+            "IsPartial": false,
+            "Ms": 4138
+          },
+          {
+            "Text": " ay dumausdos sa makinis",
+            "IsPartial": false,
+            "Ms": 4833
+          },
+          {
+            "Text": " na tabla.",
+            "IsPartial": false,
+            "Ms": 5826
+          },
+          {
+            "Text": " Idikit ang",
+            "IsPartial": false,
+            "Ms": 6824
+          },
+          {
+            "Text": " papel sa madilim",
+            "IsPartial": false,
+            "Ms": 8085
+          },
+          {
+            "Text": " na asul na background.",
+            "IsPartial": false,
+            "Ms": 9088
+          },
+          {
+            "Text": " Madali",
+            "IsPartial": false,
+            "Ms": 10078
+          },
+          {
+            "Text": " lang malaman ang lalim",
+            "IsPartial": false,
+            "Ms": 11333
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 70,
+          "GeminiAudioFrames": 38,
+          "ServerContentFramesWithAudio": 38,
+          "GeminiAudioBytes": 456000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " lang malaman ang lalim",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 6,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
+      },
+      "OutputSequenceEquals": true,
+      "FinalTextsMatch": true,
+      "VariantAHasOutput": true,
+      "FinalSequenceEquals": true,
+      "Errors": []
+    },
+    {
+      "Index": 2,
+      "File": "english_practice_40s.wav",
+      "SampleRate": 22050,
+      "DurationMs": 26420,
+      "AudioBytes": 320000,
+      "ChunkBytes": 3200,
+      "VariantA": {
+        "VariantLabel": "A",
+        "IncludeInputTranscription": false,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 3744,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 10958,
+        "FinalText": " Ano",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3744
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4571
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5448
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6462
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7478
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8709
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 9730
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 10958
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 71,
+          "GeminiAudioFrames": 39,
+          "ServerContentFramesWithAudio": 39,
+          "GeminiAudioBytes": 468000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " Ano",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 6,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
+      },
+      "VariantB": {
+        "VariantLabel": "B",
+        "IncludeInputTranscription": true,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 3698,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 10899,
+        "FinalText": " Ano",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3698
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4403
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5403
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6655
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7657
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8897
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 9910
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 10899
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 72,
+          "GeminiAudioFrames": 40,
+          "ServerContentFramesWithAudio": 40,
+          "GeminiAudioBytes": 480000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " Ano",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 6,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": [
+          "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+        ]
+      },
+      "OutputSequenceEquals": true,
+      "FinalTextsMatch": true,
+      "VariantAHasOutput": true,
+      "FinalSequenceEquals": true,
+      "Errors": []
+    },
+    {
+      "Index": 3,
+      "File": "english_sustained_90s_16k.wav",
+      "SampleRate": 16000,
+      "DurationMs": 88147,
+      "AudioBytes": 320000,
+      "ChunkBytes": 3200,
+      "VariantA": {
+        "VariantLabel": "A",
+        "IncludeInputTranscription": false,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 3619,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 10822,
+        "FinalText": " Ano",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3619
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4322
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5567
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6573
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7566
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8815
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 9823
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 10822
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 72,
+          "GeminiAudioFrames": 40,
+          "ServerContentFramesWithAudio": 40,
+          "GeminiAudioBytes": 480000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " Ano",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 6,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": [
+          "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+        ]
+      },
+      "VariantB": {
+        "VariantLabel": "B",
+        "IncludeInputTranscription": true,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 3643,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 10841,
+        "FinalText": " Ano",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3643
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4336
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5351
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6594
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7600
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8589
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 9846
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 10841
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 72,
+          "GeminiAudioFrames": 40,
+          "ServerContentFramesWithAudio": 40,
+          "GeminiAudioBytes": 480000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " Ano",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 6,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": [
+          "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
+        ]
+      },
+      "OutputSequenceEquals": true,
+      "FinalTextsMatch": true,
+      "VariantAHasOutput": true,
+      "FinalSequenceEquals": true,
+      "Errors": []
+    }
+  ],
+  "Errors": [],
+  "AudioFramesSentA": 300,
+  "AudioFramesSentB": 300,
+  "AudioBytesSentA": 960000,
+  "AudioBytesSentB": 960000,
+  "BothVariantsProven": true,
+  "AllSequencesMatch": true,
+  "AllFinalTextsMatch": true,
+  "ApiKeyLeakageDetected": false
+}
