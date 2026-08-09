@@ -4,7 +4,6 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Channels;
-using NAudio.Wave;
 using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Benchmarks.Translation;
 using UniversalCaptions.Core.Audio;
@@ -940,80 +939,10 @@ internal static class LiveTranslationBenchmark
 
     private static (float[] Samples, byte[] Pcm16, double Seconds) LoadWav(string path)
     {
-        using var reader = new WaveFileReader(path);
-        var format = reader.WaveFormat;
-        if (format.BitsPerSample != 16)
-        {
-            throw new InvalidOperationException($"Expected 16-bit PCM but found {format.BitsPerSample}-bit ({format.Encoding}).");
-        }
-
-        var raw = new byte[reader.Length];
-        int read = reader.Read(raw, 0, raw.Length);
-        var pcm = new short[read / 2];
-        Buffer.BlockCopy(raw, 0, pcm, 0, read);
-
-        float[] mono;
-        if (format.Channels == 1)
-        {
-            mono = new float[pcm.Length];
-            for (int i = 0; i < pcm.Length; i++)
-            {
-                mono[i] = pcm[i] / 32768f;
-            }
-        }
-        else if (format.Channels == 2)
-        {
-            mono = new float[pcm.Length / 2];
-            for (int i = 0; i < mono.Length; i++)
-            {
-                mono[i] = (pcm[i * 2] / 32768f + pcm[(i * 2) + 1] / 32768f) * 0.5f;
-            }
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported channel count {format.Channels}.");
-        }
-
-        if (format.SampleRate == 8000)
-        {
-            mono = UpsampleLinear(mono, factor: 2);
-        }
-        else if (format.SampleRate != SampleRate)
-        {
-            throw new InvalidOperationException($"Unsupported sample rate {format.SampleRate} Hz (expected 8000 or 16000).");
-        }
-
-        byte[] pcm16 = ConvertToPcm16(mono);
-        return (mono, pcm16, mono.Length / (double)SampleRate);
-    }
-
-    private static byte[] ConvertToPcm16(float[] samples)
-    {
-        var shorts = new short[samples.Length];
-        for (int i = 0; i < samples.Length; i++)
-        {
-            float v = Math.Clamp(samples[i], -1f, 1f);
-            shorts[i] = (short)(v * 32767f);
-        }
-
-        var bytes = new byte[shorts.Length * 2];
-        Buffer.BlockCopy(shorts, 0, bytes, 0, bytes.Length);
-        return bytes;
-    }
-
-    private static float[] UpsampleLinear(float[] input, int factor)
-    {
-        var output = new float[(input.Length - 1) * factor + 1];
-        for (int i = 0; i < input.Length - 1; i++)
-        {
-            for (int k = 0; k < factor; k++)
-            {
-                output[(i * factor) + k] = input[i] + (input[i + 1] - input[i]) * (k / (float)factor);
-            }
-        }
-
-        output[^1] = input[^1];
-        return output;
+        // ADR-0010: every consumer of canonical 16 kHz mono float audio goes through the
+        // CanonicalAudioBoundary — no benchmark-local resampling or down-mixing.
+        CanonicalAudio audio = CanonicalAudioBoundary.FromWav(path);
+        return (audio.MonoSamples, audio.Pcm16Le, audio.Seconds);
     }
 
     private static int RepeatedBigrams(string text)

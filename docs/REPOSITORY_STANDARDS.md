@@ -76,6 +76,20 @@ tests/
 | `UniversalCaptions.Benchmarks` | Core, Speech, Translation | Audio, Captions, App |
 | `tests/*` | Their target project (+ Core) | Projects they do not test |
 
+- `UniversalCaptions.Benchmarks` additionally consumes `UniversalCaptions.Audio`'s canonical
+  boundary (`CanonicalAudioBoundary`, ADR-0010); see the ADR-0010 exception below.
+
+**Documented architectural test-dependency exception:** a test project may additionally reference
+a non-target production project when it must exercise an explicitly documented architectural
+boundary or integration contract. Such dependencies must be documented by the relevant ADR and
+listed here. Current exceptions:
+
+- `UniversalCaptions.Speech.Gemini.Tests` → `UniversalCaptions.Audio`: the Gemini spike's
+  `WavLoader` consumes ADR-0010's canonical audio boundary (`CanonicalAudioBoundary`) instead of
+  maintaining spike-local resampling/down-mixing. Rationale: ADR-0010 requires every Gemini/STT
+  consumer to receive canonical mono float32/16 kHz audio from `UniversalCaptions.Audio`; the
+  spike is a consumer and must not re-implement conversion.
+
 - `Core` must remain a pure contract layer: no NAudio, no WPF, no third-party packages.
 - Audio capture implementations depend on NAudio **inside** `UniversalCaptions.Audio` only.
 - No circular project references.

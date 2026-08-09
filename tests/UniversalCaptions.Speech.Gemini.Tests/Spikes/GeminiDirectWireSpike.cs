@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Core.Audio;
 using UniversalCaptions.Core.Translation;
 using UniversalCaptions.Speech.Gemini;
@@ -152,9 +153,10 @@ public static class GeminiDirectWireSpike
             WavData wav = WavLoader.Load(wavPath);
             result.SampleRate = wav.SampleRate;
             result.Channels = wav.Channels;
-            result.DurationMs = (long)(wav.Samples.Length * 1000.0 / wav.SampleRate);
+            result.DurationMs = (long)(wav.Samples.Length * 1000.0 / CanonicalAudioBoundary.CanonicalSampleRate);
 
-            float[] mono16k = WavLoader.ToMono16kFloat(wav);
+            // ADR-0010: WavData.Samples is already canonical mono float32 @ 16 kHz.
+            float[] mono16k = wav.Samples;
             // SPIKE-ONLY: cap audio to first N seconds so a long file doesn't make the spike
             // look stuck. The full audio is still useful for production runs.
             int maxSamples = maxAudioSeconds * 16000;
@@ -455,173 +457,28 @@ public sealed class UtteranceResult
 }
 
 /// <summary>
-/// Minimal WAV reader/decoder for the spike. Supports PCM16 LE (canonical) and PCM32 LE float.
-/// Resamples to 16 kHz mono float32 for the engine.
+/// SPIKE-ONLY WAV access that delegates all decoding/normalization to the ADR-0010 canonical
+/// boundary (<see cref="CanonicalAudioBoundary"/>). The spike holds no resampling, down-mix, or
+/// WAV-decoding logic of its own; it consumes the canonical mono float32/16 kHz representation.
 /// </summary>
 internal static class WavLoader
 {
+    /// <summary>
+    /// Loads a WAV and returns its canonical representation described by <see cref="WavData"/>.
+    /// </summary>
     public static WavData Load(string path)
     {
-        using var fs = File.OpenRead(path);
-        using var br = new BinaryReader(fs);
-
-        // RIFF header
-        var riff = new byte[4];
-        if (br.Read(riff, 0, 4) != 4
-            || riff[0] != (byte)'R' || riff[1] != (byte)'I' || riff[2] != (byte)'F' || riff[3] != (byte)'F')
-        {
-            throw new InvalidDataException("Not a RIFF/WAV file.");
-        }
-
-        br.ReadInt32(); // chunk size
-        var wave = new byte[4];
-        if (br.Read(wave, 0, 4) != 4
-            || wave[0] != (byte)'W' || wave[1] != (byte)'A' || wave[2] != (byte)'V' || wave[3] != (byte)'E')
-        {
-            throw new InvalidDataException("Not a WAVE file.");
-        }
-
-        int sampleRate = 0;
-        int channels = 0;
-        int bitsPerSample = 0;
-        byte[]? data = null;
-
-        while (true)
-        {
-            var chunkId = new byte[4];
-            int read = br.Read(chunkId, 0, 4);
-            if (read < 4)
-            {
-                break;
-            }
-
-            int chunkSize = br.ReadInt32();
-
-            if (chunkId[0] == (byte)'f' && chunkId[1] == (byte)'m' && chunkId[2] == (byte)'t' && chunkId[3] == (byte)' ')
-            {
-                short audioFormat = br.ReadInt16();
-                channels = br.ReadInt16();
-                sampleRate = br.ReadInt32();
-                br.ReadInt32(); // byte rate
-                br.ReadInt16(); // block align
-                bitsPerSample = br.ReadInt16();
-                int remaining = chunkSize - 16;
-                if (remaining > 0)
-                {
-                    br.ReadBytes(remaining);
-                }
-
-                if (audioFormat != 1 && audioFormat != 3)
-                {
-                    throw new InvalidDataException($"Unsupported WAV audio format: {audioFormat} (only PCM=1 and FLOAT=3 are supported).");
-                }
-            }
-            else if (chunkId[0] == (byte)'d' && chunkId[1] == (byte)'a' && chunkId[2] == (byte)'t' && chunkId[3] == (byte)'a')
-            {
-                data = br.ReadBytes(chunkSize);
-            }
-            else
-            {
-                br.ReadBytes(chunkSize);
-            }
-
-            if (chunkSize % 2 == 1)
-            {
-                br.ReadByte(); // pad byte
-            }
-
-            if (data != null && sampleRate > 0)
-            {
-                break;
-            }
-        }
-
-        if (data == null)
-        {
-            throw new InvalidDataException("WAV file contains no data chunk.");
-        }
-
-        float[] samples = DecodeSamples(data, channels, bitsPerSample);
-        return new WavData(sampleRate, channels, bitsPerSample, samples);
-    }
-
-    private static float[] DecodeSamples(byte[] data, int channels, int bitsPerSample)
-    {
-        if (bitsPerSample == 16)
-        {
-            int count = data.Length / sizeof(short);
-            var result = new float[count];
-            for (int i = 0; i < count; i++)
-            {
-                short s = (short)(data[2 * i] | (data[(2 * i) + 1] << 8));
-                result[i] = s / (float)short.MaxValue;
-            }
-
-            return result;
-        }
-
-        if (bitsPerSample == 32)
-        {
-            int count = data.Length / sizeof(float);
-            var result = new float[count];
-            Buffer.BlockCopy(data, 0, result, 0, data.Length);
-            return result;
-        }
-
-        throw new InvalidDataException($"Unsupported bitsPerSample: {bitsPerSample} (only 16 and 32 are supported).");
-    }
-
-    /// <summary>
-    /// Converts loaded WAV samples to 16 kHz mono float32 (the engine's input format). Naive
-    /// nearest-neighbor resample is acceptable for the spike; the production audio path uses a
-    /// proper resampler.
-    /// </summary>
-    public static float[] ToMono16kFloat(WavData wav)
-    {
-        // Step 1: downmix to mono by averaging channels.
-        float[] mono;
-        if (wav.Channels == 1)
-        {
-            mono = wav.Samples;
-        }
-        else
-        {
-            int frameCount = wav.Samples.Length / wav.Channels;
-            mono = new float[frameCount];
-            for (int f = 0; f < frameCount; f++)
-            {
-                float sum = 0f;
-                for (int c = 0; c < wav.Channels; c++)
-                {
-                    sum += wav.Samples[(f * wav.Channels) + c];
-                }
-
-                mono[f] = sum / wav.Channels;
-            }
-        }
-
-        // Step 2: resample to 16 kHz (nearest-neighbor).
-        if (wav.SampleRate == 16000)
-        {
-            return mono;
-        }
-
-        double ratio = 16000.0 / wav.SampleRate;
-        int newLen = (int)(mono.Length * ratio);
-        var resampled = new float[newLen];
-        for (int i = 0; i < newLen; i++)
-        {
-            int src = (int)(i / ratio);
-            if (src >= mono.Length)
-            {
-                src = mono.Length - 1;
-            }
-
-            resampled[i] = mono[src];
-        }
-
-        return resampled;
+        CanonicalAudio audio = CanonicalAudioBoundary.FromWav(path);
+        return new WavData(
+            audio.SourceSampleRate,
+            audio.SourceChannels,
+            BitsPerSample: 16,
+            audio.MonoSamples);
     }
 }
 
+/// <summary>
+/// Canonical WAV payload for the spike: <see cref="Samples"/> is already canonical mono
+/// float32 at 16 kHz (ADR-0010). SampleRate/Channels/BitsPerSample describe the SOURCE file.
+/// </summary>
 public sealed record WavData(int SampleRate, int Channels, int BitsPerSample, float[] Samples);

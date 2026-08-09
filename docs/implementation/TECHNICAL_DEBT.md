@@ -1,6 +1,6 @@
 # Universal Live Captions Technical Debt
 
-Last updated: 2026-08-05
+Last updated: 2026-08-09
 
 ## Metadata
 
@@ -33,3 +33,4 @@ Last updated: 2026-08-05
 | TD-014 | `LineProtocolArgosProcess.Dispose()` does not acquire `_gate`, so a dispose racing an in-flight `WaitAsync`/`ExchangeAsync` can throw `ObjectDisposedException` (unwrapped) or release a disposed semaphore. Fix risk: engine typically disposes at shutdown, but a Slice 4 service could dispose while a translation is in flight | Low | Fresh-context review (Slice 3 close-out) | Hard-to-reproduce shutdown crash | Slice 4 | Engineering | Open |
 | TD-015 | `LineProtocolArgosProcess` accumulates stderr unboundedly in a `StringBuilder` for diagnostics; a chatty child process could grow memory without limit | Low | Fresh-context review (Slice 3 close-out); stderr is best-effort diagnostics only | Memory growth on a verbose child | Slice 4 | Engineering | Open |
 | TD-016 | `LineProtocolFasterWhisperProcess` had no direct protocol tests — the two Slice 9 wire bugs (magic byte order `0x46574355`; 16→20-byte segment header) were caught only by the real-App run because the unit-test fake seam (`IFasterWhisperProcess`) did not exercise the wire format | High | Slice 9 close-out finding | A wire-protocol regression could slip through unit gates again | TD sprint (2026-08-04) | Engineering | **Closed** |
+| TD-017 | Three benchmark/TOOL audio-loading paths still implement their own normalization instead of `CanonicalAudioBoundary` (ADR-0010): `CaptionPipelineBenchmark.LoadWav`, `NativeStreamingBenchmark` (`WaveFileReader` + linear upsample + 8k/16k-only rejection), and `Program.cs` (same). They are the remaining ADR-0010 consumers that bypass the canonical gate, so a new rate/channel/bit format could diverge again (the exact problem ADR-0010 exists to prevent) | Medium | ADR-0010 close-out (2026-08-09): the ADR mandated `LiveTranslationBenchmark` + Gemini spike only; these three stayed in place | Non-comparable normalization across harnesses; future format mutations hit three bespoke paths instead of one boundary | Phase 2 / next feature sprint | Engineering | Open |
