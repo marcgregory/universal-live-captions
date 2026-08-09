@@ -9,7 +9,7 @@
 
 #define MyAppName "Universal Captions"
 #ifndef AppVersion
-  #define AppVersion "0.5.25"
+  #define AppVersion "0.5.31"
 #endif
 #define MyAppPublisher "UniversalCaptions"
 #define MyAppExeName "UniversalCaptions.App.exe"

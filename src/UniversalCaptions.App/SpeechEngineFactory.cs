@@ -118,29 +118,14 @@ public static class SpeechEngineFactory
     }
 
     /// <summary>
-    /// Resolves the Python interpreter hosting faster-whisper: the <c>UC_FW_PYTHON</c> environment
-    /// variable when set, otherwise a <c>fwv</c> venv under <c>TEMP</c> (the same auto-discovery
-    /// pattern as Argos), otherwise the system <c>python</c>.
+    /// Resolves the Python interpreter hosting faster-whisper. Delegates to
+    /// <see cref="InstallPathResolver.ResolveFasterWhisperPython"/> so the resolution chain
+    /// (env var → bundled install sibling → legacy <c>%TEMP%\fwv</c> venv → system
+    /// <c>python</c>) is shared with the Argos resolver in <c>App.xaml.cs</c>.
     /// </summary>
     private static string ResolveFasterWhisperPython()
     {
-        string? configured = Environment.GetEnvironmentVariable("UC_FW_PYTHON");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured;
-        }
-
-        var tempPath = Environment.GetEnvironmentVariable("TEMP");
-        if (!string.IsNullOrWhiteSpace(tempPath))
-        {
-            var autoPython = Path.Combine(tempPath, "fwv", "Scripts", "python.exe");
-            if (File.Exists(autoPython))
-            {
-                return autoPython;
-            }
-        }
-
-        return "python";
+        return InstallPathResolver.ResolveFasterWhisperPython();
     }
 
     /// <summary>

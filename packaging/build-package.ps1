@@ -1,13 +1,23 @@
 ﻿param(
     [string]$Stage = "$env:TEMP\opencode\uc_pkg\Stage",          # staging root (built fresh each run)
-    [string]$Version = "0.5.25",
+    [string]$Version = "0.5.31",
     [switch]$SkipPublish,                                        # reuse existing Stage\UniversalCaptions
-    [switch]$SkipSetup                                           # build staging only, skip ISCC
+    [switch]$SkipSetup,                                          # build staging only, skip ISCC
+    [switch]$SkipZip                                             # build staging + (optionally) setup, skip the portable ZIP
 )
 # UniversalCaptions offline installer packaging build (reproducible).
 # Builds: self-contained win-x64 app publish -> trimmed -> merged/pruned Python runtime -> bundled
-# model + Argos packages -> launcher -> Inno Setup .exe. Evidence of sizes/closure is written to the
-# staging root as manifest.txt. Dev venvs are never modified.
+# model + Argos packages -> launcher -> Inno Setup .exe + portable ZIP. Evidence of sizes/closure
+# is written to the staging root as manifest.txt. Dev venvs are never modified.
+#
+# Distribution model (v0.5.31+): both artifacts ship the same staged closure, so the runtime and
+# model behavior are identical regardless of how the user installs.
+#   - UniversalCaptions-Setup-{Version}.exe       (recommended, end users)
+#   - UniversalCaptions-{Version}-win-x64-full.zip (portable / advanced)
+#
+# The portable ZIP roots at $Stage so launcher.cmd, py/, models/, argos-packages/ sit as siblings
+# at the top of the archive — launcher.cmd uses %~dp0 to locate them, so extraction is the
+# install.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -16,21 +26,21 @@ $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 function Get-Mb($path) { [Math]::Round((Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB, 1) }
 
 if (-not $SkipPublish) {
-    Write-Host "=== 1/6 publish self-contained win-x64 ==="
+    Write-Host "=== 1/7 publish self-contained win-x64 ==="
     if (Test-Path $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $Stage | Out-Null
     dotnet publish "$root\src\UniversalCaptions.App\UniversalCaptions.App.csproj" -c Release -r win-x64 `
         --self-contained true -o "$Stage\UniversalCaptions" | Out-Null
 }
 
-Write-Host "=== 2/6 trim publish (win-x64 only, en satellites) ==="
+Write-Host "=== 2/7 trim publish (win-x64 only, en satellites) ==="
 $app = "$Stage\UniversalCaptions"
 @('linux-arm','linux-arm64','linux-x64','macos-arm64','macos-x64','win-arm64','win-x86') |
     ForEach-Object { $p = "$app\runtimes\$_"; if (Test-Path $p) { Remove-Item -LiteralPath $p -Recurse -Force } }
 @('cs','de','es','fr','it','ja','ko','pl','pt-BR','ru','tr','zh-Hans','zh-Hant') |
     ForEach-Object { $p = "$app\$_"; if (Test-Path $p) { Remove-Item -LiteralPath $p -Recurse -Force } }
 
-Write-Host "=== 3/6 build packaging Python runtime (merged + pruned copy of dev venvs) ==="
+Write-Host "=== 3/7 build packaging Python runtime (merged + pruned copy of dev venvs) ==="
 $uvPython = "$env:APPDATA\uv\python\cpython-3.11-windows-x86_64-none"
 $pyStage = "$Stage\py"
 robocopy $uvPython $pyStage /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
@@ -56,7 +66,7 @@ Copy-Item -LiteralPath "$sp\..\..\torch-2.13.0.dist-info\licenses\LICENSE" -Dest
 Get-ChildItem $pyStage -Directory -Recurse -Filter "__pycache__" -ErrorAction SilentlyContinue |
     ForEach-Object { cmd /c rd /s /q "\\?\$($_.FullName)" 2>&1 | Out-Null }
 
-Write-Host "=== 4/6 stage model + argos packages ==="
+Write-Host "=== 4/7 stage model + argos packages ==="
 New-Item -ItemType Directory -Force -Path "$Stage\models", "$Stage\argos-packages" | Out-Null
 $hfSnapshot = Get-ChildItem "$env:USERPROFILE\.cache\huggingface\hub\models--Systran--faster-whisper-small\snapshots" -Directory | Select-Object -First 1
 New-Item -ItemType Directory -Force -Path "$Stage\models\faster-whisper-small" | Out-Null
@@ -65,7 +75,7 @@ Copy-Item "$root\artifacts\models\ggml-base.bin" "$Stage\models\ggml-base.bin" -
 Copy-Item "$env:USERPROFILE\.local\share\argos-translate\packages\translate-en_tl-1_9" "$Stage\argos-packages" -Recurse -Force
 Copy-Item "$PSScriptRoot\launcher.cmd" "$Stage\launcher.cmd" -Force
 
-Write-Host "=== 5/6 write manifest ==="
+Write-Host "=== 5/7 write manifest ==="
 $manifest = @"
 UniversalCaptions offline bundle manifest (v$Version, $(Get-Date -Format 'yyyy-MM-dd HH:mm'))
 App (self-contained win-x64, trimmed): $(Get-Mb $app) MB
@@ -83,8 +93,25 @@ Dependency closure notes:
 "@
 $manifest | Set-Content -LiteralPath "$Stage\manifest.txt" -Encoding UTF8
 
-if ($SkipSetup) { Write-Host "=== staging done (skip setup). manifest -> $Stage\manifest.txt ==="; return }
+if ($SkipSetup -and $SkipZip) { Write-Host "=== staging done (skip setup + zip). manifest -> $Stage\manifest.txt ==="; return }
 
-Write-Host "=== 6/6 compile Inno Setup ==="
+Write-Host "=== 6/7 write portable ZIP ==="
+if ($SkipZip) {
+    Write-Host "    (skipped)"
+} else {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zipOut = "$PSScriptRoot\output\UniversalCaptions-$Version-win-x64-full.zip"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zipOut) | Out-Null
+    if (Test-Path $zipOut) { Remove-Item -LiteralPath $zipOut -Force }
+    # Zip the staging root directly so launcher.cmd, py/, models/, argos-packages/, and
+    # UniversalCaptions/ are siblings at the top of the archive — launcher.cmd's %~dp0
+    # resolves to the extraction root and finds the bundled runtime/models correctly.
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($Stage, $zipOut, `
+        [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    $zipMb = [Math]::Round((Get-Item $zipOut).Length / 1MB, 1)
+    Write-Host "    -> $zipOut ($zipMb MB)"
+}
+
+Write-Host "=== 7/7 compile Inno Setup ==="
 if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc — install Inno Setup (winget install JRSoftware.InnoSetup --scope user)" }
 & $iscc "/DStageDir=$Stage" "/DAppVersion=$Version" "$PSScriptRoot\UniversalCaptions.iss"

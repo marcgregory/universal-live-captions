@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using UniversalCaptions.App.Controls;
@@ -57,24 +56,14 @@ public partial class App : Application
 
     private static void RegisterServices(IServiceCollection services)
     {
-        var argosOptions = new ArgosTranslationEngineOptions();
-        string? envPython = Environment.GetEnvironmentVariable("UC_ARGOS_PYTHON");
-        if (!string.IsNullOrWhiteSpace(envPython))
+        var argosOptions = new ArgosTranslationEngineOptions
         {
-            argosOptions.PythonExecutablePath = envPython.Trim();
-        }
-        else
-        {
-            var tempPath = Environment.GetEnvironmentVariable("TEMP");
-            if (!string.IsNullOrWhiteSpace(tempPath))
-            {
-                var autoPython = Path.Combine(tempPath, "argosv", "Scripts", "python.exe");
-                if (File.Exists(autoPython))
-                {
-                    argosOptions.PythonExecutablePath = autoPython;
-                }
-            }
-        }
+            // Resolution chain (env var → bundled install sibling → legacy %TEMP%\argosv
+            // venv → system python) is shared with the faster-whisper resolver in
+            // SpeechEngineFactory, so the installed bundle and the portable ZIP work
+            // identically. See InstallPathResolver for details.
+            PythonExecutablePath = InstallPathResolver.ResolveArgosPython(),
+        };
 
         // Single shared Argos engine instance: the concrete type is registered so the control
         // window can trigger the background pre-warm, and the interface key resolves to it so the

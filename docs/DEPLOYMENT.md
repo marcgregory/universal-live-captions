@@ -1,6 +1,6 @@
 # Universal Live Captions Deployment
 
-Last updated: 2026-08-01
+Last updated: 2026-08-10
 
 ## Metadata
 
@@ -46,9 +46,24 @@ None — fully local. The app runs offline; no network endpoints are opened by t
 - Diagnostics: `dotnet run --project src/UniversalCaptions.Diagnostics`
 - Package: `dotnet publish src/UniversalCaptions.App -c Release -r win-x64 --self-contained true`
 
-### Installer Strategy (Future Milestone)
+### Installer Strategy (Active as of v0.5.31)
 
-The MVP ships as a self-contained published folder/executable. A signed installer (MSIX or Inno Setup) and update channel are a post-MVP decision recorded in [ROADMAP.md](implementation/ROADMAP.md) and tracked as a future ADR.
+Starting with v0.5.31, the release ships **two artifacts** built from the **same staged closure** (single `Stage` tree → both outputs):
+
+| Artifact | Audience | How it's built |
+| --- | --- | --- |
+| `UniversalCaptions-Setup-{Version}.exe` | **Recommended** — end users | Inno Setup, per-user, offline install to `%LocalAppData%\UniversalCaptions` |
+| `UniversalCaptions-{Version}-win-x64-full.zip` | Portable / advanced users | Extract anywhere, run `launcher.cmd` |
+
+Both ship the same self-contained win-x64 .NET 8 app, the relocatable Python runtime, the bundled faster-whisper `small` model, the pruned Argos `en→tl` packages, and the launcher. The Setup.exe adds a Start Menu shortcut, optional Desktop shortcut, and a clean uninstall entry; the portable ZIP adds no install steps.
+
+Build with one command:
+
+```powershell
+pwsh packaging/build-package.ps1 -Version 0.5.31
+```
+
+This runs the seven reproducible stages (publish → trim → python runtime → stage models/Argos → manifest → portable ZIP → Inno Setup). See `docs/DEVELOPER_SETUP.md` for switch flags (`-SkipZip`, `-SkipSetup`, `-SkipPublish`). Signing is deferred (D4 in INSTALLER_DISCOVERY: SmartScreen warning for unsigned installers).
 
 ## Database Migrations
 

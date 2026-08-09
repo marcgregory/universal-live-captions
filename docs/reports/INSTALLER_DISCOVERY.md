@@ -133,3 +133,22 @@ staged package. The reproducible `build-package.ps1` path remains an optional fo
 because the final installer was built successfully through the underlying Inno Setup process. The
 next meaningful test before distributing to others is a **truly clean Windows machine** (this machine
 retains dev/runtime state that could mask a missing dependency). No further installer changes.
+
+---
+
+## 10. v0.5.31 follow-up — install-path auto-resolution + readme split + two-artifact distribution (2026-08-10)
+
+UX and artifact-polish pass; the installer, launcher, and staged closure are unchanged from §9. Three additive changes, no behavior regression for existing users.
+
+- **App auto-resolves the bundled Python.** New `src/UniversalCaptions.App/InstallPathResolver.cs` is called from both `SpeechEngineFactory.ResolveFasterWhisperPython` and the Argos wiring in `App.xaml.cs`. The chain is `UC_FW_PYTHON` / `UC_ARGOS_PYTHON` env var (set by the launcher) → `<install>/py/python.exe` (sibling of the app, new in v0.5.31) → legacy `%TEMP%\fwv` / `%TEMP%\argosv` dev venv → system `python`. Net effect: a portable-ZIP user who runs `UniversalCaptions.App.exe` directly (skipping `launcher.cmd`) now resolves the bundled runtime without any env-var setup, and the install is one-step more robust if the launcher ever fails to set its env vars. Dev workflow unchanged — `dotnet run` developers with a pre-staged `%TEMP%\fwv` venv keep working.
+- **User-facing readme split.** `src/UniversalCaptions.App/readme.txt` and the top-level `README.md` no longer instruct end users to create `%TEMP%\fwv` / `%TEMP%\argosv` venvs or set Python/.NET up manually. Both now lead with the 4-step installer flow and a privacy callout. Dev-venv setup, the full env-var table, the `dotnet build/test/run/publish` quickstart, and dev troubleshooting moved to the new `docs/DEVELOPER_SETUP.md`.
+- **Two-artifact distribution.** `packaging/build-package.ps1` now produces both `UniversalCaptions-Setup-{Version}.exe` and `UniversalCaptions-{Version}-win-x64-full.zip` from the same staged tree (new stage 6/7: `System.IO.Compression.ZipFile::CreateFromDirectory` over the staging root — no new tooling). Both artifacts ship identical contents (single closure, single source of truth). `docs/DEPLOYMENT.md` updated with the artifacts table and build command; this section is the discovery follow-up.
+
+### Regression-prevention evidence
+
+- `InstallPathResolverTests` (new file, 7 deterministic tests): env-var wins; install sibling wins over dev venv; dev venv still found when no install sibling; both resolvers share the install sibling; the Argos resolver looks for `%TEMP%\argosv` (not `%TEMP%\fwv`); whitespace env var falls through; system python final fallback. `BaseDirectoryAccessor` test seam is `internal static` (production always reads `AppContext.BaseDirectory`); tests override via `InternalsVisibleTo("UniversalCaptions.App.Tests")`.
+- The pre-v0.5.31 dev-venv step is preserved deliberately so existing `dotnet run` developers see no behavior change.
+
+### Caveat recorded
+
+`bin/Release/net8.0-windows/{win-x64,win-x64/publish}/readme.txt` are stale build-output copies of the new user readme. They regenerate on next `dotnet publish`. They are not hand-edited.
