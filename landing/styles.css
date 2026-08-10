@@ -1029,6 +1029,30 @@ a {
   margin-top: 4px;
 }
 
+.download-alt {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+
+.download-alt a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.download-alt a:hover {
+  text-decoration: underline;
+}
+
+.download-alt code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg-raise);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 .download-meta {
   display: flex;
   flex-wrap: wrap;
