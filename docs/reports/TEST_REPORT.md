@@ -1318,3 +1318,67 @@ Release build 0 warnings / 0 errors.
 **Gates:** full suite **329/329**; Release build 0 warnings / 0 errors; `dotnet format --verify-no-changes`
 clean. Change-impact analysis Entry 9; TD-002 row status updated. Production wiring is complete;
 **real hotplug verification remains pending — TD-002 stays Open until it passes.**
+
+## Path A — Tagalog real-world validation (v0.5.31, 2026-08-10)
+
+**Purpose:** minimal apples-to-apples validation that the v0.5.31 production STT default
+(`fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`) materially outperforms the
+`ggml-base` fallback on real Tagalog audio in the live App, using only the operator recording
+and the existing harness. The earlier WER evidence (~33 % vs ~51.2 % committed WER, Entry 14 /
+Slice 10) is **context** — this run independently measures first-caption latency, first
+engine FINAL, total system CPU, and naturalness of the live overlay output on the same audio.
+
+**Protocol (identical for both legs):**
+
+- Audio: `artifacts/samples/first_meeting_tagalog_90s.wav` (operator Tagalog, 90 s).
+- App: `src/UniversalCaptions.App/bin/Release/net8.0-windows/UniversalCaptions.App.exe` (Release).
+- Settings: `smoke_settings_raw_tl.json` (Tagalog source, translation OFF).
+- Player: VLC `--intf dummy --no-video --volume 256 --play-and-exit` against the default WASAPI
+  loopback device.
+- Harness: `acceptance-tagalog-compare.ps1` (sidecar to `acceptance.ps1`; same UIA sampling
+  loop, CSV / `_captions.txt` / log format; **does not** reset `UC_STT_ENGINE` so the engine
+  can be pinned per leg). `-Duration 120 -SampleMs 500 -Warmup 12`.
+- Killed between legs: App, faster-whisper workers, Argos worker, VLC.
+
+**Results:**
+
+| Metric                                         | Production default (`fasterwhisper-native` + partials, threads=4) | `ggml-base` (`UC_STT_ENGINE=ggml-base`) |
+| ---------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------- |
+| Engine confirmed                               | `[FW-DIAG] worker spawned`; 2 python workers (faster-whisper + small int8) | 0 python workers (in-process ggml-base) |
+| First overlay caption                          | **9.80 s**                                                       | **36.24 s**                             |
+| First Whisper Partial (engine T3)              | **5.11 s**                                                       | 16.37 s                                 |
+| First Whisper Final (engine T4)                | **8.23 s**                                                       | 27.99 s                                 |
+| Caption snapshots in 120 s                     | 29                                                               | 40                                      |
+| App CPU system mean                            | 1.3 %                                                            | 205 % (in-process — includes STT)        |
+| STT CPU system mean                            | 32.2 %                                                           | 0 % (in-process)                        |
+| Total system CPU mean (App + STT)              | ~33.5 %                                                          | ~205 %                                  |
+| Clean exit / 0 orphaned workers                | ✅                                                               | ✅                                       |
+| First Tagalog phrase visible                   | `Kumusta?` (T40.3 s)                                             | `Magandang umaga. Good morning.` (T54.2 s) |
+| Natural Tagalog word order produced             | Yes — `Kumusta?`, `Magandang umaga!`, `Anong pangalan mo?`, `Masaya ako makilalaka`, `Kumusta ka?`, `Mabuti naman.` | Partial — heavy phonemic errors |
+| `ako` rendered as                              | `ako` / `ako'ng` (correct)                                       | garbled / `alpangalan ko`               |
+| `Maria` rendered as                            | `Maria` (correct)                                                | `May neymun`, `Maria` (inconsistent)   |
+| `Juan` rendered as                             | `Juan` (correct)                                                 | not yet produced                        |
+| Known `"one"`/`"ako"` residual artifact         | Present — `ang pangalan ko ay one.`                              | Absent in this run; matching mangling (`May neymun`) instead |
+
+**Live overlay evidence (representative):**
+
+- Production default (T86–T108 s): `... || ang pangalan ko ay one. || Masaya ako makilalaka. || My name is Juan. Nice to meet you. || Masayarin ako'ng maakilalaka ONE || Kumusta ka? || Nice to meet you, one. How are you? || Mabuti naman.`
+- ggml-base (T71–T78 s): `... || Maria, alpangalan ko. Ikao. Anong pangalan mo. || May neymun. || May name is Maria and you. What is your name?`
+
+**Decision:** **Retain `fasterwhisper-native` + live partials (threads=4) as the v0.5.31
+production default.** Production default delivers **3.7× faster first overlay caption**,
+**3.4× faster first engine FINAL**, materially cleaner Tagalog naturalness, and **~6× less
+total system CPU** than `ggml-base`. The known `"one"`/`"ako"` residual artifact remains
+documented; this validation does not claim perfect Tagalog accuracy. Live behavior is
+consistent with (not independently re-measuring) the prior ~33 % vs ~51.2 % WER gap.
+
+**Artifacts (untracked, retained locally for forensic comparison):**
+
+- `acceptance_tl_prod.log`, `acceptance_tl_prod.csv`, `acceptance_tl_prod_captions.txt` —
+  Run 1, production default.
+- `acceptance_tl_ggml.log`, `acceptance_tl_ggml.csv`, `acceptance_tl_ggml_captions.txt` —
+  Run 2, `ggml-base`.
+- `acceptance_summary.csv` — appended both rows.
+- `acceptance-tagalog-compare.ps1` — the sidecar harness.
+
+**No changes made to the frozen v0.5.31 release, the production defaults, or the core.**
