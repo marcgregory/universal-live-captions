@@ -15,9 +15,12 @@
 #   - UniversalCaptions-Setup-{Version}.exe       (recommended, end users)
 #   - UniversalCaptions-{Version}-win-x64-full.zip (portable / advanced)
 #
-# The portable ZIP roots at $Stage so launcher.cmd, py/, models/, argos-packages/ sit as siblings
-# at the top of the archive — launcher.cmd uses %~dp0 to locate them, so extraction is the
-# install.
+# Both artifacts install to a FLAT root layout (UniversalCaptions.App.exe + py/ + models/ +
+# argos-packages/ + launcher.cmd as siblings). The Inno Setup installer achieves this via its
+# [Files] source map ({#StageDir}\UniversalCaptions\* -> {app}\, {#StageDir}\py\* -> {app}\py\).
+# The portable ZIP builds from a separate zip-stage dir that mirrors this flat layout by copying
+# Stage\UniversalCaptions\* (the app's publish output) to the zip-stage root, then symlinking
+# py/, models/, argos-packages/, launcher.cmd, manifest.txt as siblings.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -95,7 +98,7 @@ $manifest | Set-Content -LiteralPath "$Stage\manifest.txt" -Encoding UTF8
 
 if ($SkipSetup -and $SkipZip) { Write-Host "=== staging done (skip setup + zip). manifest -> $Stage\manifest.txt ==="; return }
 
-Write-Host "=== 6/7 write portable ZIP ==="
+Write-Host "=== 6/7 write portable ZIP (flat root layout) ==="
 if ($SkipZip) {
     Write-Host "    (skipped)"
 } else {
@@ -103,11 +106,42 @@ if ($SkipZip) {
     $zipOut = "$PSScriptRoot\output\UniversalCaptions-$Version-win-x64-full.zip"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zipOut) | Out-Null
     if (Test-Path $zipOut) { Remove-Item -LiteralPath $zipOut -Force }
-    # Zip the staging root directly so launcher.cmd, py/, models/, argos-packages/, and
-    # UniversalCaptions/ are siblings at the top of the archive — launcher.cmd's %~dp0
-    # resolves to the extraction root and finds the bundled runtime/models correctly.
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($Stage, $zipOut, `
+
+    # Build a flat zip-stage dir that mirrors the installer's {app}\ layout. The Stage dir keeps
+    # its UniversalCaptions/ subdir for the ISS source map, but the portable ZIP must place
+    # UniversalCaptions.App.exe at the same level as py/, so launcher.cmd (%~dp0\App.exe) and
+    # InstallPathResolver (AppContext.BaseDirectory\py\python.exe) both resolve correctly.
+    $zipStage = "$env:TEMP\opencode\uc_pkg\ZipStage-$Version"
+    if (Test-Path $zipStage) { Remove-Item -LiteralPath $zipStage -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $zipStage | Out-Null
+
+    # Copy the app's publish output UP to the zip-stage root (was Stage\UniversalCaptions\*).
+    robocopy "$Stage\UniversalCaptions" $zipStage /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+
+    # Copy runtime/model/argos/launcher siblings so the zip-stage root has them as flat siblings.
+    robocopy "$Stage\py" "$zipStage\py" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+    robocopy "$Stage\models" "$zipStage\models" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+    robocopy "$Stage\argos-packages" "$zipStage\argos-packages" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+    Copy-Item "$Stage\launcher.cmd" "$zipStage\launcher.cmd" -Force
+    Copy-Item "$Stage\manifest.txt" "$zipStage\manifest.txt" -Force
+
+    # Layout invariant: App.exe + py/python.exe + launcher.cmd at the zip-stage root, no
+    # UniversalCaptions\ subdir left over.
+    $appExeAtRoot = Test-Path (Join-Path $zipStage 'UniversalCaptions.App.exe')
+    $pyAtRoot     = Test-Path (Join-Path $zipStage 'py\python.exe')
+    $launcherAtRoot = Test-Path (Join-Path $zipStage 'launcher.cmd')
+    $nestedSubdir = Test-Path (Join-Path $zipStage 'UniversalCaptions\UniversalCaptions.App.exe')
+    if (-not ($appExeAtRoot -and $pyAtRoot -and $launcherAtRoot -and -not $nestedSubdir)) {
+        throw "Zip-stage layout invalid: appExe=$appExeAtRoot py=$pyAtRoot launcher=$launcherAtRoot nested=$nestedSubdir"
+    }
+    Write-Host "    zip-stage flat layout OK: App.exe + py/ + launcher.cmd at root"
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($zipStage, $zipOut, `
         [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+    # Cleanup the staging scratch (the artifact is what we ship, not the temp dir).
+    Remove-Item -LiteralPath $zipStage -Recurse -Force
+
     $zipMb = [Math]::Round((Get-Item $zipOut).Length / 1MB, 1)
     Write-Host "    -> $zipOut ($zipMb MB)"
 }
