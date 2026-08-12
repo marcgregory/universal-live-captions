@@ -551,6 +551,20 @@ a {
   gap: 16px;
 }
 
+.trust-note {
+  margin-top: 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.trust-note a {
+  color: var(--accent);
+}
+
 .trust-item {
   display: inline-flex;
   align-items: center;

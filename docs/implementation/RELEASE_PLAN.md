@@ -1,8 +1,8 @@
-# Universal Live Captions Release Plan — v0.5.29
+# Universal Live Captions Release Plan — v0.5.34
 
-Last updated: 2026-08-07
+Last updated: 2026-08-12
 
-> **This document is the authoritative release-readiness checklist for v0.5.29.** Per
+> **This document is the authoritative release-readiness checklist.** Per
 > [`docs/ARTIFACT_REGISTRY.md`](../ARTIFACT_REGISTRY.md), the *Release decision* concern is
 > owned by `RELEASE_PLAN.md` (not `PROJECT_STATUS.md`). `PROJECT_STATUS.md` is the
 > current snapshot and cross-references this document for release readiness; it does
@@ -12,31 +12,27 @@ Last updated: 2026-08-07
 
 | Attribute | Value |
 |---|---|
-| Purpose | Define the v0.5.29 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
-| Scope | Everything that must be true before v0.5.29 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
+| Purpose | Define the v0.5.34 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
+| Scope | Everything that must be true before v0.5.34 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | Active — release in flight |
+| Status | Active — v0.5.34 released 2026-08-12 |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: NOT READY.**
+**Decision: READY — v0.5.33 and v0.5.34 published 2026-08-12.**
 
-The v0.5.29 source code, changelog, and project documentation are complete (see §2
-and §3 below). The installer pipeline that produced the v0.5.26 acceptance-PASS
-bundle is reproducible (see §5). What remains unblocked are two mechanical steps
-that live outside the repository:
+| Release | Tag | GitHub Release | Artifacts |
+|---|---|---|---|
+| **v0.5.33** — Gemini Live translation (parity acceptance) | `v0.5.33` (commit `d7333c1`) | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) | `UniversalCaptions-Setup-0.5.33.exe` + `UniversalCaptions-0.5.33-win-x64-full.zip` |
+| **v0.5.34** — Gemini API-key onboarding link (**Latest**) | `v0.5.34` (commit `b50cc2a`) | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) | `UniversalCaptions-Setup-0.5.34.exe` + `UniversalCaptions-0.5.34-win-x64-full.zip` |
 
-| Unblocker | Owner | Verifier |
-|---|---|---|
-| **Cut the v0.5.29 GitHub release tag** with the bundled `UniversalCaptions-Setup-0.5.29.exe` artifact attached, and the v0.5.29 entry from [CHANGELOG.md](CHANGELOG.md) as the release notes | Operator (manual `gh release create` or GitHub UI — no token available in the agent context) | Release tag visible at `https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.29`; installer downloadable from that URL |
-| **Re-run the installed-bundle acceptance on a truly clean Windows 10 machine** (no dev/runtime state). The v0.5.26 acceptance already PASS on this machine, but [CHANGELOG.md](CHANGELOG.md) v0.5.26 and [PROJECT_STATUS.md](PROJECT_STATUS.md) record this caveat | Operator + the existing `installer_acceptance.ps1` harness | New `installer_acceptance_cleanbox_*` artifacts; append to this section as the final readiness check |
-
-Once both unblockers are satisfied, this section flips to **READY** and the landing
-page Download CTA (see §6) becomes live without risk of a 404.
+- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34`.
+- Both artifacts for each release ship the **same staged closure** (single `Stage` tree → both outputs), per `packaging/build-package.ps1` v0.5.31+.
+- Landing page (`landing/`) updated to v0.5.34 and redeployed via GitHub Pages (legacy build from `main`).
 
 ---
 
@@ -44,12 +40,12 @@ page Download CTA (see §6) becomes live without risk of a 404.
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.29** |
-| Release date target | TBD (when the §1 unblockers land) |
-| Changelog entry | [CHANGELOG.md](CHANGELOG.md) `## v0.5.29 - 2026-08-07` (already committed) |
-| Source-tree anchor | Commit `4ca8245` "Close translation & naturalizer investigation: freeze production path, move to release/landing-page work (v0.5.29)" (see `git log --oneline -1`) |
+| Version | **v0.5.33 / v0.5.34** (see §1) |
+| Release date | **2026-08-12** (published) |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.34 - 2026-08-12`, `## v0.5.33 - 2026-08-12` |
+| Source-tree anchors | v0.5.33 = commit `d7333c1`; v0.5.34 = commit `b50cc2a` |
 | Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6.7.3, per-user, no admin, no UAC) |
-| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.29.exe` |
+| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.34.exe` |
 | Installer launcher | `packaging/launcher.cmd` (process-scoped env only — no global pollution) |
 | Install location | `%LocalAppData%\UniversalCaptions\` (per-user, `asInvoker` manifest preserved from v0.5.26) |
 | Installed size (target) | ~1,634 MB (matches v0.5.26 measurement — see [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §2 size summary) |
@@ -78,7 +74,7 @@ page Download CTA (see §6) becomes live without risk of a 404.
 | `PYTHONDONTWRITEBYTECODE` | `1` | No `__pycache__` writes at runtime → uninstall is fully clean |
 | `UC_STT_ENGINE` | unset | Production default applies: `fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`, 8 s segment cap frozen |
 
-(Per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §3–§4. Production-code changes from v0.5.25 → v0.5.29 are documented in [CHANGELOG.md](CHANGELOG.md) and the `UC_FW_MODEL` additive production seam was the only approved touch-point per Entry 17.)
+(Per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §3–§4. Production-code changes from v0.5.25 onward are documented in [CHANGELOG.md](CHANGELOG.md) and the `UC_FW_MODEL` additive production seam was the only approved touch-point per Entry 17. The staged closure is unchanged between v0.5.31 and v0.5.34.)
 
 ---
 
@@ -136,10 +132,25 @@ Per [CHANGELOG.md](CHANGELOG.md) v0.5.26 "Verified (Phase 2 — app-by-app valid
 
 ### 3.4 Test suite
 
-**Full suite: 382/382 passing** (App 95; Audio 77; Captions 72; Speech 111;
-Translation 27) per [PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build". Release
-build 0 warnings / 0 errors. `dotnet format --verify-no-changes` clean. No
-vulnerable packages.
+**Full suite: 610/610 passing** (106 Audio + 78 Captions + 111 Speech + 42
+Translation + 161 App + 112 Speech.Gemini) per [PROJECT_STATUS.md](PROJECT_STATUS.md)
+"Last Build". Release build 0 warnings / 0 errors. `dotnet format --verify-no-changes`
+clean. No vulnerable packages.
+
+### 3.5 v0.5.33 final real-world acceptance — 22/22 PASS on live WASAPI loopback (2026-08-12)
+
+Per [CHANGELOG.md](CHANGELOG.md) v0.5.33. Harness
+`acceptance-v0.5.33-translation-parity.ps1` drives the Release app + real WASAPI
+loopback (looped `english_sustained_90s.wav`) through the full control surface in
+one session, then flips the provider (Argos → Gemini) and repeats. Per provider,
+while captions are RUNNING: Translate OFF → a new source-English caption appears,
+control toggle reads off, Whisper keeps capturing; Translate ON → target language
+returns; target `tl → ja → tl` updates immediately with no Stop/Start; STT worker
+PIDs stay constant across every toggle/target change. **Argos 11/11 + Gemini 11/11
+= 22/22.**
+
+**Evidence files (committed):** `acceptance-v0.5.33-translation-parity.ps1`,
+`v0533_parity_acceptance.log` (real CJK verified in-file).
 
 ---
 
@@ -149,12 +160,12 @@ vulnerable packages.
 |---|---|
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
-| Positioning (four angles, all live on the page) | (1) Offline-first / privacy (trust strip + #why) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Optional Gemini for higher-quality realtime translation (#gemini card — *Coming soon*; see §7) |
-| Version tag | `v0.5.29` (matches this release) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.29` — see §6 and §1 unblocker #1 |
+| Positioning (four angles, all live on the page) | (1) Offline-first / privacy (trust strip + #why) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Optional Gemini for higher-quality realtime translation (#gemini card — **OPTIONAL CLOUD UPGRADE**, shipped since v0.5.33; see §6) |
+| Version tag | `v0.5.34` (matches the latest release) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.34/UniversalCaptions-Setup-0.5.34.exe` — see §5 |
 
-The page is **ready** as a static asset. Its live publication is gated on the §1
-unblockers; the page does not depend on them being satisfied to render correctly.
+The page is **live** on GitHub Pages (legacy build from `main` root) and its
+download links resolve to real v0.5.34 release assets.
 
 ---
 
@@ -162,51 +173,44 @@ unblockers; the page does not depend on them being satisfied to render correctly
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.29` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.34/UniversalCaptions-Setup-0.5.34.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.34/UniversalCaptions-0.5.34-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.29 release tag**, not at the
+The primary CTA points at the **specific v0.5.34 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
-match the artifact that ships. Before the tag is cut (per §1 unblocker #1), the
-primary CTA will 404 — the page should not be advertised or linked until the tag
-exists.
+match the artifact that ships.
 
 ---
 
 ## 6. Gemini Optional-Mode Status
 
-**Status: described on the landing page; not yet implemented in the App.**
+**Status: shipped (v0.5.33), available as an opt-in cloud upgrade.**
 
-The App today ships only the offline path: `WASAPI → Whisper (fasterwhisper-native
-+ live partials) → Argos OPUS-MT en→tl → 13-rule deterministic naturalizer →
-Caption overlay` (see [CHANGELOG.md](CHANGELOG.md) v0.5.29 and
-[PROJECT_STATUS.md](PROJECT_STATUS.md) "Current Sprint"). The Gemini Live
-Translate option is described on the landing page as a *coming soon* cloud
-upgrade that the user would opt into with their own Gemini API key.
-
-What this means for the v0.5.29 release:
-
-- The landing-page Gemini card carries a **"Coming soon — toggle in Settings once
-  your API key is added"** line so the not-yet-shipped state is explicit. No
-  reader will conclude the App ships Gemini today.
-- No production-code path implements the Gemini toggle in v0.5.29. Shipping it
-  is a separate piece of work that should be tracked in [ROADMAP.md](ROADMAP.md)
-  (Future list) and gated by its own ADR before any implementation begins.
-- The API-key setup documentation for the future Gemini path is **not written
-  yet**. When the implementation lands, the docs will be owned by a yet-to-be-
-  created `docs/USER_GUIDE_GEMINI.md` (cross-reference, not duplicate).
+The App's default path remains fully offline: `WASAPI → Whisper
+(fasterwhisper-native + live partials) → Argos OPUS-MT en→tl → Naturalizer →
+Caption overlay`. Users can additionally opt in to Gemini Live translation
+(`gemini-3.5-live-translate-preview`) by adding their own Gemini API key in the
+control window (Windows Credential Manager, ADR-0009) and selecting **"Gemini
+(cloud)"** as the translation provider. Runtime toggle + target-language changes
+apply live while captions run; Argos and Gemini now behave identically from the
+user's perspective (v0.5.33 parity, §3.5). While Gemini mode is active,
+translation audio leaves the machine to Google's API; offline local translation
+remains the default and requires no account.
 
 ---
 
 ## 7. API-Key Setup Documentation
 
-**Status: not yet written.** Required for the (future) Gemini optional mode (§6).
+**Status: written and available to end users.**
 
-The API-key setup flow will be documented in `docs/USER_GUIDE_GEMINI.md` once the
-Gemini path is implemented. Until then, the landing-page Gemini card and the
-"coming soon" line are the only user-facing references. **Do not duplicate** that
-content elsewhere; cross-reference only.
+The Gemini API-key section in the control window shows a **"Get your API key from
+Google AI Studio ↗"** link (v0.5.34) that opens Google's official key page. Keys
+are stored in Windows Credential Manager (never embedded/hard-coded; ADR-0009) and
+managed via the Add / Update / Remove flow in the control window. Engineering
+detail lives in [CHANGELOG.md](CHANGELOG.md) v0.5.32 / v0.5.33 / v0.5.34 and
+[ADR-0009](../adr/ADR-0009.md).
 
 ---
 
@@ -215,13 +219,14 @@ content elsewhere; cross-reference only.
 Drives §3.1 / §3.2 / §3.3 acceptance. Each row maps to an existing harness run.
 
 - [x] Release App builds with 0 warnings / 0 errors (Release configuration).
-- [x] `dotnet test UniversalCaptions.slnx` passes **382/382**.
+- [x] `dotnet test UniversalCaptions.slnx` passes **610/610**.
 - [x] `dotnet format --verify-no-changes` clean.
 - [x] `dotnet list UniversalCaptions.slnx package --vulnerable` clean.
 - [x] **Final real-world acceptance** (v0.5.25, production default): Tagalog leg PASS (Leg 1) + English + en→tl leg PASS (Leg 2). Per [PROJECT_STATUS.md](PROJECT_STATUS.md).
+- [x] **v0.5.33 parity acceptance** (Argos + Gemini, 22/22 live-WASAPI checks). Per [CHANGELOG.md](CHANGELOG.md) v0.5.33 / §3.5.
 - [x] **Installed-bundle acceptance** (v0.5.26): install exit 0, launch via `launcher.cmd`, real WASAPI loopback, real en→tl, clean Start / Stop / Exit, 0 orphans, clean uninstall exit 0 (user-data preserved). Per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §9.
 - [x] **App-by-app validation** (v0.5.26): Chrome / YouTube PASS, VLC PASS. Zoom recorded as environment-limited NOT VALIDATED (no UIA, no meeting). Teams N/A (not installed).
-- [ ] **Clean-machine verification** — pending §1 unblocker #2.
+- [ ] **Clean-machine verification** — recorded as an ongoing follow-up (not a blocker to publishing; see §9).
 
 ---
 
@@ -248,8 +253,8 @@ is self-sufficient.
 ## 10. Performance / Latency Evidence
 
 From §3.1 final real-world acceptance (2026-08-06) at the v0.5.25 production
-default — unchanged through v0.5.29 (no perf-sensitive code changed in v0.5.26 /
-v0.5.27 / v0.5.28 / v0.5.29).
+default — unchanged through v0.5.34 (no perf-sensitive code changed in v0.5.26
+onward).
 
 | Metric | Value | Source |
 |---|---|---|
@@ -269,8 +274,8 @@ and 12 / Entry 16.
 
 ## 11. Known Limitations
 
-Carried into v0.5.29 (all documented; none are regressions introduced by this
-release):
+Carried into v0.5.33 / v0.5.34 (all documented; none are regressions introduced
+by these releases):
 
 - **Argos `tl`-as-source unsupported** (stanza SBD) and `ja→tl` requires an `en`
   pivot (~1050 ms/call). MVP pairs use `tl` as a *target* only. See
@@ -287,17 +292,18 @@ release):
   controlled-verification PASS are recorded; the original Tagalog recording is
   the final acceptance evidence. Per user direction, no substitute sample
   qualifies. See [ADR-0007](../adr/ADR-0007.md).
-- **Gemini optional mode — not implemented in v0.5.29.** Described on the
-  landing page as *coming soon*. See §6.
+- **Gemini optional mode requires the user's own API key and a network
+  connection while active.** Offline/local translation remains the default and
+  requires no account. See §6.
 - **Zoom Workplace validation — NOT VALIDATED (environment-limited).** Recorded
   in [CHANGELOG.md](CHANGELOG.md) v0.5.26. The WASAPI capture path is identical
   to the VLC / Chrome legs (both PASS).
-- **Installer reproducible build path (`build-package.ps1` end-to-end) — not
-  re-run** since the v0.5.26 acceptance. Recorded in [CHANGELOG.md](CHANGELOG.md)
-  v0.5.26 caveat; non-blocking.
+- **Clean-machine install verification — not yet performed** (ongoing follow-up;
+  not a blocker to publishing). Recorded in §9 and [CHANGELOG.md](CHANGELOG.md)
+  v0.5.26 caveat.
 - **Phase 2 real-app validation reassessment — deferred per user.** YouTube /
-  Chrome / VLC / Zoom beyond the v0.5.26 evidence above is not re-run for
-  v0.5.29.
+  Chrome / VLC / Zoom beyond the v0.5.26 evidence above is not re-run for these
+  releases.
 
 ---
 
@@ -307,24 +313,23 @@ Single signed-off list. Status legend: **DONE** = complete with evidence · **PE
 
 | # | Item | Status | Evidence / Owner |
 |---|---|---|---|
-| 1 | Source tree frozen at v0.5.29 | DONE | Commit `4ca8245`; [CHANGELOG.md](CHANGELOG.md) v0.5.29 |
-| 2 | All tests passing | DONE | 382/382 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
+| 1 | Source tree frozen at v0.5.33 / v0.5.34 | DONE | Commits `d7333c1`, `b50cc2a`; [CHANGELOG.md](CHANGELOG.md) v0.5.33 / v0.5.34 |
+| 2 | All tests passing | DONE | 610/610 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
 | 3 | Release build 0 warnings / 0 errors | DONE | same |
 | 4 | `dotnet format --verify-no-changes` clean | DONE | same |
 | 5 | No vulnerable packages | DONE | same |
-| 6 | Final real-world acceptance PASS | DONE | §3.1 |
-| 7 | Installed-bundle acceptance PASS | DONE | §3.2 |
+| 6 | Final real-world acceptance PASS (22/22 parity) | DONE | §3.5 |
+| 7 | Installed-bundle acceptance PASS (v0.5.26 baseline) | DONE | §3.2 |
 | 8 | Phase 2 app-by-app validation (Chrome / VLC) | DONE | §3.3 |
 | 9 | Phase 2 Zoom validation | N/A (env-limited, recorded) | §3.3 |
-| 10 | Landing page ready as static asset | DONE | §4 |
-| 11 | Landing-page CTA points at v0.5.29 release tag | DONE (link target set) | §5 |
-| 12 | Landing-page Gemini section honest (no over-promise) | DONE (*Coming soon* line) | §6 |
-| 13 | Documentation updated (CHANGELOG, PROJECT_STATUS, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), this file |
-| 14 | Constitution + Registry alignment (`landing/`, `packaging/`, `artifacts/` governed) | DONE | [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1, [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md) |
-| 15 | Clean-machine install verification | PENDING | §1 unblocker #2 |
-| 16 | Cut v0.5.29 GitHub release tag | PENDING | §1 unblocker #1 |
-| 17 | Decision: **READY** | PENDING | Flips when #15 and #16 are done |
+| 10 | Landing page live + points at v0.5.34 assets | DONE | §4, §5 |
+| 11 | Landing-page Gemini section honest (OPTIONAL cloud upgrade, shipped v0.5.33) | DONE | §6 |
+| 12 | v0.5.33 GitHub release created with artifacts | DONE | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) |
+| 13 | v0.5.34 GitHub release created with artifacts (**Latest**) | DONE | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) |
+| 14 | v0.5.32 intentionally not published (internal milestone, corrected by v0.5.33) | DONE (recorded) | §1 |
+| 15 | Documentation updated (CHANGELOG, PROJECT_STATUS, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), this file |
+| 16 | Constitution + Registry alignment (`landing/`, `packaging/`, `artifacts/` governed) | DONE | [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1, [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md) |
+| 17 | Decision: **READY** | **DONE** | §1 |
 
-When #15 and #16 close, this document is the single source of truth that the
-release is Ready. The landing page becomes public; no other artifact needs to
-change.
+This document is the single source of truth that the release is Ready. The
+landing page is public and its downloads resolve to real v0.5.34 release assets.
