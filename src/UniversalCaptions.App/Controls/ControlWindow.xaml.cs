@@ -525,6 +525,23 @@ public partial class ControlWindow : Window
     private void OnUpdateGeminiKeyClicked(object sender, RoutedEventArgs e) => PromptForGeminiKey();
 
     /// <summary>
+    /// Opens Google AI Studio's API-key page in the default browser. The link label carries the
+    /// " ↗ " suffix so the user knows they are leaving the app for Google's site.
+    /// </summary>
+    private void OnGetGeminiKeyLinkRequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exc)
+        {
+            MessageBox.Show(this, $"Could not open the browser: {exc.Message}", "Gemini API key", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Opens a modal dialog containing a <see cref="PasswordBox"/>. The user enters (or re-enters)
     /// the Gemini API key and clicks Save. The value is passed to <see cref="ICredentialStore"/>
     /// via <see cref="SecureString"/>-backed WPF memory; the local string reference is dropped

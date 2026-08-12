@@ -17,6 +17,13 @@ Last updated: 2026-08-12
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.34 - 2026-08-12
+
+### Gemini API-key link (small UI addition after v0.5.33 close-out)
+
+- The Gemini API-key section in the control window now shows **"Get your API key from Google AI Studio ↗"** — a WPF `Hyperlink` (`ControlWindow.xaml` + `OnGetGeminiKeyLinkRequestNavigate`) that opens Google's official key page (`https://aistudio.google.com/app/apikey`) in the default browser via `ProcessStartInfo { UseShellExecute = true }`. The " ↗ " suffix signals the user is leaving the app for Google's site. No key is embedded or hard-coded — each user provides their own key via the existing Add/Update flow (Windows Credential Manager, ADR-0009).
+- **610/610 tests**, Release 0 warnings / 0 errors, `dotnet format` clean. Real-App verification: invoking the hyperlink (UIA `ControlType.Hyperlink` → `InvokePattern`) launched Chrome with `--single-argument https://aistudio.google.com/app/apikey`.
+
 ## v0.5.33 - 2026-08-12
 
 ### Common translation state is provider-agnostic: the provider decides only the translation MECHANISM (2026-08-12)

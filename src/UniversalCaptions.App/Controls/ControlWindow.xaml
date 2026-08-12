@@ -120,6 +120,14 @@
                         Padding="10,4"
                         Click="OnRemoveGeminiKeyClicked" />
             </StackPanel>
+            <TextBlock Margin="0,6,0,0" VerticalAlignment="Center">
+                <Hyperlink x:Name="GetGeminiKeyLink"
+                           NavigateUri="https://aistudio.google.com/app/apikey"
+                           RequestNavigate="OnGetGeminiKeyLinkRequestNavigate">
+                    <Run Text="Get your API key from Google AI Studio" />
+                    <Run Text=" ↗" />
+                </Hyperlink>
+            </TextBlock>
         </StackPanel>
 
         <StackPanel Grid.Row="7"
