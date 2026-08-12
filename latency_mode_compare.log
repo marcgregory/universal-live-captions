@@ -1,0 +1,114 @@
+﻿[15:00:11] Launching app: C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\src\UniversalCaptions.App\bin\Release\net8.0-windows\UniversalCaptions.App.exe
+[15:00:13] Control window found.
+[15:00:15] Baseline UI: toggle=False provider=''
+[15:00:15] Starting audio: C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\artifacts\samples\english_sustained_90s.wav (looped)
+[15:00:15] ================ LEG 1: TRANSLATE OFF ================
+[15:00:15] Clicked Start Captions
+[15:00:23] LEG1 first English caption: 'conversational tag'
+[15:01:10] LEG|OFF|samples=0.1|—|— ; 2.7|6344 ms|— ; 5.3|6344 ms|— ; 7.9|8222 ms|— ; 10.6|8626 ms|— ; 13.2|8626 ms|— ; 15.8|8626 ms|— ; 18.4|12100 ms|— ; 21.0|12535 ms|— ; 23.7|12535 ms|— ; 26.3|14286 ms|— ; 29.0|13207 ms|— ; 31.6|13785 ms|— ; 34.2|13785 ms|— ; 36.9|16980 ms|— ; 39.5|16980 ms|— ; 42.1|14078 ms|— ; 44.7|14078 ms|—
+[15:01:10] LEG|OFF|newCaptions=conversational tagalog practice group. || My name is Marie. || My name is Maria. || What is your name? || Good morning everyone. || Today we will practice greetings and introductions. || Please open your notebooks to the first page. || Thank you for listening. || We will see you next week. || Remember to speak slowly and clearly. || Remember to speak slowly and clearly, and to listen carefully to each other. || We will start with the numbers 1 through 10, then move on to the days of the week. || Great work everyone!
+[15:01:10] ================ LEG 2: EN -> TL (Gemini) ================
+[15:01:11] Toggle 'TranslationToggle' -> True
+[15:01:13] Provider before: ''
+[15:01:14] Combo 'ProviderCombo' -> 'Gemini'
+[15:01:23] LEG2 first Tagalog caption: 'Hello at malugod na tanggapin sa unang pulong ng aming grupong nag - uusap - usap na tangalog.'
+[15:02:09] LEG|TL|samples=0.1|10995 ms|partial: 0 ms · final: 12556 ms ; 2.7|10995 ms|partial: 11466 ms · final: 12556 ms ; 5.4|13900 ms|partial: 11466 ms · final: 14058 ms ; 8.1|12295 ms|partial: 11466 ms · final: 12438 ms ; 10.7|10950 ms|partial: 11466 ms · final: 11023 ms ; 13.3|10950 ms|partial: 10983 ms · final: 11023 ms ; 16.0|13363 ms|partial: 10983 ms · final: 13475 ms ; 18.6|13276 ms|partial: 10983 ms · final: 13455 ms ; 21.3|13276 ms|partial: 9850 ms · final: 13455 ms ; 24.0|12553 ms|partial: 9850 ms · final: 12737 ms ; 26.6|12553 ms|partial: 9241 ms · final: 12737 ms ; 29.3|11620 ms|partial: 9241 ms · final: 11791 ms ; 31.9|11620 ms|partial: 8973 ms · final: 11791 ms ; 34.6|7549 ms|partial: 8973 ms · final: 7609 ms ; 37.3|7549 ms|partial: 7743 ms · final: 7609 ms ; 39.9|10393 ms|partial: 7743 ms · final: 10394 ms ; 42.6|10665 ms|partial: 7743 ms · final: 10728 ms
+[15:02:09] LEG|TL|newCaptions=Ngayon tayo ay mag-pre- || Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. || Pakisuyong buksan ang inyong mga kuwaderno sa unang pahina. || Salamat sa inyong pakikinig. || Makikita ka namin sa susunod. || Makikita ka namin sa susunod na linggo. || Tandaan na magsalita nang mabagal at malinaw, at makinig na mabuti sa isa't isa. || Magsisimula tayo sa mga numerong 1 hanggang 10. || Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo. || Dakilang gawa ang lahat, iyan ang wakas ng gawain sa ngayon. || Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay. || Hello at Maligayang pagdating sa unang pagkikita ng aming tag-usapan. || Hello at malugod na tanggapin sa unang pulong ng aming grupong nag-uusap na Tagalog.
+[15:02:09] Stopping audio + closing app...
+[15:02:22] ================ SUMMARY ================
+[15:02:22] LEG1 (Translate OFF) LatencyText samples:
+[15:02:22]   0.1|—|—
+[15:02:22]   2.7|6344 ms|—
+[15:02:22]   5.3|6344 ms|—
+[15:02:22]   7.9|8222 ms|—
+[15:02:22]   10.6|8626 ms|—
+[15:02:22]   13.2|8626 ms|—
+[15:02:22]   15.8|8626 ms|—
+[15:02:22]   18.4|12100 ms|—
+[15:02:22]   21.0|12535 ms|—
+[15:02:22]   23.7|12535 ms|—
+[15:02:22]   26.3|14286 ms|—
+[15:02:22]   29.0|13207 ms|—
+[15:02:22]   31.6|13785 ms|—
+[15:02:22]   34.2|13785 ms|—
+[15:02:22]   36.9|16980 ms|—
+[15:02:22]   39.5|16980 ms|—
+[15:02:22]   42.1|14078 ms|—
+[15:02:22]   44.7|14078 ms|—
+[15:02:22] LEG2 (EN->TL Gemini) LatencyText samples:
+[15:02:22]   0.1|10995 ms|partial: 0 ms · final: 12556 ms
+[15:02:22]   2.7|10995 ms|partial: 11466 ms · final: 12556 ms
+[15:02:22]   5.4|13900 ms|partial: 11466 ms · final: 14058 ms
+[15:02:22]   8.1|12295 ms|partial: 11466 ms · final: 12438 ms
+[15:02:22]   10.7|10950 ms|partial: 11466 ms · final: 11023 ms
+[15:02:22]   13.3|10950 ms|partial: 10983 ms · final: 11023 ms
+[15:02:22]   16.0|13363 ms|partial: 10983 ms · final: 13475 ms
+[15:02:22]   18.6|13276 ms|partial: 10983 ms · final: 13455 ms
+[15:02:22]   21.3|13276 ms|partial: 9850 ms · final: 13455 ms
+[15:02:22]   24.0|12553 ms|partial: 9850 ms · final: 12737 ms
+[15:02:22]   26.6|12553 ms|partial: 9241 ms · final: 12737 ms
+[15:02:22]   29.3|11620 ms|partial: 9241 ms · final: 11791 ms
+[15:02:22]   31.9|11620 ms|partial: 8973 ms · final: 11791 ms
+[15:02:22]   34.6|7549 ms|partial: 8973 ms · final: 7609 ms
+[15:02:22]   37.3|7549 ms|partial: 7743 ms · final: 7609 ms
+[15:02:22]   39.9|10393 ms|partial: 7743 ms · final: 10394 ms
+[15:02:22]   42.6|10665 ms|partial: 7743 ms · final: 10728 ms
+[15:02:22] ---- stderr latency/diagnostics trace ----
+[15:02:22] [LATENCY] T0: 0.002s - session init begins / Start() called
+[15:02:22] [LATENCY] T1: 3.316s - capture device/stream started (IsCapturing)
+[15:02:22] [DIAGNOSTICS] T0: 0.000s - Video/Audio playback starts (Capture started)
+[15:02:22] [LATENCY] T2: 3.372s - first audio chunk received (any)
+[15:02:22] [LATENCY] T3: 3.375s - first NON-SILENT audio detected (rms >= 0.008)
+[15:02:22] [DIAGNOSTICS] T1: 0.058s - First non-silent audio chunk reaches capture pipeline
+[15:02:22] [DIAGNOSTICS]       Delta (T1 - T0): 0.058s
+[15:02:22] [LATENCY] T4: 3.385s - first audio chunk dispatched to STT/Whisper
+[15:02:22] [DIAGNOSTICS] T2: 0.067s - First audio chunk dispatched to Whisper
+[15:02:22] [DIAGNOSTICS]       Delta (T2 - T1): 0.009s
+[15:02:22] [LATENCY] T6: 6.981s - first Whisper Partial result
+[15:02:22] [DIAGNOSTICS] T3: 3.663s - First Whisper Partial result
+[15:02:22] [DIAGNOSTICS]       Delta (T3 - T2): 3.595s
+[15:02:22] [LATENCY] T7: 9.716s - first Whisper Final (committed) result
+[15:02:22] [DIAGNOSTICS] T4: 6.398s - First Whisper Final result
+[15:02:22] [DIAGNOSTICS]       Delta (T4 - T3): 2.735s
+[15:02:22] [LATENCY] T6: 12.367s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 15.073s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 17.865s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 20.585s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 23.429s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 26.321s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 29.150s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 32.200s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 35.053s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 38.099s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 41.001s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 44.024s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 47.187s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 50.078s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 52.741s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 55.423s - first Whisper Final (committed) result
+[15:02:22] [DIAGNOSTICS] T5: 52.106s - First translation request
+[15:02:22] [DIAGNOSTICS]       Delta (T5 - T4): 45.708s
+[15:02:22] [LATENCY] T6: 58.104s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 60.906s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 63.623s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 66.350s - first Whisper Final (committed) result
+[15:02:22] [DIAGNOSTICS] T6: 64.308s - First translation result
+[15:02:22] [DIAGNOSTICS]       Delta (T6 - T5): 12.203s
+[15:02:22] [LATENCY] T6: 69.213s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 71.758s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 74.304s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 76.871s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 79.348s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 81.809s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 84.382s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 86.943s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 89.730s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 92.400s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 94.983s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 97.562s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 100.156s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 102.580s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 105.014s - first Whisper Partial result
+[15:02:22] [LATENCY] T7: 107.754s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T7: 110.094s - first Whisper Final (committed) result
+[15:02:22] [LATENCY] T6: 112.534s - first Whisper Partial result

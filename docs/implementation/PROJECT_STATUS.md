@@ -19,6 +19,8 @@ This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
 
+**Runtime Gemini-toggle latency verification — PASS (2026-08-12, measurement only).** Real WASAPI two-mode measurement (Release app + loopback English audio; LEG1 Translate OFF, then runtime toggle to Gemini EN→TL for LEG2, no Stop/Start) confirmed identical Whisper STT FINAL latency in both modes: Translate OFF mean **11.8 s** (6.3–17.0 s) vs Gemini ON mean **11.4 s** (7.5–13.9 s). The stderr trace proves Gemini is fully detached when translation is OFF — the first translation request fired only at the runtime toggle (52.1 s); zero translation requests in the English-only leg. **Conclusion: Gemini does not make English-only slower; it masks Whisper's committed-FINAL cadence by streaming partial translations (Gemini partial ≈11.5 s ≈ Whisper FINAL).** No code changes. Evidence: CHANGELOG v0.5.35, `latency_mode_compare.log`. Next real UX/perf investigation: **Gemini streaming caption segmentation**.
+
 **Common translation state made provider-agnostic (2026-08-12): the v0.5.32 design correction is
 complete — `TranslationEnabled` / `TargetLanguage` always reflect the user's Translate checkbox +
 target for BOTH providers; the provider decides only the translation MECHANISM.** Root problem:

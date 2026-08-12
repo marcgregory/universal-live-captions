@@ -24,6 +24,16 @@ All notable project changes should be documented here. Keep this file versioned 
 - The Gemini API-key section in the control window now shows **"Get your API key from Google AI Studio ↗"** — a WPF `Hyperlink` (`ControlWindow.xaml` + `OnGetGeminiKeyLinkRequestNavigate`) that opens Google's official key page (`https://aistudio.google.com/app/apikey`) in the default browser via `ProcessStartInfo { UseShellExecute = true }`. The " ↗ " suffix signals the user is leaving the app for Google's site. No key is embedded or hard-coded — each user provides their own key via the existing Add/Update flow (Windows Credential Manager, ADR-0009).
 - **610/610 tests**, Release 0 warnings / 0 errors, `dotnet format` clean. Real-App verification: invoking the hyperlink (UIA `ControlType.Hyperlink` → `InvokePattern`) launched Chrome with `--single-argument https://aistudio.google.com/app/apikey`.
 
+## v0.5.35 - 2026-08-12
+
+### Runtime Gemini-toggle latency verification — PASS (measurement only, no code change)
+
+- **Question:** does enabling Gemini live translation make English-only captioning slower? **Answer: no.** A real-WASAPI two-mode measurement (one-off harness `acceptance-latency-mode-compare.ps1`, deleted after use; evidence log `latency_mode_compare.log` kept) ran the Release app over loopback audio, first with Translate OFF, then toggling Gemini EN→TL ON mid-session (no Stop/Start).
+- **Measured Whisper STT FINAL latency (`LatencyText`, capture→FINAL):** Translate OFF mean **11.8 s** (range 6.3–17.0 s, n=17) vs Gemini EN→TL mean **11.4 s** (range 7.5–13.9 s, n=17) — same engine, same audio, overlapping ranges. **Identical STT pipeline in both modes.**
+- **Gemini is fully detached when translation is OFF:** the stderr trace shows the first translation request (`T5`) fired only at **52.1 s** into the session — exactly the runtime toggle for LEG2. Zero translation requests occurred during the entire English-only leg.
+- **Conclusion:** the perceived responsiveness difference is **not** STT latency — it is Gemini Live streaming partial translations (Gemini partial ≈11.5 s, ≈ Whisper FINAL, no additional lag), which visually mask Whisper's committed-FINAL cadence (~8 s partials / ~12 s FINALs). English-only "frozen" vs Gemini "realtime" are the same underlying timings.
+- **No changes made** — the proven OFF path and Gemini path are untouched. The next real UX/perf investigation belongs to **Gemini streaming caption segmentation** (how streaming partial fragments are assembled into the visible caption), not English-only latency.
+
 ## v0.5.33 - 2026-08-12
 
 ### Common translation state is provider-agnostic: the provider decides only the translation MECHANISM (2026-08-12)
