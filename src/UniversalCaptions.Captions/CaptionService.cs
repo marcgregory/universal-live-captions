@@ -29,6 +29,15 @@ namespace UniversalCaptions.Captions;
 /// read in the target language while the speaker is still talking.
 /// </para>
 /// <para>
+/// The caption-line translation path is gated by <see cref="SetCaptionLineTranslation"/>: when a live
+/// audio translation engine owns translation (Gemini), the service never starts its own translations
+/// of source lines — it only relays translation-origin lines via
+/// <see cref="ProcessPartialTranslation"/>/<see cref="ProcessFinalTranslation"/>. The common
+/// <see cref="CaptionState.TranslationEnabled"/>/<see cref="CaptionState.TargetLanguage"/> state is
+/// provider-independent: it always reflects the user's translation toggle, so the overlay behaves the
+/// same for every provider.
+/// </para>
+/// <para>
 /// A translation failure is represented on the line with <see cref="CaptionTranslationStatus.Failed"/>
 /// and the source text remains intact in <see cref="CaptionLine.Text"/>. Cancellation (session stopped,
 /// reset, or disposed) leaves the line in <see cref="CaptionTranslationStatus.Pending"/>. A stale
@@ -48,6 +57,7 @@ public sealed class CaptionService : ICaptionService
     private CancellationTokenSource? _lifetimeCts;
     private CancellationTokenSource? _retiredCts;
     private Task? _activeLineTranslation;
+    private bool _useCaptionLineTranslation = true;
     private volatile bool _running;
 
     /// <summary>
@@ -127,7 +137,8 @@ public sealed class CaptionService : ICaptionService
                 _state.History,
                 _state.IsSessionActive,
                 _state.TranslationEnabled,
-                _state.TargetLanguage);
+                _state.TargetLanguage,
+                _state.ActiveTranslationLine);
         }
     }
 
@@ -307,6 +318,12 @@ public sealed class CaptionService : ICaptionService
         lock (_gate)
         {
             _state.SetTranslation(enabled, target);
+            if (!enabled)
+            {
+                // The live translation line belongs to a session that has been switched off: drop it
+                // so re-enabling never resurfaces stale translated text from before the toggle.
+                _state.ClearTranslationActiveLine();
+            }
         }
 
         if (enabled)
@@ -315,6 +332,15 @@ public sealed class CaptionService : ICaptionService
         }
 
         StateChanged?.Invoke(this, _state);
+    }
+
+    /// <inheritdoc />
+    public void SetCaptionLineTranslation(bool enabled)
+    {
+        lock (_gate)
+        {
+            _useCaptionLineTranslation = enabled;
+        }
     }
 
     /// <inheritdoc />
@@ -364,11 +390,13 @@ public sealed class CaptionService : ICaptionService
     /// <summary>
     /// True when the active line will be translated live, so its source-language text must not be
     /// published to subscribers: showing it would flash the source language on the overlay until the
-    /// translation completes (the live-translation language flip-flop). Must be called holding
-    /// <see cref="_gate"/>.
+    /// translation completes (the live-translation language flip-flop). False when a live audio
+    /// translation engine owns translation (the caption-line path is suppressed, so no source-line
+    /// translation is pending). Must be called holding <see cref="_gate"/>.
     /// </summary>
     private bool WillTranslateActiveLine(CaptionLine line) =>
-        _translationEngine is not null
+        _useCaptionLineTranslation
+        && _translationEngine is not null
         && _state.TranslationEnabled
         && _state.TargetLanguage is not null
         && !string.Equals(_state.TargetLanguage, _options.SourceLanguage, StringComparison.OrdinalIgnoreCase)
@@ -401,6 +429,7 @@ public sealed class CaptionService : ICaptionService
             if (active is null
                 || string.IsNullOrWhiteSpace(active.Text)
                 || active.TranslationStatus != CaptionTranslationStatus.NotRequested
+                || !_useCaptionLineTranslation
                 || _translationEngine is null
                 || !_state.TranslationEnabled
                 || _state.TargetLanguage is null)
@@ -574,7 +603,8 @@ public sealed class CaptionService : ICaptionService
         lock (_gate)
         {
             targetLanguage = _state.TargetLanguage;
-            if (_translationEngine is not null
+            if (_useCaptionLineTranslation
+                && _translationEngine is not null
                 && _state.TranslationEnabled
                 && targetLanguage is not null
                 && !string.IsNullOrWhiteSpace(line.Text))
@@ -663,8 +693,11 @@ public sealed class CaptionService : ICaptionService
     public void ProcessPartialTranslation(PartialTranslation translation)
     {
         ArgumentNullException.ThrowIfNull(translation);
-        if (!_running)
+        if (!_running || !_state.TranslationEnabled)
         {
+            // Not running, or the user toggled translation off: translation-origin content is not
+            // accepted, so the overlay returns to the source captions immediately even if a live
+            // engine event is still in flight from just before the toggle.
             return;
         }
 
@@ -714,8 +747,10 @@ public sealed class CaptionService : ICaptionService
     public void ProcessFinalTranslation(FinalTranslation translation)
     {
         ArgumentNullException.ThrowIfNull(translation);
-        if (!_running)
+        if (!_running || !_state.TranslationEnabled)
         {
+            // See ProcessPartialTranslation: translation-origin content is dropped once translation
+            // is disabled so the overlay reflects the toggle without stale translated finals.
             return;
         }
 

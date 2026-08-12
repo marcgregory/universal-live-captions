@@ -122,6 +122,113 @@ public class LiveTranslationEngineFactoryTests
     }
 
     [Fact]
+    public void Create_NoEnvVar_UiProviderNull_Returns_Null()
+    {
+        WithEnv(ProviderEnvVar, null, () =>
+        {
+            InMemoryCredentialStore store = new();
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", provider: null);
+
+            Assert.Null(engine);
+        });
+    }
+
+    [Fact]
+    public void Create_NoEnvVar_UiProviderArgos_Returns_Null()
+    {
+        // Argos is the local ITranslationEngine wired separately for caption-line translation; the
+        // live-audio factory must not construct any engine for it.
+        WithEnv(ProviderEnvVar, null, () =>
+        {
+            InMemoryCredentialStore store = new();
+            store.SetCredential(LiveTranslationEngineFactory.GeminiApiKeyTarget, "test-key-value");
+
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Argos);
+
+            Assert.Null(engine);
+        });
+    }
+
+    [Fact]
+    public void Create_NoEnvVar_UiProviderGemini_NoCredential_Returns_Null()
+    {
+        WithEnv(ProviderEnvVar, null, () =>
+        {
+            InMemoryCredentialStore store = new();
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Gemini);
+
+            Assert.Null(engine);
+        });
+    }
+
+    [Fact]
+    public void Create_NoEnvVar_UiProviderGemini_WithCredential_Returns_Engine()
+    {
+        // THE FIX: selecting "Gemini (cloud)" in the control window (translation enabled) must
+        // construct the Gemini engine from the stored credential — with no environment variable at
+        // all. Previously the UI provider was dead-ended in UserSettings and only
+        // UC_LIVE_TRANSLATION_PROVIDER could produce an engine (hence zero Gemini usage).
+        WithEnv(ProviderEnvVar, null, () =>
+        {
+            InMemoryCredentialStore store = new();
+            store.SetCredential(LiveTranslationEngineFactory.GeminiApiKeyTarget, "test-key-value");
+
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Gemini);
+
+            Assert.NotNull(engine);
+        });
+    }
+
+    [Fact]
+    public void Create_NoEnvVar_UiProviderGemini_Ignores_UC_GEMINI_API_KEY_EnvVar()
+    {
+        // ADR-0009 holds for the UI path too: a leaked UC_GEMINI_API_KEY must never be the App's key.
+        WithEnv(ProviderEnvVar, null, () =>
+        {
+            WithEnv(ApiKeyEnvVar, "leaked-key-from-env", () =>
+            {
+                InMemoryCredentialStore store = new();
+                ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Gemini);
+
+                Assert.Null(engine);
+            });
+        });
+    }
+
+    [Fact]
+    public void Create_UiProviderArgos_Beats_EnvVarGemini()
+    {
+        // Precedence guard: an explicit UI provider wins over UC_LIVE_TRANSLATION_PROVIDER (the env
+        // var is only the no-arg default). A machine-level env var must never resurrect a cloud
+        // engine the user turned off in the UI.
+        WithEnv(ProviderEnvVar, "gemini", () =>
+        {
+            InMemoryCredentialStore store = new();
+            store.SetCredential(LiveTranslationEngineFactory.GeminiApiKeyTarget, "test-key-value");
+
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Argos);
+
+            Assert.Null(engine);
+        });
+    }
+
+    [Fact]
+    public void Create_UiProviderGemini_Beats_EnvVarNone()
+    {
+        // Symmetric precedence guard: an explicit Gemini selection in the UI is not disabled by an
+        // env "none" default — the user's runtime choice governs the App session.
+        WithEnv(ProviderEnvVar, "none", () =>
+        {
+            InMemoryCredentialStore store = new();
+            store.SetCredential(LiveTranslationEngineFactory.GeminiApiKeyTarget, "test-key-value");
+
+            ILiveAudioTranslationEngine? engine = LiveTranslationEngineFactory.Create(store, "en", "tl", TranslationProvider.Gemini);
+
+            Assert.NotNull(engine);
+        });
+    }
+
+    [Fact]
     public void Create_ProviderGemini_StoreException_DoesNotThrow()
     {
         // ADR-0009 invariant: the factory never throws. A failing ICredentialStore must not break

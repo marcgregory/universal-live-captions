@@ -239,6 +239,196 @@ public sealed class GeminiLiveTranslateEngineTests
         Assert.Empty(finals);
     }
 
+    // ----- Punctuation + idle commit heuristic -----
+    // The Live Translate service never sends turnComplete (verified on the real wire 2026-08-12),
+    // so the engine commits a final when the accumulated sentence ends with terminal punctuation
+    // and no newer partial arrives within CommitIdleTimeout.
+
+    [Fact]
+    public async Task PunctuatedPartial_AfterIdleWindow_CommitsFinal()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.FromMilliseconds(150));
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Kamusta ka na.", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 1);
+        Assert.Empty(finals);
+
+        // No newer partial arrives → the idle window elapses → the accumulator commits as a final.
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 2000);
+
+        Assert.Single(finals);
+        Assert.Equal("Kamusta ka na.", finals[0].TranslatedText);
+        Assert.Equal(Target, finals[0].TargetLanguage);
+    }
+
+    [Fact]
+    public async Task PunctuatedPartial_NewPunctuatedText_ResetsCommitWindow()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.FromMilliseconds(400));
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // "Kamusta." arms the commit timer; a newer punctuated partial re-arms it before the
+        // window elapses, so the committed final must carry the LATEST text, not the first.
+        channel.QueueServerFrame(BuildServerContent("Kamusta.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("Kamusta ka na.", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 2000);
+
+        Assert.Single(finals);
+        Assert.Equal("Kamusta ka na.", finals[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task PunctuatedPartial_NewUnpunctuatedText_CancelsPendingCommit()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.FromMilliseconds(150));
+        var finals = new List<FinalTranslation>();
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // "Kamusta ka na." arms a commit; "Kamusta ka na rin" arrives before the window elapses
+        // and carries no terminal punctuation → the pending commit is cancelled, the accumulator
+        // stays live (still translating), and StopAsync tail-flushes only after the new content.
+        channel.QueueServerFrame(BuildServerContent("Kamusta ka na.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("Kamusta ka na rin", partial: true, turnComplete: false));
+        await Task.Delay(300);
+
+        Assert.Empty(finals);
+
+        await engine.StopAsync();
+        engine.Dispose();
+
+        Assert.Single(finals);
+        Assert.Equal("Kamusta ka na rin", finals[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task PunctuatedPartial_ZeroCommitIdleTimeout_DoesNotCommitWithoutTurnComplete()
+    {
+        // CommitIdleTimeout = Zero disables the punctuation heuristic (rely on turnComplete alone).
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var finals = new List<FinalTranslation>();
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Kamusta ka na.", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 300);
+        await Task.Delay(200);
+
+        Assert.Empty(finals);
+    }
+
+    // ----- Live Translate disjoint word-fragments (real wire 2026-08-12) -----
+    // The Live Translate service streams the target-language translation as word-level DISJOINT
+    // fragments ("Kung mas marami kang maibigay" then "sa Codex, mas"). These must be APPENDED
+    // into one growing sentence, unlike chat-style cumulative partials which replace.
+
+    [Fact]
+    public async Task LiveTranslateDisjointFragments_AccumulateIntoSentence_AndCommitAfterIdle()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.FromMilliseconds(150));
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Kung mas marami kang maibigay", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("sa Codex, mas", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("maraming tulong ang magagamit", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("mo, totoo para sa Codex.", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 4);
+
+        // Partials expose the GROWING sentence (not the isolated fragment) so the overlay's
+        // active line grows in place, Chrome-style.
+        Assert.Equal("Kung mas marami kang maibigay", partials[0].TranslatedText);
+        Assert.Equal("Kung mas marami kang maibigay sa Codex, mas", partials[1].TranslatedText);
+        Assert.Equal("Kung mas marami kang maibigay sa Codex, mas maraming tulong ang magagamit", partials[2].TranslatedText);
+        Assert.Equal(
+            "Kung mas marami kang maibigay sa Codex, mas maraming tulong ang magagamit mo, totoo para sa Codex.",
+            partials[3].TranslatedText);
+        Assert.Empty(finals);
+
+        // The accumulated sentence ends with terminal punctuation → commits after the idle window.
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 2000);
+
+        Assert.Single(finals);
+        Assert.Equal(
+            "Kung mas marami kang maibigay sa Codex, mas maraming tulong ang magagamit mo, totoo para sa Codex.",
+            finals[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task LiveTranslateDisjointFragments_SentenceBoundary_CommitsWithoutConsumingNextSentence()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.FromMilliseconds(400));
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // Sentence 1 (two fragments, ends with '.'), then the start of sentence 2.
+        channel.QueueServerFrame(BuildServerContent("Magandang umaga", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("sa lahat.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("Kumusta ka", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1, timeoutMs: 2000);
+
+        // The committed final is ONLY sentence 1; the accumulator must not consume "Kumusta ka".
+        Assert.Single(finals);
+        Assert.Equal("Magandang umaga sa lahat.", finals[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task LiveTranslateFragment_ExactRepeatTail_DoesNotDoubleTheWord()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel);
+        var partials = new List<PartialTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // The service occasionally re-emits the current tail word as its own fragment. The engine
+        // must not double it: the accumulator stays "gusto", never "gusto gusto".
+        channel.QueueServerFrame(BuildServerContent("gusto", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent("gusto", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 2);
+
+        Assert.Equal("gusto", partials[0].TranslatedText);
+        Assert.Equal("gusto", partials[1].TranslatedText);
+
+        await engine.StopAsync();
+        engine.Dispose();
+    }
+
     [Fact]
     public async Task SessionEndsWithPendingOutput_TailFlushesFinal()
     {

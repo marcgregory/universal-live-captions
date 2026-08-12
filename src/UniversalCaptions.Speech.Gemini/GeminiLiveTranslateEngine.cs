@@ -50,6 +50,18 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
     private readonly IGeminiLiveTranslateChannel _channel;
 
     private readonly Channel<AudioChunk> _audioQueue;
+
+    /// <summary>
+    /// Signals that the setup frame has been sent on the wire. The send loop must not transmit
+    /// audio frames before this completes: the Gemini Live API rejects an audio frame that arrives
+    /// ahead of <c>setup</c> (the session never starts producing translations). The App pushes
+    /// audio into the queue immediately after capture starts — which can race ahead of
+    /// <see cref="StartAsync"/>'s sequential open → setup sequence — so the loop waits here instead
+    /// of depending on callers to hold audio until StartAsync returns. Replaced with a fresh
+    /// instance on every <see cref="StartAsync"/> so a restarted session re-gates its send loop.
+    /// </summary>
+    private TaskCompletionSource _sessionReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private readonly object _stateGate = new();
     private Task? _sendTask;
     private Task? _receiveTask;
@@ -59,6 +71,10 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
     private long _nextSequence;
     private bool _disposed;
     private DateTime _capturedAtUtcBase;
+
+    private readonly object _commitGate = new();
+    private CancellationTokenSource? _commitCts;
+    private long _commitGeneration;
 
     /// <summary>
     /// Constructs a Gemini Live Translate engine. The API key is never logged, returned, or
@@ -122,6 +138,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
 
             cts = new CancellationTokenSource();
             _sessionCts = cts;
+            _sessionReadyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             sendTask = Task.Run(() => SendLoopAsync(cts.Token));
             receiveTask = Task.Run(() => ReceiveLoopAsync(cts.Token));
             _sendTask = sendTask;
@@ -137,6 +154,10 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                 _options.Model,
                 _options.ResolveTargetLanguageCode());
             await _channel.SendTextAsync(setupFrame, cancellationToken).ConfigureAwait(false);
+
+            // Unblock the send loop now that the server has received the setup frame; audio frames
+            // sent before setup would abort the session before any translation can be produced.
+            _sessionReadyTcs.TrySetResult();
             _capturedAtUtcBase = DateTime.UtcNow;
         }
         catch (Exception ex)
@@ -198,6 +219,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
         // Stop draining new audio first; the send task observes the completed channel and exits.
         _audioQueue.Writer.TryComplete();
         cts.Cancel();
+        CancelCommitTimer();
 
         try
         {
@@ -270,6 +292,13 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
     {
         try
         {
+            // Do not transmit audio until the setup frame is on the wire (set by StartAsync after
+            // sending it). The App starts audio capture before the live-translation block, so chunks
+            // are already queued when this loop starts; sending one ahead of setup would make Gemini
+            // reject the session. WaitAsync keeps shutdown clean: if setup never completes (connect
+            // failure), StopAsync cancels the session token and the loop exits via OCE.
+            await _sessionReadyTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
             await foreach (AudioChunk chunk in _audioQueue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 ReadOnlyMemory<byte> pcm16 = FloatToPcm16Le(chunk);
@@ -387,16 +416,30 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
         // neither surface carried a translation.
         if (!string.IsNullOrEmpty(content.Text))
         {
-            _accumulatedText = content.Text;
+            // Genuine sentence boundary: the accumulator already ends with terminal punctuation and
+            // the incoming fragment starts a DISJOINT new sentence (not a cumulative restatement
+            // of the finished one). Commit the completed sentence immediately, then accumulate the
+            // fragment as the start of the next sentence — so continuous speech yields
+            // sentence-granular finals instead of one ever-growing line.
+            if (_accumulatorHasContent
+                && _accumulatedText is not null
+                && EndsWithTerminalPunctuation(_accumulatedText)
+                && !IsCumulativeRestatement(_accumulatedText, content.Text))
+            {
+                FlushAccumulatorAsFinal();
+            }
+
+            _accumulatedText = Accumulate(_accumulatedText, content.Text);
             _accumulatorHasContent = true;
             long sequence = Interlocked.Increment(ref _nextSequence);
             DateTime capturedAtUtc = _capturedAtUtcBase;
             DateTime emittedAtUtc = DateTime.UtcNow;
+            string partialText = _accumulatedText ?? string.Empty;
             PartialTranslationAvailable?.Invoke(
                 this,
                 new PartialTranslation(
                     sourceText: null,
-                    translatedText: content.Text,
+                    translatedText: partialText,
                     sourceLanguage: _options.SourceLanguage ?? string.Empty,
                     targetLanguage: _options.TargetLanguage,
                     capturedAtUtc: capturedAtUtc,
@@ -408,6 +451,138 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
         {
             FlushAccumulatorAsFinal();
         }
+        else if (!string.IsNullOrEmpty(content.Text))
+        {
+            // The Live Translate service never sends turnComplete (verified on the real wire
+            // 2026-08-12), so finals would never commit. Arm a punctuation+idle commit instead:
+            // when the accumulated sentence ends with terminal punctuation, commit it as a final
+            // once no newer partial arrives within the idle window.
+            ArmCommitTimer(_accumulatedText ?? string.Empty);
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="incoming"/> restates <paramref name="current"/> as a prefix
+    /// (with an optional trailing punctuation on the current text) — i.e. a chat-style cumulative
+    /// partial that must REPLACE the accumulator, never append to it. The word-boundary check
+    /// prevents a coincidental prefix ("Ka" → "Kamusta") from being treated as a restatement.
+    /// </summary>
+    private static bool IsCumulativeRestatement(string current, string incoming)
+    {
+        string currentStem = current.Trim().TrimEnd('.', '!', '?');
+        if (currentStem.Length == 0)
+        {
+            return false;
+        }
+
+        return incoming.StartsWith(currentStem, StringComparison.OrdinalIgnoreCase)
+            && (incoming.Length == currentStem.Length
+                || !char.IsLetterOrDigit(incoming[currentStem.Length]));
+    }
+
+    /// <summary>
+    /// Merge a freshly parsed fragment into the accumulated sentence.
+    /// </summary>
+    /// <remarks>
+    /// The chat-style surface sends cumulative partials ("Magandang umaga" → "Magandang umaga
+    /// lahat") — those must REPLACE the accumulator, never double it. The Live Translate service
+    /// (verified on the real wire 2026-08-12) instead streams word-level DISJOINT fragments
+    /// ("Kung mas marami kang maibigay" then "sa Codex, mas") that spell out one sentence — those
+    /// must be APPENDED onto the accumulator. A word-boundary prefix check tells the two apart.
+    /// </remarks>
+    private static string? Accumulate(string? current, string incoming)
+    {
+        string incomingTrimmed = incoming.Trim();
+
+        if (string.IsNullOrEmpty(current))
+        {
+            return incomingTrimmed;
+        }
+
+        // Chat-style cumulative partial: the new fragment restates the whole prefix — replace.
+        if (IsCumulativeRestatement(current, incomingTrimmed))
+        {
+            return incomingTrimmed;
+        }
+
+        string currentTrimmed = current.TrimEnd();
+
+        // Exact repeats of the current tail are noise ("gusto" → "gusto") — keep the accumulator
+        // as-is rather than doubling the word.
+        if (string.Equals(currentTrimmed, incomingTrimmed, StringComparison.OrdinalIgnoreCase))
+        {
+            return current;
+        }
+
+        // Live Translate disjoint word-fragment: append onto the growing sentence.
+        return currentTrimmed + " " + incomingTrimmed;
+    }
+
+    private void ArmCommitTimer(string currentText)
+    {
+        if (_options.CommitIdleTimeout <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (!EndsWithTerminalPunctuation(currentText))
+        {
+            CancelCommitTimer();
+            return;
+        }
+
+        lock (_commitGate)
+        {
+            _commitCts?.Cancel();
+            _commitCts?.Dispose();
+            _commitCts = new CancellationTokenSource();
+            long generation = ++_commitGeneration;
+            TimeSpan delay = _options.CommitIdleTimeout;
+            CancellationToken token = _commitCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delay, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                bool shouldFlush = false;
+                lock (_commitGate)
+                {
+                    shouldFlush = generation == _commitGeneration
+                        && _accumulatorHasContent
+                        && _accumulatedText is not null
+                        && EndsWithTerminalPunctuation(_accumulatedText);
+                }
+
+                if (shouldFlush)
+                {
+                    FlushAccumulatorAsFinal();
+                }
+            }, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private void CancelCommitTimer()
+    {
+        lock (_commitGate)
+        {
+            _commitCts?.Cancel();
+            _commitCts?.Dispose();
+            _commitCts = null;
+            _commitGeneration++;
+        }
+    }
+
+    private static bool EndsWithTerminalPunctuation(string text)
+    {
+        string trimmed = text.TrimEnd();
+        return trimmed.Length > 0 && (trimmed[^1] is '.' or '!' or '?');
     }
 
     private void FlushAccumulatorAsFinal()
@@ -424,6 +599,8 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
 
         _accumulatedText = null;
         _accumulatorHasContent = false;
+
+        CancelCommitTimer();
 
         FinalTranslationAvailable?.Invoke(
             this,

@@ -328,4 +328,223 @@ public class CaptionDisplayPolicyTests
 
         Assert.Null(model.LanguageBadge);
     }
+
+    [Fact]
+    public void Live_translation_active_line_preferred_over_source_stt_line()
+    {
+        // Gemini live translation (common translation state ON): the translation-origin active line
+        // (Tagalog) supersedes the source STT active line (English) — the overlay must show the
+        // translation, never the source.
+        CaptionLine source = Active("going now");
+        CaptionLine translation = new("pupunta na", "tl", 5, DateTime.UtcNow, CaptionLineState.Active,
+            targetLanguage: "tl", translatedText: "pupunta na", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                source,
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                ActiveTranslationLine: translation));
+
+        Assert.Equal("pupunta na", model.ActiveLine!.Text);
+        Assert.True(model.ActiveLine.IsTranslated);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Live_translation_active_line_shown_when_no_source_line()
+    {
+        CaptionLine translation = new("maging sobrang galing", "tl", 7, DateTime.UtcNow, CaptionLineState.Active,
+            targetLanguage: "tl", translatedText: "maging sobrang galing", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                ActiveTranslationLine: translation));
+
+        Assert.Equal("maging sobrang galing", model.ActiveLine!.Text);
+        Assert.True(model.ActiveLine.IsTranslated);
+        Assert.False(model.IsEmpty);
+    }
+
+    [Fact]
+    public void Live_translation_session_hides_source_stt_history_lines()
+    {
+        // Once a live-translation session produces any translation content, the overlay is
+        // Tagalog-only: Whisper source-STT finals are hidden, Gemini translation-origin finals show.
+        CaptionLine englishFinal = Final("Going now.", 1);
+        CaptionLine tagalogFinal = new("Pupunta na.", "tl", 2, DateTime.UtcNow, CaptionLineState.Final, DateTime.UtcNow,
+            targetLanguage: "tl", translatedText: "Pupunta na.", origin: LineOrigin.Translation);
+        CaptionLine tagalogActive = new("pupunta na", "tl", 3, DateTime.UtcNow, CaptionLineState.Active,
+            targetLanguage: "tl", translatedText: "pupunta na", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [englishFinal, tagalogFinal],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                ActiveTranslationLine: tagalogActive));
+
+        CaptionDisplayLine only = Assert.Single(model.History);
+        Assert.Equal("Pupunta na.", only.Text);
+        Assert.True(only.IsTranslated);
+        Assert.Equal("pupunta na", model.ActiveLine!.Text);
+    }
+
+    [Fact]
+    public void Translation_toggled_off_returns_to_source_despite_translation_history()
+    {
+        // Toggling translation off during a Gemini session (the live engine is stopped) must return
+        // the overlay to the source captions immediately: the badge clears and the source STT active
+        // line is the display, even though translation-origin history from before the toggle remains
+        // (the same as Argos, where already-translated history lines stay visible after toggle-off).
+        CaptionLine source = Active("going now", sequence: 3);
+        CaptionLine englishFinal = Final("Hello.", 1);
+        CaptionLine tagalogFinal = new("Kamusta.", "tl", 2, DateTime.UtcNow, CaptionLineState.Final, DateTime.UtcNow,
+            targetLanguage: "tl", translatedText: "Kamusta.", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                source,
+                [englishFinal, tagalogFinal],
+                IsSessionActive: true,
+                TranslationEnabled: false,
+                TargetLanguage: null));
+
+        Assert.False(model.TranslationEnabled);
+        Assert.Null(model.LanguageBadge);
+        Assert.Equal("going now", model.ActiveLine!.Text);
+        Assert.False(model.ActiveLine.IsTranslated);
+        Assert.Equal(2, model.History.Count);
+        Assert.Equal("Hello.", model.History[0].Text);
+        Assert.Equal("Kamusta.", model.History[1].Text);
+    }
+
+    [Fact]
+    public void Translation_toggled_off_ignores_stale_translation_active_line()
+    {
+        // A stale translation active line left from before the toggle must not resurface on screen
+        // once translation is off — the source STT line is the display.
+        CaptionLine source = Active("going now", sequence: 3);
+        CaptionLine staleTranslation = new("pupunta na", "tl", 3, DateTime.UtcNow, CaptionLineState.Active,
+            targetLanguage: "tl", translatedText: "pupunta na", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                source,
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: false,
+                TargetLanguage: null,
+                ActiveTranslationLine: staleTranslation));
+
+        Assert.Equal("going now", model.ActiveLine!.Text);
+        Assert.False(model.ActiveLine.IsTranslated);
+        Assert.Null(model.LanguageBadge);
+    }
+
+    [Fact]
+    public void No_translation_content_keeps_source_history_visible()
+    {
+        // A session with no translation content (Gemini silent / never produced) keeps the source
+        // STT finals visible — hiding is only activated once the session actually translates.
+        CaptionLine englishFinal1 = Final("Hello.", 1);
+        CaptionLine englishFinal2 = Final("World.", 2);
+        CaptionLine englishActive = Active("Going now.", 3);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                englishActive,
+                [englishFinal1, englishFinal2],
+                IsSessionActive: true,
+                TranslationEnabled: false,
+                TargetLanguage: null));
+
+        Assert.Equal(2, model.History.Count);
+        Assert.Equal("Going now.", model.ActiveLine!.Text);
+        Assert.False(model.ActiveLine.IsTranslated);
+    }
+
+    [Fact]
+    public void Live_translation_session_exposes_language_badge_from_common_state()
+    {
+        // The badge comes from the common translation state (TranslationEnabled + TargetLanguage),
+        // which reflects the user's toggle for Gemini exactly as for Argos — never inferred from
+        // line origins.
+        CaptionLine tagalogActive = new("pupunta na", "tl", 3, DateTime.UtcNow, CaptionLineState.Active,
+            targetLanguage: "tl", translatedText: "pupunta na", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                Active("going now", 1),
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                ActiveTranslationLine: tagalogActive));
+
+        Assert.True(model.TranslationEnabled);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Live_translation_session_exposes_language_badge_when_only_history()
+    {
+        CaptionLine tagalogFinal = new("Pupunta na.", "tl", 2, DateTime.UtcNow, CaptionLineState.Final, DateTime.UtcNow,
+            targetLanguage: "tl", translatedText: "Pupunta na.", origin: LineOrigin.Translation);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [tagalogFinal],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl"));
+
+        Assert.True(model.TranslationEnabled);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void No_translation_content_keeps_badge_hidden()
+    {
+        // Before the live session produces any content there is no translation-origin evidence, but
+        // the badge follows the common state regardless: with translation enabled and a target it
+        // shows immediately, and with translation disabled it stays hidden.
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                Active("the quick brown"),
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: false,
+                TargetLanguage: null));
+
+        Assert.False(model.TranslationEnabled);
+        Assert.Null(model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Live_translation_badge_shows_before_any_content_when_translation_enabled()
+    {
+        // With the common state on, the badge is immediate even before the live session produces any
+        // translation content (same as Argos, where the badge shows as soon as the toggle is on).
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                Active("the quick brown"),
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl"));
+
+        Assert.True(model.TranslationEnabled);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
 }

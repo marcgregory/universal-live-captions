@@ -35,6 +35,7 @@ public class CaptionRenderIdentityTests
         public void Stop() { }
         public void Reset() { }
         public void SetTranslationEnabled(bool enabled, string? targetLanguage = null) { }
+        public void SetCaptionLineTranslation(bool enabled) { }
         public void ProcessPartial(PartialTranscript transcript) { }
         public void ProcessFinal(FinalTranscript transcript) { }
         public void ProcessPartialTranslation(UniversalCaptions.Core.Translation.PartialTranslation translation) { }

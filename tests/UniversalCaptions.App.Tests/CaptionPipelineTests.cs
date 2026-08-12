@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using UniversalCaptions.App.Pipeline;
+using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Captions;
 using UniversalCaptions.Core.Audio;
@@ -92,6 +93,39 @@ public class CaptionPipelineTests
         public bool TryProcess(AudioChunk input, out AudioChunk? output) =>
             throw new InvalidOperationException("Audio processing exploded.");
     }
+
+    // CS0067: the interface declares the translation events and the pipeline subscribes to them, but
+    // this fake never raises them — it only verifies the engine lifecycle (create/start/stop).
+#pragma warning disable CS0067
+    /// <summary>A live translation engine that counts lifecycle calls instead of performing I/O.</summary>
+    private sealed class FakeLiveAudioTranslationEngine : ILiveAudioTranslationEngine
+    {
+        public event EventHandler<PartialTranslation>? PartialTranslationAvailable;
+        public event EventHandler<FinalTranslation>? FinalTranslationAvailable;
+        public event EventHandler<LiveTranslationError>? TranslationFailed;
+
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
+        public int PushAudioCount { get; private set; }
+        public bool IsDisposed { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            StartCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken = default)
+        {
+            StopCount++;
+            return Task.CompletedTask;
+        }
+
+        public void PushAudio(AudioChunk chunk) => PushAudioCount++;
+
+        public void Dispose() => IsDisposed = true;
+    }
+#pragma warning restore CS0067
 
     // CS0067: the interface declares the transcript events and the pipeline subscribes to them, but
     // this fake never raises them — it only exercises the start-failure path.
@@ -830,5 +864,231 @@ public class CaptionPipelineTests
         await pipeline.StopAsync();
         Assert.False(stt.IsRecognizing);
         Assert.True(stt.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Start_with_gemini_provider_forwards_languages_and_starts_live_translation()
+    {
+        // The UI provider/language wiring (the fix): the pipeline must hand the per-session provider,
+        // source, and target to the live-translation factory so the App's factory can construct the
+        // Gemini engine from the user's selections — and then fan the live stream out to it.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
+                return live;
+            });
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+
+        Assert.True(pipeline.IsRunning);
+        Assert.Single(capt);
+        Assert.Equal(TranslationProvider.Gemini, capt[0].Provider);
+        Assert.Equal("en", capt[0].Source);
+        Assert.Equal("tl", capt[0].Target);
+        Assert.Equal(1, live.StartCount);
+
+        // The captured stream fans out to the live engine (PCM fan-out is the Gemini path).
+        h.Capture.Emit(Chunk(h.Capture.Format));
+        Assert.Equal(1, live.PushAudioCount);
+
+        await pipeline.StopAsync();
+        Assert.Equal(1, live.StopCount);
+        Assert.True(live.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Start_without_provider_does_not_invoke_live_translation_factory()
+    {
+        // Translation off (provider null) must never create a live engine — the offline pipeline.
+        using var h = new Harness();
+        int factoryCalls = 0;
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                factoryCalls++;
+                return new FakeLiveAudioTranslationEngine();
+            });
+
+        pipeline.Start(null, null, liveTranslationProvider: null, liveSourceLanguage: "en", liveTargetLanguage: "tl");
+
+        Assert.True(pipeline.IsRunning);
+        Assert.Equal(0, factoryCalls);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_toggle_on_while_capturing_starts_live_engine()
+    {
+        // Translation toggled ON mid-session (Gemini): the pipeline must create + start the live
+        // engine without restarting the capture session — Argos UI/UX parity for runtime toggles.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
+                return live;
+            });
+
+        pipeline.Start(null, null);
+        Assert.True(pipeline.IsRunning);
+        Assert.Empty(capt);
+
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
+
+        Assert.Single(capt);
+        Assert.Equal((TranslationProvider.Gemini, "en", "tl"), (capt[0].Provider, capt[0].Source, capt[0].Target));
+        Assert.Equal(1, live.StartCount);
+
+        // The captured stream fans out to the newly started engine.
+        h.Capture.Emit(Chunk(h.Capture.Format));
+        Assert.Equal(1, live.PushAudioCount);
+
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_toggle_off_stops_live_engine_and_keeps_captions_running()
+    {
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        int factoryCalls = 0;
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                factoryCalls++;
+                return live;
+            });
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        Assert.True(pipeline.IsRunning);
+        Assert.Equal(1, factoryCalls);
+        Assert.Equal(1, live.StartCount);
+
+        pipeline.SetLiveTranslation(null, null, null);
+
+        // Engine stopped and disposed; no new engine was created; the session keeps capturing.
+        Assert.Equal(1, factoryCalls);
+        Assert.Equal(1, live.StopCount);
+        Assert.True(live.IsDisposed);
+        Assert.True(pipeline.IsRunning);
+        Assert.True(h.Capture.IsCapturing);
+        Assert.True(h.SpeechToText.IsRecognizing);
+
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_target_change_swaps_the_live_engine()
+    {
+        using var h = new Harness();
+        var engines = new List<FakeLiveAudioTranslationEngine>();
+        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
+                var engine = new FakeLiveAudioTranslationEngine();
+                engines.Add(engine);
+                return engine;
+            });
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        FakeLiveAudioTranslationEngine first = Assert.Single(engines);
+        Assert.Equal(1, first.StartCount);
+
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "ja");
+
+        // Old engine stopped + disposed, new engine created with the new target and started.
+        Assert.Equal(1, first.StopCount);
+        Assert.True(first.IsDisposed);
+        Assert.Equal(2, engines.Count);
+        FakeLiveAudioTranslationEngine second = engines[1];
+        Assert.Equal(1, second.StartCount);
+        Assert.Equal((TranslationProvider.Gemini, "en", "ja"), (capt[1].Provider, capt[1].Source, capt[1].Target));
+
+        // The stream now fans out to the NEW engine, never the detached one.
+        h.Capture.Emit(Chunk(h.Capture.Format));
+        Assert.Equal(0, first.PushAudioCount);
+        Assert.Equal(1, second.PushAudioCount);
+
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_same_configuration_is_a_noop()
+    {
+        using var h = new Harness();
+        int factoryCalls = 0;
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                factoryCalls++;
+                return new FakeLiveAudioTranslationEngine();
+            });
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        Assert.Equal(1, factoryCalls);
+
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
+
+        Assert.Equal(1, factoryCalls);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_before_start_is_a_noop()
+    {
+        using var h = new Harness();
+        int factoryCalls = 0;
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                factoryCalls++;
+                return new FakeLiveAudioTranslationEngine();
+            });
+
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
+
+        Assert.Equal(0, factoryCalls);
+        Assert.False(pipeline.IsRunning);
+
+        // The toggle is honored by the next Start's own configuration, not by the no-op call.
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        Assert.Equal(1, factoryCalls);
+        await pipeline.StopAsync();
     }
 }

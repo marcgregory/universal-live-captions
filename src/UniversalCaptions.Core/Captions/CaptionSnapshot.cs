@@ -16,4 +16,5 @@ public sealed record CaptionSnapshot(
     IReadOnlyList<CaptionLine> History,
     bool IsSessionActive,
     bool TranslationEnabled,
-    string? TargetLanguage);
+    string? TargetLanguage,
+    CaptionLine? ActiveTranslationLine = null);

@@ -14,11 +14,14 @@ namespace UniversalCaptions.App;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The selection table mirrors the speech factory's surface: the <c>UC_LIVE_TRANSLATION_PROVIDER</c>
-/// environment variable picks the implementation. <c>unset</c> / <c>none</c> / empty → no live
-/// translation engine is created (the default; the App composes an offline-only pipeline). <c>gemini</c>
-/// → wires a <see cref="GeminiLiveTranslateEngine"/> with the API key read from
-/// <see cref="ICredentialStore"/>.
+/// The selection table mirrors the speech factory's surface: the caller supplies the UI-selected
+/// <see cref="TranslationProvider"/> (the App passes the control window's provider combo), which wins
+/// whenever it is non-null. When the caller passes no provider, the <c>UC_LIVE_TRANSLATION_PROVIDER</c>
+/// environment variable is consulted as the no-arg default (the developer/benchmark path). <c>null</c> /
+/// <c>none</c> / empty → no live translation engine is created (the default; the App composes an
+/// offline-only pipeline). <c>gemini</c> → wires a <see cref="GeminiLiveTranslateEngine"/> with the
+/// API key read from <see cref="ICredentialStore"/>. <c>argos</c> never builds a live audio engine — the
+/// local Argos path is the <see cref="ITranslationEngine"/> wired separately for caption-line translation.
 /// </para>
 /// <para>
 /// Returning <c>null</c> is the intended default — the caption pipeline accepts a null
@@ -49,12 +52,14 @@ public static class LiveTranslationEngineFactory
     internal const string GeminiApiKeyTarget = "UniversalCaptions:GeminiApiKey";
 
     /// <summary>
-    /// Selects and constructs the live-audio translation engine from <c>UC_LIVE_TRANSLATION_PROVIDER</c>
-    /// and the user's stored credential. Returns <c>null</c> when the provider is unset, empty, set to
-    /// <c>none</c>, set to an unknown value, or when the chosen provider is missing its required
-    /// configuration (for example, the Gemini engine without a stored API key). The pipeline treats
-    /// a null return as "no live translation engine", which silently degrades to the offline-only
-    /// pipeline. The factory itself never throws on a misconfigured or failing
+    /// Selects and constructs the live-audio translation engine from the caller's
+    /// <see cref="TranslationProvider"/> (the App passes the control-window provider combo) with the
+    /// <c>UC_LIVE_TRANSLATION_PROVIDER</c> environment variable as the no-arg default (developer /
+    /// benchmark path; it never overrides an explicit provider). Returns <c>null</c> when the resolved
+    /// provider is <c>null</c> / <c>none</c> / <c>argos</c> / unknown, or when the chosen provider is
+    /// missing its required configuration (for example, the Gemini engine without a stored API key).
+    /// The pipeline treats a null return as "no live translation engine", which silently degrades to
+    /// the offline-only pipeline. The factory itself never throws on a misconfigured or failing
     /// <see cref="ICredentialStore"/> — that would break the offline pipeline.
     /// </summary>
     /// <param name="credentialStore">
@@ -63,8 +68,16 @@ public static class LiveTranslationEngineFactory
     /// </param>
     /// <param name="sourceLanguage">The ISO 639-1 source language, when known.</param>
     /// <param name="targetLanguage">The ISO 639-1 target language, when known.</param>
+    /// <param name="provider">
+    /// The UI-selected live-translation provider (the control window's provider combo). When non-null
+    /// it wins over <c>UC_LIVE_TRANSLATION_PROVIDER</c>; when null the env var (if set) is the default.
+    /// </param>
     /// <returns>The constructed engine, or <c>null</c> when no live translation is configured.</returns>
-    public static ILiveAudioTranslationEngine? Create(ICredentialStore credentialStore, string? sourceLanguage, string? targetLanguage)
+    public static ILiveAudioTranslationEngine? Create(
+        ICredentialStore credentialStore,
+        string? sourceLanguage,
+        string? targetLanguage,
+        TranslationProvider? provider = null)
     {
         if (credentialStore is null)
         {
@@ -72,14 +85,33 @@ public static class LiveTranslationEngineFactory
             return null;
         }
 
-        string provider = Environment.GetEnvironmentVariable("UC_LIVE_TRANSLATION_PROVIDER")?.Trim().ToLowerInvariant() ?? string.Empty;
+        // The caller's provider wins (the App always passes the control window's combo, so the runtime
+        // user intent governs). The env var is consulted only as the no-arg default so the spike /
+        // benchmark runners that do not pass a provider keep working. An explicit env "none" must not
+        // override a user-visible provider selection in the App.
+        string resolvedProvider = provider switch
+        {
+            TranslationProvider.Gemini => "gemini",
+            TranslationProvider.Argos => "argos",
+            _ => Environment.GetEnvironmentVariable("UC_LIVE_TRANSLATION_PROVIDER")
+                ?.Trim()
+                .ToLowerInvariant() ?? string.Empty,
+        };
 
-        if (string.IsNullOrEmpty(provider) || provider == "none" || provider == "off")
+        if (string.IsNullOrEmpty(resolvedProvider) || resolvedProvider == "none" || resolvedProvider == "off")
         {
             return null;
         }
 
-        if (provider == "gemini")
+        // Argos is a local ITranslationEngine wired separately in App.xaml.cs for caption-line
+        // translation; it has no live audio engine, so an explicit Argos selection degrades to the
+        // offline path here.
+        if (resolvedProvider == "argos")
+        {
+            return null;
+        }
+
+        if (resolvedProvider == "gemini")
         {
             // A failing ICredentialStore must not break the offline-only pipeline (ADR-0009
             // invariant: the factory never throws). The lookup is wrapped so a broken store

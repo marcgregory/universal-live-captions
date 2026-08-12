@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-09
+Last updated: 2026-08-12
 
 ## Metadata
 
@@ -16,6 +16,42 @@ Last updated: 2026-08-09
 ---
 
 ## Summary
+
+**Final real-world acceptance — v0.5.33 translation parity PASS (2026-08-12): 22/22 checks (Argos
+11/11 + Gemini 11/11)** on the Release app over real WASAPI loopback (looped
+`english_sustained_90s.wav`), driven by `acceptance-v0.5.33-translation-parity.ps1` (untracked).
+Proven while captions are RUNNING, identically for both providers: Translate OFF → a **new** English
+source caption appears (control toggle reads off, Whisper keeps capturing); Translate ON → target
+language returns; target `tl → ja → tl` updates immediately with no Stop/Start; STT worker PIDs
+stable across every toggle/target change. Gemini session spawned a **fresh worker set** after the
+Argos set fully exited (`9776,22308` → `8288,22748`). Real CJK verified in the evidence file
+(ノートブック / ありがとうございます / 来週のご来店をお待ちしております /
+ゆっくり話すことを忘れないでください); Argos first translation request→result **0.088 s**; no
+orphaned workers; clean exit. Three harness honesty fixes before the result was trusted (toggle-OFF
+waits for a new non-translated caption with a word-boundary Tagalog regex; overlay badge is not
+UIA-exposed so badge behavior stays in `CaptionDisplayPolicyTests` + a control-toggle assertion; the
+fresh-worker-set check waits out the up-to-10 s worker Stop budget). **No product code changed for
+the close-out.** Evidence: `v0533_parity_acceptance.log`, `v0533_app_stderr.log` (both untracked);
+CHANGELOG v0.5.33.
+
+**Common translation state is provider-agnostic (2026-08-12): full suite now 610/610 passing** (106
+Audio + 78 Captions + 111 Speech + 42 Translation + 161 App + 112 Speech.Gemini), Release build 0
+warnings / 0 errors, `dotnet format --verify-no-changes` clean. Design correction to v0.5.32 —
+**`CaptionService.TranslationEnabled` / `TargetLanguage` now always reflect the user's Translate
+checkbox + target for BOTH providers (Argos and Gemini); the provider decides only the translation
+mechanism.** A new `SetCaptionLineTranslation` flag gates only the Argos caption-line path inside
+`CaptionService` (its `ITranslationEngine` calls), while a live audio engine (Gemini) relays
+translation-origin lines; `TranslationProviderPolicy.UsesCaptionLineTranslation` dropped its `enabled`
+parameter so the policy can no longer drive UI state. **Runtime reconfiguration:** new
+`CaptionPipeline.SetLiveTranslation(provider, source, target)` starts/stops/swaps the live Gemini
+engine while a session is live — toggle off stops it + clears the translation active line (badge
+clears, captions return to source, Whisper keeps running); toggle on / target change creates a new
+engine; a failed swap (no API key) raises an error status without stopping Whisper. `ControlWindow`
+sets the common state with the raw toggle and reconfigures the pipeline in the same pass. **Display:**
+`CaptionDisplayPolicy` keys the badge and source-vs-translation display off the common state only.
+Acceptance: `SetLiveTranslation` toggle-on/off/swap/no-op/pre-start (5), Argos caption-line
+suppression restored + translation-origin relay + toggle-off drops in-flight content (6); policy +
+display tests rewritten/expanded.
 
 **Argos cold-start first-caption latency fix + production-wiring measurement (2026-08-09): full suite now 557/557 passing** (106 Audio + 72 Captions + 42 Translation + 111 Speech + 124 App + 102 Speech.Gemini), Release build 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. New additive benchmark leg `captionwire` drives the exact production composition (FasterWhisper native → `CaptionService` en→tl → single-gate `ArgosTranslationEngine`) and proves: Argos per-caption caller-visible p50 **0.27–0.30 s** (max 0.48 s) with a ~0 ms commit→translate queue (no backlog) and **E2E dominated by STT cadence** (first FINAL ≈ 11 s, E2E p50 ≈ 13 s). The ~18–20 s first-caption symptom reproduces **only on a cold Argos process** (python import ≈ 5.75 s + first-translate lazy stanza load ≈ 2.8 s inline); with pre-warm the first visible translated caption is **3.83 s**. Fix (code-behind): `ArgosTranslationEngine.TranslateAsync` awaits an in-flight same-target warm-up before issuing its own request (`AwaitInFlightWarmupAsync`), and `ControlWindow.OnLoaded` now pre-warms Argos at startup when translation is persisted (previously the `_initializing` toggle assignment skipped the pre-warm). Re-measured via the exact App startup path (`--prewarm-race`): first visible **12.0–12.2 s** (was 18.94 s), Argos max **0.48 s** (was 7.23 s inline-cold), 0 errors. 3 new `ArgosTranslationEngineTests` pin the await-in-flight behavior. CPU split measured per python worker: **STT ≈ 30–31 %, Argos ≈ 3.4–4.1 %** of the machine — the "Argos ≈ 51 % CPU" report is not supported. Evidence CSV: `artifacts/reports/captionwire/argos_wire_2026-08-09.csv`, `argos_wire_noprewarm_2026-08-09.csv`, `argos_wire_prewarmrace_fixed_2026-08-09.csv`.
 

@@ -1,0 +1,121 @@
+﻿[12:08:44] Launching app: C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\src\UniversalCaptions.App\bin\Release\net8.0-windows\UniversalCaptions.App.exe
+[12:08:45] Control window found.
+[12:08:47] Baseline UI: toggle=True provider='' target=''
+[12:08:47] Starting audio: C:\Users\TO GOD BE THE GLORY\Desktop\cwm_claude_code\audiototexttranslation\artifacts\samples\english_sustained_90s.wav (looped)
+[12:08:47] ================ ARGOS PHASE ================
+[12:08:47] Argos server pre-start: PID 21192
+[12:08:47] Clicked Start Captions
+[12:08:48] CHECK|ARGOS:STT worker spawned|PASS|9776,22308
+[12:08:50] ARGOS STT worker set: 9776,22308
+[12:08:59] SNAP|argos-first-caption|badge=''|jaLines=0|tlLines=1|parts=Pagtuturo sa Grupong Nagsasagawa ng Tagalog / Ang pangalan ko ay Marie.
+[12:08:59] SNAP|argos-first-caption|captions=Pagtuturo sa Grupong Nagsasagawa ng Tagalog || Ang pangalan ko ay Marie.
+[12:08:59] SNAP|argos-first-caption|status='Capturing system audio…'
+[12:08:59] CHECK|ARGOS:first translated caption while running (Tagalog text)|PASS|sample='Ang pangalan ko ay Marie.'
+[12:08:59] CHECK|ARGOS:first-caption status not error|PASS|status=Capturing system audio…
+[12:09:00] Toggle 'TranslationToggle' -> False
+[12:09:06] SNAP|argos-toggle-off|badge=''|jaLines=0|tlLines=0|parts=Pagtuturo sa Grupong Nagsasagawa ng Tagalog / My name is Maria. / What is your name?
+[12:09:06] SNAP|argos-toggle-off|captions=Pagtuturo sa Grupong Nagsasagawa ng Tagalog || My name is Maria. || What is your name?
+[12:09:06] SNAP|argos-toggle-off|status='Capturing system audio…'
+[12:09:06] CHECK|ARGOS:toggle OFF -> new caption is source English (not translated)|PASS|new='My name is Maria.'
+[12:09:06] CHECK|ARGOS:toggle OFF -> control toggle is off|PASS|state=False
+[12:09:06] CHECK|ARGOS:toggle OFF -> status still capturing (Whisper alive)|PASS|status=Capturing system audio…
+[12:09:06] Note: overlay header badge pill is not UIA-exposed (Visibility=Hidden hover chrome; UIA tree exposes only CaptionScroller/HintText), so badge text is verified by unit tests (CaptionDisplayPolicyTests assert LanguageBadge TL/null) rather than this harness.
+[12:09:07] Toggle 'TranslationToggle' -> True
+[12:09:13] SNAP|argos-toggle-on|badge=''|jaLines=0|tlLines=2|parts=Pagtuturo sa Grupong Nagsasagawa ng Tagalog / My name is Maria. / What is your name? / Magandang umaga lahat. / Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad.
+[12:09:13] SNAP|argos-toggle-on|captions=Pagtuturo sa Grupong Nagsasagawa ng Tagalog || My name is Maria. || What is your name? || Magandang umaga lahat. || Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad.
+[12:09:13] SNAP|argos-toggle-on|status='Capturing system audio…'
+[12:09:13] CHECK|ARGOS:toggle ON -> Tagalog returns while running|PASS|sample='Magandang umaga lahat.'
+[12:09:14] Combo 'TargetLanguageCombo' -> 'Japanese (ja)' (display='')
+[12:09:29] SNAP|argos-target-ja|badge=''|jaLines=4|tlLines=2|parts=Pagtuturo sa Grupong Nagsasagawa ng Tagalog / My name is Maria. / What is your name? / Magandang umaga lahat. / Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. / ノートブックを1ページ目で開きます。 / ありがとうございます。 / 来週のご来店をお待ちしております。 / ゆっくり話すことを忘れないでください
+[12:09:29] SNAP|argos-target-ja|captions=Pagtuturo sa Grupong Nagsasagawa ng Tagalog || My name is Maria. || What is your name? || Magandang umaga lahat. || Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. || ノートブックを1ページ目で開きます。 || ありがとうございます。 || 来週のご来店をお待ちしております。 || ゆっくり話すことを忘れないでください
+[12:09:29] SNAP|argos-target-ja|status='Capturing system audio…'
+[12:09:29] CHECK|ARGOS:target ja -> Japanese while running|PASS|sample='ノートブックを1ページ目で開きます。'
+[12:09:30] Combo 'TargetLanguageCombo' -> 'Tagalog (tl)' (display='')
+[12:09:44] SNAP|argos-target-back-tl|badge=''|jaLines=4|tlLines=5|parts=Pagtuturo sa Grupong Nagsasagawa ng Tagalog / My name is Maria. / What is your name? / Magandang umaga lahat. / Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. / ノートブックを1ページ目で開きます。 / ありがとうございます。 / 来週のご来店をお待ちしております。 / ゆっくり、明確に話せ、お互いに丁寧に耳を傾けてください。 / Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo. / Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay.
+[12:09:44] SNAP|argos-target-back-tl|captions=Pagtuturo sa Grupong Nagsasagawa ng Tagalog || My name is Maria. || What is your name? || Magandang umaga lahat. || Sa ngayon ay magsasanay tayo ng mga pagbati at pambungad. || ノートブックを1ページ目で開きます。 || ありがとうございます。 || 来週のご来店をお待ちしております。 || ゆっくり、明確に話せ、お互いに丁寧に耳を傾けてください。 || Magsisimula tayo sa numerong 1 hanggang 10, pagkatapos ay lilipat tayo sa mga araw ng sanlinggo. || Dakilang gawa ang lahat, iyan ang wakas ng kasalukuyang sesyon ng pagsasanay. || Hello at malugod na tanggapin sa unang pulong ng aming grupong nag-uusap na Tagalog.
+[12:09:44] SNAP|argos-target-back-tl|status='Capturing system audio…'
+[12:09:44] CHECK|ARGOS:target back tl -> Tagalog while running|PASS|sample='Magandang umaga lahat.'
+[12:09:44] CHECK|ARGOS:Whisper workers not restarted across toggle/target (originals alive)|PASS|before=9776,22308 after=9776,22308
+[12:09:44] ================ GEMINI PHASE ================
+[12:09:44] Stopping captions to establish Gemini session state...
+[12:09:49] Combo 'ProviderCombo' -> 'Gemini (cloud)' (display='')
+[12:09:50] Provider set to Gemini. Start captions again.
+[12:09:55] CHECK|GEMINI:old Argos workers fully exited before new session|PASS|argos=9776,22308 new=8288,22748
+[12:09:55] CHECK|GEMINI:STT worker spawned|PASS|8288,22748
+[12:09:55] CHECK|GEMINI:STT worker is a NEW set (fresh session)|PASS|argos=9776,22308 gemini=8288,22748
+[12:09:55] Gemini STT worker set: 8288,22748
+[12:09:59] SNAP|gemini-first-caption|badge=''|jaLines=0|tlLines=1|parts=Magkikita tayo sa
+[12:09:59] SNAP|gemini-first-caption|captions=Magkikita tayo sa
+[12:09:59] SNAP|gemini-first-caption|status='Capturing system audio…'
+[12:09:59] CHECK|GEMINI:first translated caption while running (Tagalog text)|PASS|sample='Magkikita tayo sa'
+[12:09:59] CHECK|GEMINI:first-caption status not error|PASS|status=Capturing system audio…
+[12:09:59] Toggle 'TranslationToggle' -> False
+[12:10:05] SNAP|gemini-toggle-off|badge=''|jaLines=0|tlLines=0|parts=We will see you next week. / Remember to speak
+[12:10:05] SNAP|gemini-toggle-off|captions=We will see you next week. || Remember to speak
+[12:10:05] SNAP|gemini-toggle-off|status='Capturing system audio…'
+[12:10:06] CHECK|GEMINI:toggle OFF -> new caption is source English (not translated)|PASS|new='We will see you next week.'
+[12:10:06] CHECK|GEMINI:toggle OFF -> control toggle is off|PASS|state=False
+[12:10:06] CHECK|GEMINI:Whisper continues after toggle OFF (originals alive)|PASS|set=8288,22748
+[12:10:06] Toggle 'TranslationToggle' -> True
+[12:10:13] SNAP|gemini-toggle-on|badge=''|jaLines=0|tlLines=2|parts=Tapos lumipat sa mga araw ng linggo. / Magaling
+[12:10:13] SNAP|gemini-toggle-on|captions=Tapos lumipat sa mga araw ng linggo. || Magaling
+[12:10:13] SNAP|gemini-toggle-on|status='Capturing system audio…'
+[12:10:13] CHECK|GEMINI:toggle ON -> Tagalog returns while running|PASS|sample='Tapos lumipat sa mga araw ng linggo.'
+[12:10:14] Combo 'TargetLanguageCombo' -> 'Japanese (ja)' (display='')
+[12:10:28] SNAP|gemini-target-ja|badge=''|jaLines=1|tlLines=1|parts=Tapos lumipat sa mga araw ng linggo. / 練習セッション。 こんにちは、 第1回 の会話セッ ションへようこそ。 タガログ語の 練習グループです。 私 の名前はマリアです。 あなた の名前は何ですか？ おはよう
+[12:10:28] SNAP|gemini-target-ja|captions=Tapos lumipat sa mga araw ng linggo. || 練習セッション。 こんにちは、 第1回 の会話セッ ションへようこそ。 タガログ語の 練習グループです。 私 の名前はマリアです。 あなた の名前は何ですか？ おはよう
+[12:10:28] SNAP|gemini-target-ja|status='Capturing system audio…'
+[12:10:28] CHECK|GEMINI:target ja -> Japanese while running|PASS|sample='練習セッション。 こんにちは、 第1回 の会話セッ ションへようこそ。 タガログ語の 練習グループです。 私 の名前はマリアです。 あなた の名前は何ですか？ おはよう'
+[12:10:30] Combo 'TargetLanguageCombo' -> 'Tagalog (tl)' (display='')
+[12:10:44] SNAP|gemini-target-back-tl|badge=''|jaLines=0|tlLines=5|parts=Tapos lumipat sa mga araw ng linggo. / Magsasanay tayo ng mga pagbati at pagpapakilala. / Pakibuksan ang inyong mga notebook sa unang pahina. / Salamat sa pakikinig. / Magkikita tayo sa susunod na linggo.
+[12:10:44] SNAP|gemini-target-back-tl|captions=Tapos lumipat sa mga araw ng linggo. || Magsasanay tayo ng mga pagbati at pagpapakilala. || Pakibuksan ang inyong mga notebook sa unang pahina. || Salamat sa pakikinig. || Magkikita tayo sa susunod na linggo.
+[12:10:44] SNAP|gemini-target-back-tl|status='Capturing system audio…'
+[12:10:44] CHECK|GEMINI:target back tl -> Tagalog while running|PASS|sample='Tapos lumipat sa mga araw ng linggo.'
+[12:10:44] CHECK|GEMINI:Whisper workers not restarted across toggle/target (originals alive)|PASS|before=8288,22748 after=8288,22748
+[12:10:44] Stopping audio + closing app...
+[12:10:59] ================ SUMMARY ================
+[12:10:59] RESULT|ARGOS:STT worker spawned|PASS|9776,22308
+[12:10:59] RESULT|ARGOS:first translated caption while running (Tagalog text)|PASS|sample='Ang pangalan ko ay Marie.'
+[12:10:59] RESULT|ARGOS:first-caption status not error|PASS|status=Capturing system audio…
+[12:10:59] RESULT|ARGOS:toggle OFF -> new caption is source English (not translated)|PASS|new='My name is Maria.'
+[12:10:59] RESULT|ARGOS:toggle OFF -> control toggle is off|PASS|state=False
+[12:10:59] RESULT|ARGOS:toggle OFF -> status still capturing (Whisper alive)|PASS|status=Capturing system audio…
+[12:10:59] RESULT|ARGOS:toggle ON -> Tagalog returns while running|PASS|sample='Magandang umaga lahat.'
+[12:10:59] RESULT|ARGOS:target ja -> Japanese while running|PASS|sample='ノートブックを1ページ目で開きます。'
+[12:10:59] RESULT|ARGOS:target back tl -> Tagalog while running|PASS|sample='Magandang umaga lahat.'
+[12:10:59] RESULT|ARGOS:Whisper workers not restarted across toggle/target (originals alive)|PASS|before=9776,22308 after=9776,22308
+[12:10:59] RESULT|GEMINI:old Argos workers fully exited before new session|PASS|argos=9776,22308 new=8288,22748
+[12:10:59] RESULT|GEMINI:STT worker spawned|PASS|8288,22748
+[12:10:59] RESULT|GEMINI:STT worker is a NEW set (fresh session)|PASS|argos=9776,22308 gemini=8288,22748
+[12:10:59] RESULT|GEMINI:first translated caption while running (Tagalog text)|PASS|sample='Magkikita tayo sa'
+[12:10:59] RESULT|GEMINI:first-caption status not error|PASS|status=Capturing system audio…
+[12:10:59] RESULT|GEMINI:toggle OFF -> new caption is source English (not translated)|PASS|new='We will see you next week.'
+[12:10:59] RESULT|GEMINI:toggle OFF -> control toggle is off|PASS|state=False
+[12:10:59] RESULT|GEMINI:Whisper continues after toggle OFF (originals alive)|PASS|set=8288,22748
+[12:10:59] RESULT|GEMINI:toggle ON -> Tagalog returns while running|PASS|sample='Tapos lumipat sa mga araw ng linggo.'
+[12:10:59] RESULT|GEMINI:target ja -> Japanese while running|PASS|sample='練習セッション。 こんにちは、 第1回 の会話セッ ションへようこそ。 タガログ語の 練習グループです。 私 の名前はマリアです。 あなた の名前は何ですか？ おはよう'
+[12:10:59] RESULT|GEMINI:target back tl -> Tagalog while running|PASS|sample='Tapos lumipat sa mga araw ng linggo.'
+[12:10:59] RESULT|GEMINI:Whisper workers not restarted across toggle/target (originals alive)|PASS|before=8288,22748 after=8288,22748
+[12:10:59] TOTAL: 22 PASS / 0 FAIL
+[12:10:59] ---- stderr diagnostics ----
+[12:10:59] [DIAGNOSTICS] T0: 0.000s - Video/Audio playback starts (Capture started)
+[12:10:59] [DIAGNOSTICS] T1: 0.058s - First non-silent audio chunk reaches capture pipeline
+[12:10:59] [DIAGNOSTICS]       Delta (T1 - T0): 0.058s
+[12:10:59] [DIAGNOSTICS] T2: 0.068s - First audio chunk dispatched to Whisper
+[12:10:59] [DIAGNOSTICS]       Delta (T2 - T1): 0.009s
+[12:10:59] [DIAGNOSTICS] T4: 6.056s - First Whisper Final result
+[12:10:59] [DIAGNOSTICS] T5: 6.060s - First translation request
+[12:10:59] [DIAGNOSTICS]       Delta (T5 - T4): 0.004s
+[12:10:59] [DIAGNOSTICS] T6: 6.149s - First translation result
+[12:10:59] [DIAGNOSTICS]       Delta (T6 - T5): 0.088s
+[12:10:59] [DIAGNOSTICS] T3: 8.302s - First Whisper Partial result
+[12:10:59] [DIAGNOSTICS]       Delta (T3 - T2): 8.234s
+[12:10:59] [DIAGNOSTICS] T0: 0.000s - Video/Audio playback starts (Capture started)
+[12:10:59] [DIAGNOSTICS] T1: 0.015s - First non-silent audio chunk reaches capture pipeline
+[12:10:59] [DIAGNOSTICS]       Delta (T1 - T0): 0.015s
+[12:10:59] [DIAGNOSTICS] T2: 0.019s - First audio chunk dispatched to Whisper
+[12:10:59] [DIAGNOSTICS]       Delta (T2 - T1): 0.004s
+[12:10:59] [DIAGNOSTICS] T3: 4.190s - First Whisper Partial result
+[12:10:59] [DIAGNOSTICS]       Delta (T3 - T2): 4.171s
+[12:10:59] [DIAGNOSTICS] T4: 6.563s - First Whisper Final result
+[12:10:59] [DIAGNOSTICS]       Delta (T4 - T3): 2.373s

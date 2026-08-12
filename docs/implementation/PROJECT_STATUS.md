@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-07
+Last updated: 2026-08-12
 
 ## Metadata
 
@@ -18,6 +18,38 @@ Last updated: 2026-08-07
 This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
+
+**Common translation state made provider-agnostic (2026-08-12): the v0.5.32 design correction is
+complete — `TranslationEnabled` / `TargetLanguage` always reflect the user's Translate checkbox +
+target for BOTH providers; the provider decides only the translation MECHANISM.** Root problem:
+v0.5.32 fed the Gemini policy result (always false) into the caption service's common translation
+state, so every Gemini session had `TranslationEnabled == false` and the display inferred the live
+session + badge from line origins — breaking Argos parity (Translate toggle / target dropdown did
+nothing while a Gemini session was live). Fix: `SetCaptionLineTranslation` gates only the Argos
+caption-line path; live audio engines relay translation-origin lines; `TranslationProviderPolicy`
+lost its `enabled` parameter. Runtime reconfiguration via `CaptionPipeline.SetLiveTranslation`
+(toggle-off stops the Gemini engine + clears the translation active line; toggle-on/target-change
+creates a new engine; failed swap raises error without stopping Whisper). Display keys off common
+state only. **610/610 tests** (106 Audio + 78 Captions + 111 Speech + 42 Translation + 161 App + 112
+Speech.Gemini), Release 0 warnings / 0 errors, `dotnet format` clean. Evidence: CHANGELOG v0.5.33,
+TEST_REPORT (2026-08-12 summary).
+
+**Final real-world acceptance PASS — v0.5.33 is close-out / release-level (2026-08-12).** Harness
+`acceptance-v0.5.33-translation-parity.ps1` (untracked) drove the Release app over real WASAPI
+loopback (looped English audio) through the full control surface for BOTH providers in one session:
+**22/22 PASS (Argos 11/11 + Gemini 11/11).** While captions are RUNNING, for Argos and Gemini alike:
+Translate OFF → a genuinely new source-English caption appears (control toggle reads off, Whisper
+keeps capturing); Translate ON → target language returns; target `tl → ja → tl` updates immediately
+with no Stop/Start; STT worker PIDs stay constant across every runtime change. Gemini additionally
+spawned a **fresh worker set** after the Argos session fully exited (no reuse). Real CJK verified
+in-file (ノートブック / ありがとうございます / 来週のご来店をお待ちしております), Argos
+request→result **0.088 s**, no orphaned workers, clean exit. Three harness honesty fixes were applied
+before the result was trusted (toggle-OFF now waits for a new non-translated caption; the overlay
+badge is not UIA-exposed so badge behavior moved to unit tests + control-toggle assertion; fresh-set
+check waits out the up-to-10 s worker Stop budget) — no product code changed for the close-out.
+Evidence: CHANGELOG v0.5.33, `v0533_parity_acceptance.log` (untracked). **v0.5.33 is READY for
+release.** Next: install/bundle this build (RELEASE_PLAN), and Phase 2 real-app validation (YouTube,
+VLC, Zoom) remains deferred per user.
 
 **Translation & naturalizer investigation CLOSED (2026-08-07); next phase = release/landing-page
 work.** The user closed both the offline-MT search and the naturalizer-model search. Conclusive
@@ -258,4 +290,4 @@ hotplug acceptance test can be run.
 
 ## Last Build
 
-2026-08-06 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **382/382** (77 Audio + 72 Captions + 111 Speech + 27 Translation + 95 App). **Final real-world acceptance PASS (2026-08-06):** continuous VLC media through the default device at the production default (`fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`). Leg 1 Tagalog/translation-OFF (`uc_video_full.m4a`, 288.79 s): STT worker 31.8% system mean (max 37.6%), App 0.9%, first caption 3.27 s, clean exit, 0 orphans. Leg 2 English/en→tl (`english_sustained_90s.wav` looped): STT 33.5% (max 37.1%) + Argos 4.2% (max 21.6%), App 1.3%, first caption 3.23 s, clean exit, 0 orphans. Overlay verified live (growing partials, FINAL freeze into bounded history, `EN || TL` badge, real Tagalog, Stop retains history). **Entry 16 COMPLETE (2026-08-06):** `UC_NATIVE_THREADS` knob, production default `Threads = 4`; formal 12t-vs-4t gate WER 33.2% both, realtime 1.18× both, FINAL stream 100% text-identical; real-App STT worker system mean 77.4% → 31.6%. **Entry 15 COMPLETE (2026-08-06):** overlay live-line integration (partials painted in a single mutable active block). **Entry 14 COMPLETE (2026-08-05):** production default promoted to `fasterwhisper-native` + live partials (ADR-0008). See CHANGELOG v0.5.22–v0.5.25, TEST_REPORT (Entry 15/16 + final acceptance), BENCHMARK_REPORT (Entry 16 gate). Prior (2026-08-05): TD-005 settings persistence 335/335; Slice 11 segment-boundary tuning (keep 8 s) 357/357; Slice 10 faster-whisper native streaming PASS; TD-016 protocol-contract suite 302/302; TD-001 resampler benchmark closed.
+2026-08-12 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **610/610** (106 Audio + 78 Captions + 111 Speech + 42 Translation + 161 App + 112 Speech.Gemini), `dotnet format` clean. **Final real-world acceptance PASS (2026-08-12) — v0.5.33 translation parity: 22/22** (Argos 11/11 + Gemini 11/11) on the Release app over real WASAPI loopback via `acceptance-v0.5.33-translation-parity.ps1` (untracked). While RUNNING, both providers: Translate OFF → new source-English caption + control toggle off + Whisper still capturing; Translate ON → target returns; target `tl→ja→tl` immediate, no Stop/Start; STT worker PIDs stable across all toggles; Gemini spawned a fresh worker set after Argos fully exited. Real CJK in-file, Argos request→result 0.088 s, 0 orphans, clean exit. See CHANGELOG v0.5.33, TEST_REPORT (2026-08-12), `v0533_parity_acceptance.log` (untracked). Prior (2026-08-06): Entry 16 `UC_NATIVE_THREADS` decode cap (Threads=4), Entry 15 overlay live-line, Entry 14 default promotion (ADR-0008) — see CHANGELOG v0.5.22–v0.5.25, TEST_REPORT (Entry 15/16 + final acceptance), BENCHMARK_REPORT (Entry 16 gate).

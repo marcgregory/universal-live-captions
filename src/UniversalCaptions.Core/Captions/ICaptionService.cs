@@ -70,6 +70,18 @@ public interface ICaptionService : IDisposable
     void SetTranslationEnabled(bool enabled, string? targetLanguage = null);
 
     /// <summary>
+    /// Enables or disables this service's own caption-line translation path — the local
+    /// <see cref="ITranslationEngine"/> applied to source lines. Set to false when a live audio
+    /// translation engine owns translation (for example a cloud provider): the service then only
+    /// relays translation-origin lines and never starts its own translations, so the two paths can
+    /// never both fill the overlay. Independent of the common
+    /// <see cref="CaptionState.TranslationEnabled"/>/<see cref="CaptionState.TargetLanguage"/> state,
+    /// which reflects the user's translation toggle for every provider.
+    /// </summary>
+    /// <param name="enabled">True when this service should translate source lines itself.</param>
+    void SetCaptionLineTranslation(bool enabled);
+
+    /// <summary>
     /// Replaces the active line with a caption built from a partial transcript. Ignored while not running.
     /// </summary>
     /// <param name="transcript">The partial transcript. Must not be null.</param>

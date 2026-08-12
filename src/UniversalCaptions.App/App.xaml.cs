@@ -107,11 +107,12 @@ public partial class App : Application
         // factory reads the key once when a Gemini session starts and the engine drops it from
         // memory on Dispose (see ADR-0009 for the lifecycle).
         services.AddSingleton<ICredentialStore>(_ => new WindowsCredentialStore());
-        services.AddSingleton<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
+        services.AddSingleton<Func<(TranslationProvider? Provider, string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
             sp => pair => LiveTranslationEngineFactory.Create(
                 sp.GetRequiredService<ICredentialStore>(),
                 pair.SourceLanguage,
-                pair.TargetLanguage));
+                pair.TargetLanguage,
+                pair.Provider));
 
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
         // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.
@@ -133,7 +134,7 @@ public partial class App : Application
                     sp.GetRequiredService<Func<string?, ISpeechToTextEngine>>(),
                     sp.GetRequiredService<ICaptionService>(),
                     sp.GetRequiredService<IDeviceChangeMonitor>(),
-                    sp.GetRequiredService<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
+                    sp.GetRequiredService<Func<(TranslationProvider? Provider, string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
                     captionOptions.SourceLanguage,
                     captionOptions.TargetLanguage));
         services.AddSingleton<CaptionOverlayWindow>();

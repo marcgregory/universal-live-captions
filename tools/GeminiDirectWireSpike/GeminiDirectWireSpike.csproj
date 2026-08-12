@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\UniversalCaptions.Core\UniversalCaptions.Core.csproj" />
+    <ProjectReference Include="..\..\src\UniversalCaptions.Audio\UniversalCaptions.Audio.csproj" />
     <ProjectReference Include="..\..\src\UniversalCaptions.Speech.Gemini\UniversalCaptions.Speech.Gemini.csproj" />
   </ItemGroup>
 

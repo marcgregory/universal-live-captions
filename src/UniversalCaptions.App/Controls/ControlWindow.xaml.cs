@@ -133,7 +133,9 @@ public partial class ControlWindow : Window
             // until the user toggles translation again. With translation persisted enabled, boot the
             // engine in the background now so the first real caption reuses a warm process instead
             // of paying the cold Argos import + lazy model-load inline (the ~19 s first-caption).
-            if (translationEnabled)
+            // The pre-warm is skipped when Gemini owns translation: Argos must not start at all in a
+            // Gemini session (TranslationProviderPolicy).
+            if (translationEnabled && TranslationProviderPolicy.UsesCaptionLineTranslation(_settings.Provider))
             {
                 string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
                 if (!string.IsNullOrWhiteSpace(target))
@@ -252,7 +254,19 @@ public partial class ControlWindow : Window
         // Re-apply the translation settings (as Reset disables them by default)
         ApplyTranslationSettings();
 
-        _pipeline.Start(deviceId, language);
+        // The live-translation provider + languages for this session. The provider was previously
+        // dead-ended in UserSettings (saved but never read by the engine factory); it now flows to
+        // the pipeline so the UI selection actually constructs the Gemini engine. Translation off →
+        // no provider → no live engine. Argos → UsesLiveAudioEngine is false, so no live engine is
+        // requested and the offline caption-line path handles translation.
+        TranslationProvider? selectedProvider = (ProviderCombo.SelectedItem as ProviderOption)?.Value;
+        TranslationProvider? liveProvider = TranslationToggle.IsChecked == true
+            ? TranslationProviderPolicy.UsesLiveAudioEngine(selectedProvider) ? selectedProvider : null
+            : null;
+        string? source = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
+        string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
+
+        _pipeline.Start(deviceId, language, liveProvider, source, target);
         _overlay.Show();
     }
 
@@ -303,6 +317,7 @@ public partial class ControlWindow : Window
     {
         bool enabled = TranslationToggle.IsChecked == true;
         string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
+        TranslationProvider? provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value;
 
         if (enabled)
         {
@@ -318,15 +333,28 @@ public partial class ControlWindow : Window
             }
         }
 
+        // The common translation state/UX layer: the Translate checkbox + target dropdown behave the
+        // same for every provider. TranslationEnabled/TargetLanguage reflect the user's intent; only
+        // the translation MECHANISM below is provider-specific.
         _captions.SetTranslationEnabled(enabled, target);
+        _captions.SetCaptionLineTranslation(TranslationProviderPolicy.UsesCaptionLineTranslation(provider));
 
         // Kick the Argos pre-warm in the background so the cold-start is not paid on the first real
         // caption. Fire-and-forget on a background task: the UI stays responsive, and the engine's
         // shared warm-up task is awaited by real translations if the user starts speaking first.
-        if (enabled && !string.IsNullOrWhiteSpace(target))
+        // Only the Argos caption-line path needs Argos — Gemini owns translation (TranslationProviderPolicy).
+        if (enabled && TranslationProviderPolicy.UsesCaptionLineTranslation(provider) && !string.IsNullOrWhiteSpace(target))
         {
             _ = PreheatInBackgroundAsync(target!);
         }
+
+        // Runtime reconfiguration: when a session is live, toggling translation on/off or changing the
+        // target must take effect immediately (Argos UI/UX parity). The pipeline owns the live engine —
+        // a null provider (translation off) stops it so captions return to source; Gemini is recreated
+        // with the new target (the target is part of the engine's session setup). No-op when stopped.
+        TranslationProvider? liveProvider = enabled && TranslationProviderPolicy.UsesLiveAudioEngine(provider) ? provider : null;
+        string? source = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
+        _pipeline.SetLiveTranslation(liveProvider, source, target);
     }
 
     /// <summary>

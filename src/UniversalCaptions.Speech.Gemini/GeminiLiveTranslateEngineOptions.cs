@@ -64,6 +64,16 @@ public sealed class GeminiLiveTranslateEngineOptions
     public string? SourceLanguage { get; set; }
 
     /// <summary>
+    /// Idle window used to commit a final translation line. The Live Translate service streams
+    /// translations continuously and never sends <c>turnComplete</c> (verified on the real wire
+    /// 2026-08-12), so the engine commits a final when the accumulated text ends with terminal
+    /// punctuation (<c>. ! ?</c>) and no new partial arrives within this window. Defaults to
+    /// 1.5 s; set <see cref="TimeSpan.Zero"/> to disable the heuristic and rely on
+    /// <c>turnComplete</c> alone.
+    /// </summary>
+    public TimeSpan CommitIdleTimeout { get; set; } = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>
     /// Optional system-instruction nudge. STATUS (2026-08-08, Google's Live Translate docs):
     /// REJECTED by the server — "Pure low-latency translation; no support for tools or
     /// instructions." The property is retained on the options object so existing call-sites

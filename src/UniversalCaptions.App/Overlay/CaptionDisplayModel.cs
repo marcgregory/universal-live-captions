@@ -64,9 +64,27 @@ public static class CaptionDisplayPolicy
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
+        // The common translation state/UX layer is the source of truth: TranslationEnabled +
+        // TargetLanguage reflect the user's Translate toggle for every provider (Argos and Gemini
+        // alike), so the badge and the source-vs-translation display key off it — never off line
+        // origins. Origins only decide WHICH lines are the display in a live-translation session.
+        bool translationOn = snapshot.TranslationEnabled && !string.IsNullOrWhiteSpace(snapshot.TargetLanguage);
+
         // Build the full display list. The overlay is a fixed-height ScrollViewer that
         // auto-scrolls to the bottom, so all history is passed through — the visual window
         // shows only the last 2-3 lines, exactly like Chrome's Live Caption.
+        //
+        // Live-translation session (Gemini): the live engine owns display, so the overlay is
+        // Tagalog-only — source-STT finals (Whisper) are hidden once the session produces any
+        // translation content; their Gemini translation is the display. Detected from the snapshot
+        // (a translation-origin active line or any translation-origin history line) while translation
+        // is ON; the Argos caption-line path never creates translation-origin lines, so this cannot
+        // mis-fire there. When translation is toggled OFF the live engine is stopped, so the overlay
+        // returns to the source captions even though old translation-origin history remains.
+        bool liveTranslationSession = translationOn
+            && (snapshot.ActiveTranslationLine is not null
+                || snapshot.History.Any(caption => caption.Origin == LineOrigin.Translation));
+
         var allHistory = new List<CaptionDisplayLine>(snapshot.History.Count);
         foreach (CaptionLine caption in snapshot.History)
         {
@@ -74,8 +92,14 @@ public static class CaptionDisplayPolicy
             // so its English source never flashes. The previous committed (Tagalog) caption remains
             // visible until the new final's translation completes; CaptionService then raises
             // CaptionLineUpdated and this entry re-renders as the new translated Tagalog text.
-            if (snapshot.TranslationEnabled &&
+            if (translationOn &&
                 caption.TranslationStatus == CaptionTranslationStatus.Pending)
+            {
+                continue;
+            }
+
+            // Live-translation session: hide the raw source-STT finals — the overlay is Tagalog-only.
+            if (liveTranslationSession && caption.Origin == LineOrigin.SourceStt)
             {
                 continue;
             }
@@ -89,18 +113,23 @@ public static class CaptionDisplayPolicy
 
         IReadOnlyList<CaptionDisplayLine> history = allHistory;
 
-        CaptionLine? activeLine = snapshot.ActiveLine;
-        CaptionDisplayLine? active = null;
-        if (activeLine is not null)
+        // The active line. In a live-translation session (Gemini) the overlay is Tagalog-only: the
+        // translation-origin line is the display, and while no translation is in progress the Whisper
+        // source line must NOT flash in English — so it is never used as a fallback. When translation
+        // is off, or in the Argos caption-line path, the source line is the display.
+        CaptionLine? active = liveTranslationSession ? snapshot.ActiveTranslationLine : snapshot.ActiveLine;
+
+        CaptionDisplayLine? display = null;
+        if (active is not null)
         {
-            bool shouldHide = snapshot.TranslationEnabled &&
-                (activeLine.TranslationStatus == CaptionTranslationStatus.NotRequested ||
-                 activeLine.TranslationStatus == CaptionTranslationStatus.Pending) &&
-                 string.IsNullOrWhiteSpace(activeLine.TranslatedText);
+            bool shouldHide = translationOn &&
+                (active.TranslationStatus == CaptionTranslationStatus.NotRequested ||
+                 active.TranslationStatus == CaptionTranslationStatus.Pending) &&
+                 string.IsNullOrWhiteSpace(active.TranslatedText);
 
             if (!shouldHide)
             {
-                active = ToDisplayLine(activeLine);
+                display = ToDisplayLine(active);
             }
         }
 
@@ -110,26 +139,31 @@ public static class CaptionDisplayPolicy
         // SOURCE text of the history entry (snapshot.History, not the display list which
         // may be translated), and only strip from an untranslated active line so we never
         // corrupt a Tagalog translation with an English word-removal pass.
-        if (active is not null
-            && activeLine is not null
-            && !active.IsTranslated
+        if (display is not null
+            && active is not null
+            && !display.IsTranslated
             && snapshot.History.Count > 0)
         {
             string lastSourceText = snapshot.History[^1].Text;
-            string strippedText = StripLeadingOverlap(lastSourceText, activeLine.Text);
-            if (!string.IsNullOrWhiteSpace(strippedText) && strippedText.Length < activeLine.Text.Length)
+            string strippedText = StripLeadingOverlap(lastSourceText, active.Text);
+            if (!string.IsNullOrWhiteSpace(strippedText) && strippedText.Length < active.Text.Length)
             {
-                active = new CaptionDisplayLine(strippedText, active.Sequence, false);
+                display = new CaptionDisplayLine(strippedText, display.Sequence, false);
             }
             // If strippedText is empty (the entire partial was a repeat) keep the
             // original active so the user always sees something at the bottom.
         }
 
+        // The badge comes straight from the common translation state — TranslationEnabled +
+        // TargetLanguage reflect the user's toggle for every provider, so no origin inference is
+        // needed (and toggling off clears the badge immediately).
+        string? badgeTarget = translationOn ? snapshot.TargetLanguage : null;
+
         return new CaptionDisplayModel(
-            active,
+            display,
             history,
-            snapshot.TranslationEnabled,
-            snapshot.TargetLanguage);
+            translationOn,
+            badgeTarget);
     }
 
     /// <summary>
@@ -144,9 +178,15 @@ public static class CaptionDisplayPolicy
             return null;
         }
 
-        bool translated = line.TranslationStatus == CaptionTranslationStatus.Completed
-            && !string.IsNullOrWhiteSpace(line.TranslatedText);
-        return new CaptionDisplayLine(translated ? line.TranslatedText! : line.Text, line.Sequence, translated);
+        // A translation-origin line's Text IS the target-language translation (the live Gemini engine
+        // emits final text, not source + translated fields). Its TranslationStatus stays NotRequested
+        // because the caption service never re-translates it, so flag it as translated by origin so
+        // the overlay treats it like a completed translation (and never runs the English overlap-strip
+        // over Tagalog text).
+        bool translated = (line.Origin == LineOrigin.Translation && !string.IsNullOrWhiteSpace(line.Text))
+            || (line.TranslationStatus == CaptionTranslationStatus.Completed
+                && !string.IsNullOrWhiteSpace(line.TranslatedText));
+        return new CaptionDisplayLine(translated ? line.TranslatedText ?? line.Text : line.Text, line.Sequence, translated);
     }
 
     /// <summary>

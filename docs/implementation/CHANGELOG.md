@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-09
+Last updated: 2026-08-12
 
 ## Metadata
 
@@ -16,6 +16,139 @@ Last updated: 2026-08-09
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.33 - 2026-08-12
+
+### Common translation state is provider-agnostic: the provider decides only the translation MECHANISM (2026-08-12)
+
+- **Design correction (v0.5.32 was too aggressive):** v0.5.32 fed the policy result
+  `UsesCaptionLineTranslation(Gemini, enabled)` — always false — straight into the caption service's
+  `SetTranslationEnabled`, so in every Gemini session the common translation state stayed false and the
+  display model had to infer the live session + the badge from line origins. That broke Argos UI/UX
+  parity: toggling Translate TO off or changing the target while a Gemini session was live did
+  nothing — the engine's target is fixed at session start, and the display kept showing Tagalog
+  regardless of the toggle.
+- **Layering (UI → common state → providers):** `CaptionService.TranslationEnabled` /
+  `TargetLanguage` now always reflect the user's Translate checkbox + target dropdown for BOTH
+  providers (the v0.5.31 two-path guard is preserved — the App still never runs two translation
+  engines). The provider-specific decision is reduced to the MECHANISM: a new `SetCaptionLineTranslation`
+  flag gates only the Argos caption-line path inside `CaptionService` (its `ITranslationEngine` calls
+  in `WillTranslateActiveLine` / `MaybeStartActiveLineTranslation` / `ProcessFinal`); a live audio
+  engine (Gemini) relays translation-origin lines instead. `TranslationProviderPolicy.UsesCaptionLineTranslation`
+  dropped its `enabled` parameter so the policy can no longer drive UI state.
+- **Runtime reconfiguration (toggle + target apply immediately):** new
+  `CaptionPipeline.SetLiveTranslation(provider, source, target)` starts/stops/swaps the live Gemini
+  engine while a session is live. Toggle off → engine stopped + disposed and the translation active
+  line cleared (captions return to source, badge clears, Whisper keeps running); toggle on / target
+  change → a new engine is created with the current target (the target is part of the engine's session
+  setup). The caption service also drops translation-origin events when the common state is off, so an
+  in-flight event racing the toggle is ignored. A failed swap (e.g. no Gemini API key) raises an error
+  status without stopping Whisper. `ControlWindow.ApplyTranslationSettings` now sets the common state
+  with the raw toggle and reconfigures the pipeline in the same pass.
+- **Display:** `CaptionDisplayPolicy` keys the badge and the source-vs-translation display off the
+  common state only — `liveTranslationSession` requires `TranslationEnabled`, and the badge is no
+  longer derived from translation-origin lines. Toggling off immediately hides the badge and shows the
+  source captions even when old translation history is present (same as Argos, where already-translated
+  history lines stay visible after a toggle-off).
+- **Acceptance coverage:** **610/610 tests** (106 Audio + 78 Captions + 111 Speech + 42 Translation +
+  161 App + 112 Speech.Gemini), Release 0 warnings / 0 errors, `dotnet format --verify-no-changes`
+  clean. New: 5 `CaptionPipeline` `SetLiveTranslation` tests (toggle-on starts the engine, toggle-off
+  stops it without stopping captions, target change swaps engines, same-config no-op, pre-start no-op);
+  6 `CaptionService` tests (caption-line suppression restores the Argos path, translation-origin relay,
+  toggle-off drops in-flight translation content); `TranslationProviderPolicyTests` rewritten to the
+  single-arg mechanism decision; `CaptionDisplayPolicyTests` updated to common-state semantics + 2 new
+  toggle-off tests (source returns despite translation history; stale translation active line ignored).
+
+### Final real-world acceptance — 22/22 PASS on live WASAPI loopback (2026-08-12)
+
+**The parity fix is proven against the actual runtime, not just unit tests.** Harness
+`acceptance-v0.5.33-translation-parity.ps1` (untracked) drives the Release app + real WASAPI loopback
+(looped `english_sustained_90s.wav`) through the full control surface in one session, then flips the
+provider and repeats. Per provider, while captions are RUNNING: Translate OFF → a **new** source-English
+caption appears (not a stale committed translation), control toggle reads off, Whisper keeps capturing;
+Translate ON → target language returns; target `tl → ja → tl` updates immediately with no Stop/Start;
+STT worker PIDs stay constant across every toggle/target change. Evidence: `v0533_parity_acceptance.log`
+(real CJK verified in-file: ノートブック/ありがとうございます/来週のご来店をお待ちしております/ゆっくり話すことを忘れないでください), `v0533_app_stderr.log` `[DIAGNOSTICS]` (Argos request→result **0.088 s**; session 2 partial 4.19 s, FINAL 6.56 s).
+
+- **Argos phase (11/11):** STT worker spawned; first translated Tagalog `Ang pangalan ko ay Marie.`;
+  toggle OFF → `My name is Maria.`; toggle ON → `Magandang umaga lahat.`; target ja → Japanese; back to
+  tl → Tagalog; **same worker PIDs `9776,22308` across all toggles** (no restart).
+- **Gemini phase (11/11):** after Stop→Start, **old Argos workers fully exited before the new session**
+  (`9776,22308` → fresh `8288,22748`); first translated Tagalog `Magkikita tayo sa`; identical
+  OFF/ON/ja/tl sequence all passing; **worker PIDs `8288,22748` stable** across the runtime changes.
+- **Harness honesty fixes (why the evidence is trustworthy):** (1) the toggle-OFF check now waits for a
+  caption that is **not** in the pre-toggle set and is non-Japanese/non-Tagalog (word-boundary Tagalog
+  regex), so it cannot false-pass on a committed translated line that `Is-Tagalog` missed; (2) the
+  overlay badge pill is `Visibility=Hidden` hover chrome and is **not exposed to UIA** (tree exposes
+  only `CaptionScroller`/`HintText`), so the vacuous "badge cleared" UIA checks were dropped — badge
+  text is covered by `CaptionDisplayPolicyTests`, and the harness asserts the control-window toggle
+  state instead; (3) the "fresh worker set" check waits for the old worker set to fully exit (up-to-10 s
+  Stop budget) before sampling the new set, removing a teardown-timing false negative.
+- **No product code changed for this close-out** — the fixes were harness-only.
+
+## v0.5.32 - 2026-08-11
+
+### Gemini owns translation when selected: Argos caption-line path suppressed (2026-08-11)
+
+- **Policy (one translation path at a time):** when the provider is **Gemini**, the live Gemini engine
+  owns translation and **Argos caption-line translation is suppressed** (no Argos requests, no Argos
+  pre-warm, no Argos worker started for caption lines). When the provider is **Argos** (or the offline
+  default), the local caption-line engine owns it and the live audio path is unused. The previous
+  wiring could run BOTH translation paths for the same captions once the v0.5.32 provider fix made
+  Gemini actually reachable — the App now never lets two translation engines race to fill the overlay.
+- **Implementation:** new testable seam `TranslationProviderPolicy`
+  (`src/UniversalCaptions.App/Settings/TranslationProviderPolicy.cs`) with
+  `UsesCaptionLineTranslation(provider, translationEnabled)` (false for Gemini) and
+  `UsesLiveAudioEngine(provider)` (true only for Gemini). `ControlWindow` uses it in exactly three
+  places: the `OnLoaded` Argos pre-warm guard, `ApplyTranslationSettings` (enables caption-line
+  translation only when the policy allows, so `CaptionService` never calls `ITranslationEngine` in a
+  Gemini session — `_state.TranslationEnabled` is the Argos switch in `WillTranslateActiveLine` /
+  `MaybeStartActiveLineTranslation` / `ProcessFinal`), and `OnStartClicked` (requests a live audio
+  engine only for Gemini). Gemini's engine-origin lines were already never re-translated
+  (`LineOrigin.Translation` / `NotRequested`); this change ensures Argos never translates the
+  source-side stream either. Argos implementation is untouched — behavior is provider-dependent only.
+- **Acceptance coverage:** 9 new `TranslationProviderPolicyTests` pin the full matrix, including
+  **Gemini + translation on → caption-line translation always false** and live-audio-engine-only-for-
+  Gemini. The "disabled → no translation requests" service behavior is already pinned by
+  `ProcessFinal_TranslationDisabled_MakesNoTranslationRequest` /
+  `ProcessPartial_TranslationDisabled_MakesNoActiveLineRequest`. **582/582 tests** (106 Audio + 72
+  Captions + 111 Speech + 42 Translation + **149 App** + 102 Speech.Gemini), Release 0 warnings/0
+  errors, `dotnet format` clean.
+
+### Fix: the UI's Gemini provider selection never reached the engine (zero Gemini usage) (2026-08-11)
+
+- **Root cause (real user-visible bug):** `ControlWindow`'s provider combo (Argos | Gemini) was saved
+  to `UserSettings.Provider` but **never read back** by the engine-selection path. Only
+  `LiveTranslationEngineFactory.Create`'s `UC_LIVE_TRANSLATION_PROVIDER` env-var read could produce a
+  Gemini engine — and nothing wired that env var from the UI. So selecting "Gemini (cloud)" and
+  saving an API key (Windows Credential Manager, `UniversalCaptions:GeminiApiKey`) ran every session
+  through the **offline faster-whisper + Argos path** with **zero Gemini calls** on the billing
+  account. A second latent gap: the pipeline's live-translation `_sourceLanguage`/`_targetLanguage`
+  were `readonly` `"en"/"en"` from construction, so even a provider fix would have handed the UI
+  languages nowhere.
+- **Fix (code-behind):** (1) `LiveTranslationEngineFactory.Create(credentialStore, source, target,
+  provider = null)` now accepts the caller's `TranslationProvider`. **The UI selection wins**: a
+  non-null provider (the control window's combo) decides the engine; `UC_LIVE_TRANSLATION_PROVIDER`
+  is relegated to the **no-arg default** (spike/benchmark path) and never overrides an explicit UI
+  selection. `Argos` still never builds a live audio engine — local caption translation is the
+  separately-wired Argos `ITranslationEngine`. (2) `CaptionPipeline.Start(deviceId, sttLanguage,
+  liveTranslationProvider, liveSourceLanguage, liveTargetLanguage)` captures the per-session
+  provider/languages and forwards them to the live-translation factory; Start passes them into the DI
+  `Func<(Provider, Source, Target), ILiveAudioTranslationEngine?>`. (3) `ControlWindow.OnStartClicked`
+  passes the current provider (only when translation is enabled), source, and target to
+  `pipeline.Start`.
+- **Tests:** 7 new `LiveTranslationEngineFactoryTests` (UI provider null / Argos / Gemini
+  no-credential / **Gemini with credential → engine** / UI path ignores `UC_GEMINI_API_KEY` /
+  UI-Argos beats env-Gemini / UI-Gemini beats env-none) + 2 new `CaptionPipelineTests` (Gemini
+  provider forwards provider+languages to the factory and StartAsync/PCM fan-out run; provider null →
+  factory never invoked, offline pipeline). **573/573 tests** (106 Audio + 72 Captions + 111 Speech +
+  42 Translation + **140 App** + 102 Speech.Gemini), Release 0 warnings/0 errors, `dotnet format` clean.
+- **Operational note:** anyone who used the `setx UC_LIVE_TRANSLATION_PROVIDER gemini` workaround can
+  remove it — the UI now controls the engine. A previously saved key is read unchanged. Users should
+  re-verify Gemini usage on their billing account with a real session after this build.
+- **Impact on the measured latency:** the earlier 6.63–7.44 s caption-latency finding characterized
+  the *accidentally selected offline fallback*, not the intended Gemini cloud path; re-measurement
+  after this fix must be attributed to whichever provider actually runs.
 
 ## v0.5.31 - 2026-08-10
 

@@ -763,6 +763,122 @@ public sealed class CaptionServiceTests
         Assert.Throws<ArgumentException>(() => new CaptionServiceOptions(null!));
     }
 
+    [Fact]
+    public async Task SetCaptionLineTranslation_False_SuppressesActiveLineTranslation()
+    {
+        // Gemini owns translation: the caption service's Argos caption-line path is suppressed even
+        // though the common translation state is ON — source lines must never be re-translated.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        Assert.Empty(engine.Requests);
+        CaptionLine line = service.State.ActiveLine!;
+        Assert.Equal("hello", line.Text);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task SetCaptionLineTranslation_False_SuppressesCommittedFinalTranslation()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "hello"));
+        await service.FlushAsync();
+
+        Assert.Empty(engine.Requests);
+        CaptionLine line = Assert.Single(service.State.History);
+        Assert.Equal("hello", line.Text);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task SetCaptionLineTranslation_True_RestoresCaptionLinePath()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(false);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+
+        CaptionLine line = service.State.ActiveLine!;
+        Assert.Equal("hello!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public void SetCaptionLineTranslation_False_StillRelaysTranslationOriginLines()
+    {
+        // The caption-line path is suppressed, but translation-origin lines (from the live Gemini
+        // engine) must still flow through when the common translation state is on.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "pupunta na", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 5));
+
+        CaptionLine active = service.State.ActiveTranslationLine!;
+        Assert.Equal("pupunta na", active.Text);
+        Assert.Equal(LineOrigin.Translation, active.Origin);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_False_DropsTranslationOriginContent()
+    {
+        // Toggling translation off must stop the translation lineage immediately: a stale live-engine
+        // event racing the toggle is ignored, and a previously-set active translation line is cleared.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "pupunta na", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 5));
+        Assert.NotNull(service.State.ActiveTranslationLine);
+
+        service.SetTranslationEnabled(false);
+
+        Assert.False(service.State.TranslationEnabled);
+        Assert.Null(service.State.ActiveTranslationLine);
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "hindi dapat", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 6));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "hindi dapat", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 6, DateTime.UtcNow));
+
+        Assert.Null(service.State.ActiveTranslationLine);
+        Assert.Empty(service.State.History);
+    }
+
+    [Fact]
+    public void ProcessPartialTranslation_WithTranslationOff_IsIgnored()
+    {
+        // Translation was never enabled: translation-origin lines are not accepted at all.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.Start();
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "pupunta na", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 5));
+
+        Assert.Null(service.State.ActiveTranslationLine);
+    }
+
     /// <summary>
     /// Awaits a condition that flips asynchronously (a gated engine's self-replenished follow-up
     /// request). Bounded so a regression fails instead of hanging the suite.
