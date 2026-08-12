@@ -48,6 +48,16 @@ artifacts/argos/
 artifacts/spike-corpus/*.wav
 artifacts/spike-compare/*.wav
 
+# Ad-hoc spike/validation outputs (re-runnable, not permanent evidence)
+artifacts/spike-result-*/
+artifacts/validation/
+
+# Real-world acceptance runtime diagnostic dumps (PASS evidence lives in *parity_acceptance*.log)
+*_app_stderr.log
+
+# Scratch UIA probe scripts
+probe-*.ps1
+
 # Generated smoke/diagnostic outputs (re-runnable, not permanent evidence)
 smoke_captions_*.txt
 smoke_diag_*.txt
