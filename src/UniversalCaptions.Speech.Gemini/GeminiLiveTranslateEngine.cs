@@ -431,10 +431,18 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
             // of the finished one). Commit the completed sentence immediately, then accumulate the
             // fragment as the start of the next sentence — so continuous speech yields
             // sentence-granular finals instead of one ever-growing line.
+            //
+            // Exception (v0.5.40 segmentation fix): Gemini can place a mid-sentence period on a
+            // fragment ("...description.") and then stream the true continuation as a new fragment
+            // that begins with whitespace + lowercase (" at halos tugma"). A lowercase-leading
+            // continuation is the SAME sentence — append it instead of committing a premature final
+            // (observed run 1: FINAL "Nabasa mo na ang job description." → FRAG init " at halos
+            // tugma"; the same audio in run 2 produced one clean sentence).
             if (_accumulatorHasContent
                 && _accumulatedText is not null
                 && EndsWithTerminalPunctuation(_accumulatedText)
-                && !IsCumulativeRestatement(_accumulatedText, content.Text))
+                && !IsCumulativeRestatement(_accumulatedText, content.Text)
+                && !StartsWithLowercaseContinuation(content.Text))
             {
                 FlushAccumulatorAsFinal();
             }
@@ -488,6 +496,28 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
         return incoming.StartsWith(currentStem, StringComparison.OrdinalIgnoreCase)
             && (incoming.Length == currentStem.Length
                 || !char.IsLetterOrDigit(incoming[currentStem.Length]));
+    }
+
+    /// <summary>
+    /// True when <paramref name="incoming"/> begins with whitespace followed by a lowercase
+    /// character — the signature of a mid-sentence continuation (" at halos tugma") rather than the
+    /// start of a disjoint new sentence (" And next..."). The v0.5.40 segmentation guard: when a new
+    /// fragment arrives while the accumulator ends in punctuation, a lowercase-leading continuation
+    /// must be APPENDED to the same sentence, never treated as a sentence boundary.
+    /// </summary>
+    private static bool StartsWithLowercaseContinuation(string incoming)
+    {
+        for (int i = 0; i < incoming.Length; i++)
+        {
+            if (char.IsWhiteSpace(incoming[i]))
+            {
+                continue;
+            }
+
+            return char.IsLower(incoming[i]);
+        }
+
+        return false;
     }
 
     /// <summary>

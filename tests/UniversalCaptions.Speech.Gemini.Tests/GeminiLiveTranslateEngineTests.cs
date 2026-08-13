@@ -405,6 +405,157 @@ public sealed class GeminiLiveTranslateEngineTests
         Assert.Equal("Magandang umaga sa lahat.", finals[0].TranslatedText);
     }
 
+    // ----- v0.5.40 flush-gate continuation matrix (Option A boundary) -----
+    // These tests pin the flush gate's behavior at GeminiLiveTranslateEngine.HandleServerContent:
+    // when the accumulator ends in punctuation and a NEW fragment arrives, does the engine flush
+    // (commit a FINAL and open a new accumulator) or append the continuation to the same sentence?
+    // The agreed Option A boundary:
+    //   punctuation + uppercase continuation (" And next...")  → FLUSH (new sentence)
+    //   punctuation + lowercase continuation (" and next...")  → APPEND (same sentence)
+    //   punctuation + " at halos tugma"                        → APPEND (same sentence)
+    //   punctuation + " This is new..."                        → FLUSH (new sentence)
+    //   punctuation + " Nabasa..."                             → FLUSH (new sentence)
+    // CommitIdleTimeout is zeroed so the idle timer cannot fire: the ONLY final source under test
+    // is the flush gate. The lowercase/append tests currently FAIL against the unmodified gate —
+    // that is exactly the gap Option A closes. No production code has been changed (tests only).
+
+    [Fact]
+    public async Task FlushGate_UpperCaseContinuation_FlushesIntoNewAccumulator()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Hello world.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" And next...", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1);
+
+        Assert.Single(finals);
+        Assert.Equal("Hello world.", finals[0].TranslatedText);
+        Assert.True(partials.Count >= 2, $"expected the continuation to open a new accumulator, got {partials.Count} partials");
+        Assert.Equal("And next...", partials[^1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task FlushGate_LowercaseContinuation_AppendsWithoutFlushing()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Hello world.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" and next...", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 2);
+
+        // The lowercase continuation belongs to the SAME sentence: no premature FINAL, single accumulator.
+        Assert.Empty(finals);
+        Assert.Equal("Hello world. and next...", partials[^1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task FlushGate_AtHalosTugma_AppendsWithoutFlushing()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Hello world.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" at halos tugma", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 2);
+
+        // The lowercase continuation belongs to the SAME sentence: no premature FINAL, single accumulator.
+        Assert.Empty(finals);
+        Assert.Equal("Hello world. at halos tugma", partials[^1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task FlushGate_ThisIsNew_FlushesIntoNewAccumulator()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Hello world.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" This is new...", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1);
+
+        Assert.Single(finals);
+        Assert.Equal("Hello world.", finals[0].TranslatedText);
+        Assert.True(partials.Count >= 2, $"expected the continuation to open a new accumulator, got {partials.Count} partials");
+        Assert.Equal("This is new...", partials[^1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task FlushGate_Nabasa_FlushesIntoNewAccumulator()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        channel.QueueServerFrame(BuildServerContent("Hello world.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" Nabasa...", partial: true, turnComplete: false));
+        await WaitForAsync(() => finals.Count == 1);
+
+        Assert.Single(finals);
+        Assert.Equal("Hello world.", finals[0].TranslatedText);
+        Assert.True(partials.Count >= 2, $"expected the continuation to open a new accumulator, got {partials.Count} partials");
+        Assert.Equal("Nabasa...", partials[^1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task FlushGate_ExactReproducedCase_AtHalosTugma_StaysInOneAccumulator_NoPrematureFinal()
+    {
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel, o => o.CommitIdleTimeout = TimeSpan.Zero);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // Exact reproduction from gemini_seg_trace.log lines 112-131: FINAL "Nabasa mo na ang job
+        // description." then FRAG init " at halos tugma" arrived as a NEW ServerContent fragment.
+        // Under Option A the sentence must stay in ONE accumulator with no premature FINAL.
+        channel.QueueServerFrame(BuildServerContent("Nabasa mo na ang job description.", partial: true, turnComplete: false));
+        channel.QueueServerFrame(BuildServerContent(" at halos tugma", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 2);
+
+        Assert.Empty(finals);
+        Assert.Equal("Nabasa mo na ang job description. at halos tugma", partials[^1].TranslatedText);
+    }
+
     [Fact]
     public async Task LiveTranslateFragment_ExactRepeatTail_DoesNotDoubleTheWord()
     {
