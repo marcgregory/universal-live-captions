@@ -1,6 +1,6 @@
 # Universal Live Captions Roadmap
 
-Last updated: 2026-08-06
+Last updated: 2026-08-14
 
 ## Metadata
 
@@ -34,12 +34,36 @@ Last updated: 2026-08-06
 
 - **Entry 15 — overlay live-line integration.** **Complete 2026-08-06 — ADR-0008 follow-up.** The WPF overlay previously painted committed FINALs only (commit `7d1c057` "temporary diagnostic tracer" replaced Slice 7's active-line painting; `_activeBlock` never assigned). Now `CaptionOverlayWindow.UpdateCaptionItems` creates one mutable `_activeBlock`, rewrites it in place on later partials, removes it when `model.ActiveLine` is null; `ReconcileHistory` reuse-by-sequence and the `shouldUpdate` gate (no source flash while translation is pending) unchanged. `CaptionRenderIdentityTests` rewritten 4→6; full suite **374/374** (App 89), Release 0 warnings/0 errors, `dotnet format` clean. **Real-App smoke PASS** (Entry 14 checklist + overlay AC-1..AC-8): first visible partial ≈5.6 s after capture start; active line grows in place; FINAL freezes into history with no churn; Stop/Dispose leaves no stale partial; App CPU ~0–66% / worker ~0%; **en→tl Argos live-translated active line painted before commit** (no raw-English flash); tl→en confirmed documented-unsupported (stanza SBD) with graceful degradation. Evidence: Entry 15, `docs/reports/TEST_REPORT.md` (Entry 15), CHANGELOG v0.5.23.
 
-- **Entry 16 — CPU optimization: decode-thread cap.** **Complete 2026-08-06.** The promoted path sustained **77.4% of the machine** in the STT worker (every partial/FINAL decode used all 12 cores). `UC_NATIVE_THREADS` env knob with **production default `Threads` = 4** (clamped [1, ProcessorCount]) via `SpeechEngineFactory.CreateNative`; worker `--threads` wiring verified by test; `sttnative` gains `--threads`. Formal gate (12t vs 4t, real video audio, small int8 tl, partials 1/4 s): WER **33.2% both**, realtime **1.18× both**, **FINAL stream 100% text-identical**, latency/backlog comparable. Real-App CPU probe (default, speech + partials): STT worker system mean **77.4% → 31.6%** (max 88.2% → 37.6%), App ~1%, first caption 3.72 s, overlay producing. **382/382 tests** (8 new), Release 0 warnings/0 errors, `dotnet format` clean. Engine selection, worker protocol, segmentation/8 s cap, partials, overlay, translation untouched. Evidence: Entry 16, TEST_REPORT (Entry 16 close-out), BENCHMARK_REPORT (Entry 16 gate), CHANGELOG v0.5.24.
+- **Entry 16 — CPU optimization: decode-thread cap.** **Complete 2026-08-06.** The promoted path
+  sustained **77.4% of the machine** in the STT worker (every partial/FINAL decode used all 12 cores).
+  `UC_NATIVE_THREADS` env knob with **production default `Threads` = 4** (clamped [1, ProcessorCount])
+  via `SpeechEngineFactory.CreateNative`; worker `--threads` wiring verified by test; `sttnative`
+  gains `--threads`. Formal gate (12t vs 4t, real video audio, small int8 tl, partials 1/4 s): WER
+  **33.2% both**, realtime **1.18× both**, **FINAL stream 100% text-identical**, latency/backlog
+  comparable. Real-App CPU probe (default, speech + partials): STT worker system mean **77.4% → 31.6%**
+  (max 88.2% → 37.6%), App ~1%, first caption 3.72 s, overlay producing. **382/382 tests** (8 new),
+  Release 0 warnings/0 errors, `dotnet format` clean. Engine selection, worker protocol,
+  segmentation/8 s cap, partials, overlay, translation untouched. Evidence: Entry 16, TEST_REPORT
+  (Entry 16 close-out), BENCHMARK_REPORT (Entry 16 gate), CHANGELOG v0.5.24.
+
+- **Segmentation-guard unit-test matrix — CLOSED 2026-08-14 (decision: production gate unchanged).**
+  The agreed decision-gate suite (`SegmentationGuardMatrixTests.cs`, 48 runs: **41 PASS / 7 FAIL**,
+  measurement only, no production code changed) drove the current flush gate with 24 annotated cases.
+  Cat 1 lowercase continuation (3) → APPEND ✓ PASS; **Cat 2 capitalized continuation idiom (7) →
+  FLUSH ✗ RED** (the measured v0.5.40 gap, incl. the retained `Hindi Lunes.` len-12 regression);
+  Cat 3 bare-starter pairs (8) → both members identical (provably ambiguous, a bare
+  `At|Kaya|Sige|Hindi → APPEND` allowlist is **unsafe** — it would over-join the new-sentence reading
+  of each pair); Cat 4 genuine new sentence (6) → FLUSH ✓ PASS. **Decision:** the dangerous axis is
+  insufficient context, not capitalization. The seven Cat 2 cases are known defects with a **candidate**
+  mitigation (phrase-level idiom guard), but are not sufficient evidence to ship it. **Production gate
+  stays unchanged.** A second, smaller **corpus-driven validation** must establish false-split reduction
+  − over-join cost before any guard touches production. Evidence: investigations/gemini-segmentation.md,
+  PROJECT_STATUS, TEST_REPORT.
 
 ## In Progress
 
-- None — v0.5.39 (Gemini goAway session-lifecycle fix) is closed/released (2026-08-13). The next
-  candidate is the **v0.5.40 Gemini streaming-caption segmentation investigation** (see Sprint Queue).
+- None currently. (The segmentation-guard unit-test matrix CLOSED 2026-08-14 — see Completed. The
+  corpus-driven phrase-guard validation is a Future candidate, gated on a documented decision.)
 
 ## Completed (core done)
 
@@ -56,41 +80,59 @@ Last updated: 2026-08-06
 
 ## Sprint Queue
 
-- **v0.5.40 — Gemini streaming-caption segmentation investigation (DIAGNOSED 2026-08-13, docs-only).**
-  Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (which is closed and
-  released — this is NOT a v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a
-  mid-sentence fragment right after a `FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` →
-  `FRAG init " at halos tugma"` → `FINAL "at halos tugma ito."`. **Diagnosis (evidence-based, traced
-  against `GeminiLiveTranslateEngine`):**
-  - **Gemini (primary, non-deterministic):** in run 1 the service delivered `" description."` as a
-    fragment carrying a **mid-sentence period**, then streamed the true continuation `" at halos
-    tugma"` as a new `ServerContent` fragment (leading whitespace + lowercase = grammatical
-    continuation, not a new sentence). The **same audio in run 2** produced one clean FINAL
-    (`"Nabuod mo na ang job description at halos tugma ka nang perpekto."`), confirming Gemini's
-    segmentation is not stable across runs.
-  - **Our engine (secondary):** `HandleServerContent`'s flush gate (GeminiLiveTranslateEngine.cs:434–440)
-    flushes the accumulator to a FINAL whenever a new fragment arrives while the accumulator ends in
-    punctuation — it has **no continuation heuristic** (only rejects cumulative restatements, not
-    sentence continuations). The premature flush happens **before** the new fragment reaches
-    `Accumulate`/`IsCumulativeRestatement`, so classification is not the cause.
-  - **Idle timer: not responsible** — the 1.5 s ARM-IDLE armed at 2.448 s would have fired ~3.95 s;
-    the new fragment arrived at 3.701 s and the flush was `reason=sentence-boundary`. Run 1 has 0
-    idle-timeout FINALs without terminal punctuation.
-  - **Reproduction evidence:** `gemini_seg_trace.log` lines 112–131 (cut) vs `gemini_seg_app_stderr.log`
-    lines 1844–1862 (clean same-audio run). Evidence preserved untracked: `gemini_seg_trace.log` /
-    `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1`.
-  **Candidate minimal fixes (not implemented — evaluation order):** **Option A** (recommended)
-  continuation guard — if the accumulator ends in punctuation but the incoming fragment begins with
-  whitespace + lowercase, **append** instead of flush; **Option B** stronger linguistic continuation
-  heuristic (leading-whitespace + lowercase, conjunction/preposition continuations, incomplete phrases
-  — more coverage but more heuristic risk of wrongly joining two sentences); **Option C** remove the
-  punctuation-based immediate flush and let Gemini's explicit final/idle behavior decide the boundary
-  (not preferred first — punctuation currently provides useful responsiveness). **Next step (agreed,
-  no production code yet):** unit-test matrix against the existing flush gate —
-  `"Hello world." + " And next..."`→flush, `+ " and next..."`→append, `+ " at halos tugma"`→append,
-  `+ " This is new..."`→flush, `+ " Nabasa..."`→flush — then a real Gemini session to verify the
-  `description.`→`at halos tugma` case stays in one accumulator. No production change until that test
-  behavior is agreed.
+- None currently. The segmentation-guard unit-test matrix is **CLOSED — decision recorded, production
+  gate unchanged** (2026-08-14); the corpus-driven phrase-guard validation is a Future candidate (see
+  Future).
+
+---
+
+### v0.5.40 — Gemini streaming-caption segmentation investigation + matrix (CLOSED 2026-08-14, no code change)
+
+Investigation **complete**: root cause identified, 20-run real-Gemini study executed, evidence
+recorded, tracer removed, tree clean. **Segmentation-guard unit-test matrix executed (48 runs:
+41 PASS / 7 FAIL); decision: production gate unchanged.** No production change.
+
+Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (which is closed and
+released — this is NOT a v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a
+mid-sentence fragment right after a `FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` →
+`FRAG init " at halos tugma"` → `FINAL "at halos tugma ito."`. **Diagnosis (evidence-based, traced
+against `GeminiLiveTranslateEngine`):**
+- **Gemini (primary, non-deterministic):** in run 1 the service delivered `" description."` as a
+  fragment carrying a **mid-sentence period**, then streamed the true continuation `" at halos
+  tugma"` as a new `ServerContent` fragment (leading whitespace + lowercase = grammatical
+  continuation, not a new sentence). The **same audio in run 2** produced one clean FINAL
+  (`"Nabuod mo na ang job description at halos tugma ka nang perpekto."`), confirming Gemini's
+  segmentation is not stable across runs.
+- **Our engine (secondary):** `HandleServerContent`'s flush gate (GeminiLiveTranslateEngine.cs:434–440)
+  flushes the accumulator to a FINAL whenever a new fragment arrives while the accumulator ends in
+  punctuation — it has **no continuation heuristic** (only rejects cumulative restatements, not
+  sentence continuations). The premature flush happens **before** the new fragment reaches
+  `Accumulate`/`IsCumulativeRestatement`, so classification is not the cause.
+- **Idle timer: not responsible** — the 1.5 s ARM-IDLE armed at 2.448 s would have fired ~3.95 s;
+  the new fragment arrived at 3.701 s and the flush was `reason=sentence-boundary`. Run 1 has 0
+  idle-timeout FINALs without terminal punctuation.
+- **Reproduction evidence:** `gemini_seg_trace.log` lines 112–131 (cut) vs `gemini_seg_app_stderr.log`
+  lines 1844–1862 (clean same-audio run). Evidence preserved untracked: `gemini_seg_trace.log` /
+  `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1`.
+**Candidate fixes considered (not implemented):** **Option A** continuation guard (accumulator ends
+in punctuation but incoming fragment begins with whitespace + lowercase → append, not flush —
+implemented as the v0.5.40 fix, which closed the lowercase case); **Option B** stronger linguistic
+continuation heuristic (case-insensitive + conjunction/preposition set — the open candidate, gated
+by the unit-test matrix); **Option C** remove the punctuation-based immediate flush and rely on
+Gemini's explicit final/idle behavior (not preferred — punctuation gives useful responsiveness).
+
+**Measured 2026-08-14 (20-run real-Gemini study, tracer removed after):** Gemini streams ~1
+fragment/second (median gap 1000 ms, p90 1244 ms); the app pipeline adds zero latency (FINAL→COMMIT→
+RENDER all 0 ms median / 1 ms p90); first visible caption median 8.72 s (primary) / 9.71 s
+(secondary), dominated by STT first-FINAL + Gemini first-token — **no app-side latency to optimize.**
+The v0.5.40 lowercase guard only catches lowercase continuations — capitalized mid-sentence
+continuations (`Hindi Lunes.`, `At pagkatapos`, `Sige.`) still split: same-audio "…Friday, not
+Monday" split in **6/10 runs**, "…plan. At pagkatapos…" in **5/10**. Fragmentary captions (len<15)
+rise to **9.8 %** on the boundary-stress clip (vs 2.2 % primary). **Under-segmentation (two real
+sentences joined) also occurs** — so a more aggressive guard is NOT an automatic win; the unit-test
+matrix must prove false-split reduction without unacceptable over-joins. Evidence + attribution in
+BENCHMARK_REPORT.md (Gemini Streaming-Caption Segmentation Study), evidence CSVs untracked in
+`gemini_seg_study\`. Gate: 651/651 tests, Release 0 warnings/0 errors, `dotnet format` clean.
 
 ## Future
 
@@ -104,6 +146,14 @@ segmentation, partial cadence, resampler, CPU threading, overlay architecture, w
 5. **App-by-app validation** — YouTube, VLC, Zoom, Teams, etc.
 
 - **Phase 2 — real-application validation (YouTube/Chrome, VLC, Zoom).** Deferred per user; a reassessment/validation pass over the Slice 6 baseline defaults, not an optimization sweep.
+- **Corpus-driven phrase-guard validation (candidate, gated on a documented decision).** Per the
+  segmentation-matrix decision (2026-08-14), a second smaller corpus-driven suite must establish
+  **false-split reduction − over-join cost** before any phrase-level idiom guard touches production:
+  observed continuation idioms → expected APPEND; the same idioms in genuine sentence-start contexts →
+  expected FLUSH; unseen variants of the same construction; short fragments (esp. `Hindi Lunes.`);
+  punctuation variations; capitalization variations; English equivalents where applicable; negative
+  cases designed specifically to expose over-joining. No production change is authorized by the
+  matrix alone.
 - Latency display refinement and settings persistence (file-based configuration)
 - Optional VB-CABLE input behind `IAudioCapture` (post-MVP)
 - Optional cloud STT engine behind `ISpeechToTextEngine` with explicit disclosure

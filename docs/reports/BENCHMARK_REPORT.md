@@ -1497,3 +1497,109 @@ STT FINALs 11–12, partials 13–16 per run.
 `artifacts/reports/captionwire/argos_wire_2026-08-09.csv` (pre-warm awaited),
 `argos_wire_noprewarm_2026-08-09.csv` (cold), `argos_wire_prewarmrace_fixed_2026-08-09.csv`
 (post-fix race). CHANGELOG v0.5.30, TEST_REPORT 2026-08-09.
+
+---
+
+# Gemini Streaming-Caption Segmentation Study (v0.5.40 investigation, measurement)
+
+Date: 2026-08-14
+
+## Purpose
+
+Quantify how Gemini's streamed translations become caption segments at the user-perceived caption
+level, and attribute each delay to **Gemini streaming** vs the **segmentation gate** vs the **WPF
+pipeline**. This is the follow-up measurement to the v0.5.40 DIAGNOSED issue (Gemini can split one
+sentence into multiple FINALs, e.g. `FINAL "…job description."` → `FRAG " at halos tugma"` → second
+FINAL). It is a measurement-only pass — **no code change**; findings recorded, tracer removed after.
+
+## Methodology
+
+- **20 real-Gemini runs** (10 primary, 10 secondary), Release App + real WASAPI loopback + SoundPlayer
+  loop, per-run `UC_GEMINI_SEG_TRACE=1` chunk telemetry (`[GEMINI-SEG]` FRAG/BOUNDARY/PARTIAL/FINAL/
+  ACTIVE/COMMIT/RENDER events with monotonic-ms deltas) + UIA first-caption anchor.
+- **Primary**: `artifacts/samples/english_sustained_90s.wav` (88.1 s), 120 s observation/run.
+- **Secondary**: `artifacts/samples/english_boundary_30s.wav` (27.3 s, generated to stress
+  sentence boundaries — comma clauses + "…not Monday" mid-sentence continuations), 60 s/run.
+- Harness: `uc_gemini_seg_study.ps1` (temporary, untracked). Per-run evidence preserved untracked in
+  `gemini_seg_study\` (`*_trace.log`, `*_stderr.log`, `study_summary.csv`, analysis CSVs).
+
+## Results
+
+### Cadence and pipeline latency
+
+| metric | primary (n=10 runs) | secondary (n=10 runs) |
+|---|---|---|
+| first visible caption (UIA, audio→first TL) | **median 8.72 s, p90 9.83 s** (8.2–9.83) | **median 9.71 s, p90 9.99 s** (6.86–9.99) |
+| first Gemini partial → first overlay active render | median 6 ms (p90 8 ms) | median 1660 ms (p90 2021 ms) |
+| fragment cadence (Gemini chunk gap) | **median 1000 ms, p90 1244 ms** (mean 1019, n=1816 across all runs) |
+| segment produce (first fragment→FINAL) | median 2002 ms, p90 5005 ms | median 2000 ms, p90 5011 ms |
+| FINAL→COMMIT (pipeline) | median 0 ms, p90 1 ms | median 0 ms, p90 1 ms |
+| COMMIT→RENDER(history) (overlay) | median 0 ms, p90 1 ms | median 0 ms, p90 1 ms |
+| FINALs/120 s (primary) / 60 s (secondary) | 34–39 | 16–23 |
+
+FINAL `via` distribution (n=561): **sentence 499 (89 %)**, idle 53 (9.4 %), tail 9 (1.6 %).
+Idle finals commit ~1.5 s after their last fragment (median produce 1512 ms); sentence finals commit
+0–3 ms after the triggering fragment (median 2 ms, p90 3 ms).
+
+### Key findings
+
+1. **Gemini streams ~1 fragment/second** (median gap 1000 ms) — the caption refresh floor. This is
+   Gemini's chunk cadence, not an app bottleneck.
+2. **The app pipeline adds zero latency.** FINAL→COMMIT→RENDER(history) is 0 ms median / 1 ms p90.
+   The segmentation delay lives entirely in **when the FINAL is decided**, i.e. the flush gate.
+3. **The v0.5.40 lowercase-continuation guard only catches *lowercase* continuations.** The gate
+   (`GeminiLiveTranslateEngine.cs:453`) is `flushBoundary = terminal && !restate && !lowercase`.
+   `StartsWithLowercaseContinuation` (line 527) returns true only when the next fragment's first
+   non-space char is **lowercase**. When Gemini capitalizes a genuine mid-sentence continuation
+   (e.g. `" Hindi Lunes."`, `" At pagkatapos ay…"`, `" Sige."`), the guard misses it and the
+   accumulator flushes prematurely.
+4. **Segmentation is non-deterministic run-to-run for the same audio** — Gemini's capitalization at
+   the continuation point decides split vs merge:
+   - `"Tandaan, ang deadline ay Biyernes. Hindi Lunes."` (source: one sentence "…Friday, not Monday")
+     → **split into two FINALs in 6/10 runs** (uppercase `Hindi`), merged in 4/10.
+   - `"Bago tayo magsimula…plano."` + `" At pagkatapos ay maaari tayong magtanong."` (source: one
+     sentence) → **split in 5/10 runs**, merged in 5/10.
+   - Primary `"…malinaw."` + `" At makinig nang mabuti…"` → split in 2/10 runs.
+5. **Over-segmentation produces fragmentary captions.** len<15 captions: primary 2.2 %, secondary
+   **9.8 %** (mostly the standalone `Hindi Lunes.` / `Sige.` / `Okay.` continuations). The
+   boundary-stressing clip triples the fragmentary-caption rate.
+6. **Under-segmentation also occurs** (a genuine new sentence appended because the accumulator lacked
+   terminal punctuation at the flush moment), e.g. `"Kaya mangyaring itago muna ang mga iyon. Okay,
+   iyon ang sumasaklaw sa lahat."` in one FINAL (run 1 secondary). Both directions of error exist.
+
+### Attribution summary
+
+| stage | measured latency | verdict |
+|---|---|---|
+| first visible caption | ~8.7–9.7 s (median) | dominated by STT first-FINAL + Gemini first-token (same ~11.5 s Gemini-partial finding); no segmentation contribution |
+| caption refresh granularity | ~1 s | Gemini chunk cadence (not app) |
+| segmentation decision | 0–3 ms once triggered | the **decision itself** is correct/fast; the **wrong split** is Gemini's punctuation/capitalization choice vs the v0.5.40 guard's lowercase-only scope |
+| pipeline + render | 0–1 ms | no app latency |
+
+### Recommendation (for a follow-up decision, NOT implemented here)
+
+The v0.5.40 fix reduced premature splits but only for lowercase continuations. The agreed
+decision-gate was the **segmentation-guard unit-test matrix** — **executed 2026-08-14, 48 runs:
+41 PASS / 7 FAIL** (measurement only, no code change). Results: Cat 1 lowercase continuation →
+APPEND ✓ PASS; Cat 2 capitalized continuation idiom (7: `Hindi Lunes.` len-12 regression,
+`At pagkatapos…`, `At makinig…`, `Kaya kailangan…`, `Sige, gawin…`, `Pero pagkatapos…`, `Dahil dito…`)
+→ FLUSH ✗ RED (the measured gap); Cat 3 bare-starter pairs (`At`/`Kaya`/`Sige,`/`Hindi`) → both
+members identical, i.e. **provably ambiguous from the fragment alone** — a bare
+`At|Kaya|Sige|Hindi → APPEND` allowlist is unsafe (would over-join the new-sentence reading of each
+pair); Cat 4 genuine new sentence → FLUSH ✓ PASS. **Decision (2026-08-14): production gate
+unchanged.** The dangerous axis is insufficient context, not capitalization; the seven Cat 2 cases are
+known defects with a **candidate** mitigation (phrase-level idiom guard) but not sufficient evidence to
+ship it. A second, smaller **corpus-driven validation** (observed idioms → APPEND; same idioms in
+genuine sentence-start contexts → FLUSH; unseen variants; short fragments; punctuation/capitalization
+variations; English equivalents; negative over-join cases) must establish **false-split reduction −
+over-join cost** before any guard touches production. Alternative (not adopted): drop the
+punctuation-based immediate flush and rely on the 1.5 s commit-idle timer (simplest, but adds ~1.5 s
+responsiveness cost to every caption). Full record: `docs/implementation/investigations/gemini-
+segmentation.md`, ROADMAP (matrix CLOSED), PROJECT_STATUS (Current Sprint).
+
+## Evidence
+
+`gemini_seg_study\study_summary.csv`, `gemini_seg_study\analysis_runs.csv`,
+`gemini_seg_study\analysis_finals.csv`, per-run `*_trace.log` / `*_stderr.log`, harness
+`uc_gemini_seg_study.ps1` (all untracked). Tracer (`GeminiSegmentTrace`) removed after study;
+651/651 tests, Release 0 warnings/0 errors, `dotnet format` clean.

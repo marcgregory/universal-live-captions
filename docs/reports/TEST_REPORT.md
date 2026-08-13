@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-13 (v0.5.39)
+Last updated: 2026-08-14 (v0.5.40 segmentation matrix)
 
 ## Metadata
 
@@ -16,6 +16,21 @@ Last updated: 2026-08-13 (v0.5.39)
 ---
 
 ## Summary
+
+**v0.5.40 segmentation-guard unit-test matrix (2026-08-14): full suite 700/700 passing** (106
+Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 168 Speech.Gemini), Release build 0
+warnings / 0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. The agreed
+decision-gate suite (`SegmentationGuardMatrixTests.cs`, **49 tests**, measurement only — no production
+code changed) drives the current Gemini flush gate with 24 annotated cases and pins **current** gate
+behavior while recording known-gap metadata: Cat 1 lowercase continuation (3) → APPEND ✓; Cat 2
+capitalized continuation idiom (7) → current FLUSH pinned as **KnownGap** with DesiredExpected=APPEND
+(`Hindi Lunes.` len-12 regression, `At pagkatapos…`, `At makinig…`, `Kaya kailangan…`, `Sige, gawin…`,
+`Pero pagkatapos…`, `Dahil dito…` — the measured v0.5.40 false splits); Cat 3 bare-starter pairs (8)
+→ current FLUSH pinned, both members identical (provably ambiguous — guards against an unsafe
+`At|Kaya|Sige|Hindi → APPEND` allowlist); Cat 4 genuine new sentence (6) → FLUSH ✓. When the
+phrase-level guard is eventually implemented, flip the 7 Cat 2 `CurrentExpected` FLUSH→APPEND and they
+become ordinary regression tests; Cat 3 must stay unchanged. **Decision: production gate unchanged.**
+Evidence: investigations/gemini-segmentation.md, BENCHMARK_REPORT (matrix result).
 
 **v0.5.39 Gemini live-session lifecycle fix (2026-08-13): full suite now 645/645 passing** (106
 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 113 Speech.Gemini), Release build 0

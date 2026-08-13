@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-13 (v0.5.39 shipped; v0.5.40 segmentation investigation diagnosed, docs-only)
+Last updated: 2026-08-14 (v0.5.40 segmentation investigation + matrix COMPLETE; decision: production gate unchanged)
 
 ## Metadata
 
@@ -18,6 +18,25 @@ Last updated: 2026-08-13 (v0.5.39 shipped; v0.5.40 segmentation investigation di
 This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
+
+**Segmentation-guard unit-test matrix — CLOSED 2026-08-14 (decision: production gate unchanged).**
+The agreed decision-gate suite (`SegmentationGuardMatrixTests.cs`, 48 runs: **41 PASS / 7 FAIL**,
+measurement only, no production code changed) drove the current flush gate with 24 annotated cases:
+Cat 1 lowercase continuation (3) → APPEND ✓ PASS; **Cat 2 capitalized continuation idiom (7) → FLUSH
+✗ RED** (the measured v0.5.40 gap — `Hindi Lunes.` len-12 regression, `At pagkatapos…`, `At
+makinig…`, `Kaya kailangan…`, `Sige, gawin…`, `Pero pagkatapos…`, `Dahil dito…`); Cat 3 bare-starter
+pairs (8) → both members identical (provably ambiguous — a bare `At|Kaya|Sige|Hindi → APPEND`
+allowlist is **unsafe**, it would over-join the new-sentence reading of each pair); Cat 4 genuine new
+sentence (6) → FLUSH ✓ PASS. **Conclusion: the dangerous axis is insufficient context, not
+capitalization.** The seven Cat 2 cases are known defects with a candidate mitigation (phrase-level
+idiom guard) but are not sufficient evidence to ship it. **Production gate stays unchanged.** A second
+smaller **corpus-driven validation** (observed idioms → APPEND; same idioms in genuine sentence-start
+contexts → FLUSH; unseen variants; short fragments; punctuation/capitalization variations; English
+equivalents; negative over-join cases) must establish **false-split reduction − over-join cost** before
+any guard touches production. Recommended state: **investigation COMPLETE → matrix COMPLETE → root
+cause confirmed → production gate unchanged → phrase-level guard remains a candidate pending broader
+corpus validation.** Evidence: `docs/implementation/investigations/gemini-segmentation.md`,
+ROADMAP (matrix CLOSED), TEST_REPORT.
 
 **v0.5.39 — Gemini live-session lifecycle fix: graceful goAway surfaced (close-out 2026-08-13).** The Gemini server ends a Live session with a graceful `goAway` frame (~9 min of continuous audio — 537.0 s investigation run, 521.9 s earlier evidence). The released baseline tail-flushed the accumulator and exited the receive loop **silently** — no failure event, no status change — so the pipeline kept the engine attached and the overlay froze on the last translated sentence while Whisper kept running. **Fix (code-behind only, 4 production files):** the `GoAway` branch raises `TranslationFailed(ServerError, "Live translation session ended by server.")` through the standard failure chokepoint; `CaptionPipeline.OnLiveTranslationFailed` clears the caption service's translation active line (new `ICaptionService.ClearLiveTranslationActiveLine()`) before detaching the engine and raising the error status. Committed Tagalog history stays visible by live-translation display policy; the user toggles translation OFF to return to source captions and re-enabling starts a fresh session. `ClearTranslationHistory` (v0.5.37) untouched. **645/645 tests** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 113 Speech.Gemini) — 3 new tests, Release 0 warnings / 0 errors, `dotnet format` clean. **Real-app goAway regression PASS (2026-08-13, v0.5.39 artifact, no trace plumbing):** continuous Gemini en→tl, natural goAway at ~9 min → Control Window status "Live translation unavailable: Live translation session ended by server." (the pre-fix silent freeze is gone); overlay stable after goAway (engine detached); OFF→ON toggle starts a **new Gemini session** producing translated captions again; status recovers to "Capturing system audio.". 6/6 checks PASS. Evidence: CHANGELOG v0.5.39, `regression-v0539-goaway.ps1`/`regression_v0539_goaway.log` (untracked). **Fix isolated from the v0.5.36 spike worktree that proved it** (trace instrumentation + harness artifacts excluded). Commit `5ae30bc`.
 
@@ -286,7 +305,8 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**v0.5.40 — Gemini streaming-caption segmentation investigation (DIAGNOSED 2026-08-13, docs-only).**
+**v0.5.40 — Gemini streaming-caption segmentation investigation + matrix (COMPLETE 2026-08-14;
+decision: production gate unchanged).**
 Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (closed + released; NOT a
 v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right after a
 `FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` → `FRAG init " at halos tugma"` → `FINAL
@@ -303,16 +323,34 @@ would fire ~3.95 s; the fragment arrived at 3.701 s and the flush was `reason=se
 has 0 idle-timeout FINALs without terminal punctuation). **(4) Repro variance:** `gemini_seg_trace.log`
 lines 112–131 (cut) vs `gemini_seg_app_stderr.log` lines 1844–1862 (clean same-audio run). **Candidate
 fixes (not implemented):** Option A (recommended) continuation guard — accumulator ends in punctuation
-but incoming fragment begins with whitespace+lowercase → append, not flush; Option B stronger linguistic
-continuation heuristic (more coverage, more wrongly-join-two-sentences risk); Option C remove
-punctuation-based immediate flush (not preferred first — punctuation gives useful responsiveness). **Next
-step (agreed, no production code yet):** unit-test matrix against the existing flush gate
-(`"Hello world." + " And next..."`→flush; `+ " and next..."`→append; `+ " at halos tugma"`→append;
-`+ " This is new..."`→flush; `+ " Nabasa..."`→flush) then a real Gemini session verifying the
-`description.`→`at halos tugma` case stays in one accumulator. **Explicitly out of scope:** Whisper, the
-translation engine, partial-rendering UX (v0.5.38 two-tone), the goAway lifecycle. Evidence preserved:
-`gemini_seg_trace.log` / `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` /
-`acceptance-gemini-seg-trace.ps1` (untracked). See ROADMAP.md (Sprint Queue).
+but incoming fragment begins with whitespace+lowercase → append, not flush (implemented as the v0.5.40
+fix, which closed the lowercase case); Option B stronger linguistic continuation heuristic (more
+coverage, more wrongly-join-two-sentences risk); Option C remove punctuation-based immediate flush
+(not preferred first — punctuation gives useful responsiveness). **Matrix executed 2026-08-14**
+(see Current Sprint): 48 runs, **41 PASS / 7 FAIL**; Cat 2 capitalized continuation idioms are the
+7 RED (measured gap), Cat 3 bare starters are provably ambiguous from the fragment alone, Cat 1/Cat 4
+stay green. **Decision: production gate unchanged** — a simple `At|Kaya|Sige|Hindi → APPEND`
+allowlist is unsafe (Cat 3 over-join); phrase-level idiom guard remains a candidate pending a
+corpus-driven validation establishing **false-split reduction − over-join cost**.
+**Explicitly out of scope:** Whisper, the translation engine, partial-rendering UX (v0.5.38 two-tone),
+the goAway lifecycle. Evidence preserved: `gemini_seg_trace.log` / `gemini_seg_trace_run2.log` /
+`gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1` (untracked). See ROADMAP.md (matrix CLOSED).
+
+**v0.5.40 investigation + matrix COMPLETE 2026-08-14 (20-run real-Gemini study + 48-run
+decision-gate matrix; tracer removed after; no production code change).** Result: Gemini streams ~1
+fragment/s (median 1000 ms, p90 1244 ms); the app pipeline adds zero latency (FINAL→COMMIT→RENDER all
+0 ms median / 1 ms p90); first visible caption median 8.72 s (primary) / 9.71 s (secondary) —
+dominated by STT first-FINAL + Gemini first-token; **no app-side latency to optimize.** The v0.5.40
+lowercase guard only catches lowercase continuations — capitalized mid-sentence continuations
+(`Hindi Lunes.`, `At pagkatapos`, `Sige.`) still split: same-audio "…Friday, not Monday" split in
+**6/10 runs**, "…plan. At pagkatapos…" in **5/10**; fragmentary captions (len<15) rise to **9.8 %** on
+the boundary-stress clip (vs 2.2 % primary); **under-segmentation (two real sentences joined) also
+occurs — so a more aggressive guard is NOT an automatic win.** The decision-gate matrix (48 runs)
+confirmed Cat 1/Cat 4 stay green, Cat 2 = 7 known capitalized-continuation false-splits (RED), Cat 3
+bare starters provably ambiguous. **Decision: production gate unchanged; phrase-level guard stays a
+candidate pending a broader corpus validation.** Evidence: BENCHMARK_REPORT.md (Gemini Streaming-Caption
+Segmentation Study), investigations/gemini-segmentation.md, `gemini_seg_study\` (untracked). Gate:
+651/651 tests, Release 0 warnings/0 errors, `dotnet format` clean.
 
 **Core is done (per user criterion, 2026-08-06):** the final real-world acceptance run passed at the
 production default — stable ~32“33% STT + ~1% App CPU over 300 s continuous media, first caption ~3.2 s,
@@ -326,4 +364,4 @@ hotplug acceptance test can be run.
 
 ## Last Build
 
-2026-08-13 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **645/645** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 113 Speech.Gemini), `dotnet format` clean. **Real-app goAway regression PASS (2026-08-13) — v0.5.39 Gemini live-session lifecycle fix** on the Release app + WASAPI loopback + Gemini en→tl: natural goAway at ~9 min → Control Window status "Live translation unavailable: Live translation session ended by server."; overlay stable after goAway (engine detached); OFF→ON toggle resumed a new Gemini session producing translated captions; status recovered to "Capturing system audio." (6/6 checks). See CHANGELOG v0.5.39, `regression-v0539-goaway.ps1`/`regression_v0539_goaway.log` (untracked). Prior (2026-08-13): v0.5.38 stable/unstable partial rendering smoke PASS — two-tone evidence captured live via `UC_NATIVE_PARTIAL_WINDOW=8`; verified sequence first-partial all-green → extension white head + green tail → head-revision re-green → FINAL all-white → Stop green 0. See CHANGELOG v0.5.38, RELEASE_PLAN §3.7, TEST_REPORT (2026-08-13). Prior (2026-08-13): v0.5.37 mixed-language history scrub smoke PASS — see CHANGELOG v0.5.37, RELEASE_PLAN §3.6, TEST_REPORT (2026-08-13). Prior (2026-08-12): runtime Gemini-toggle latency verification (CHANGELOG v0.5.35, measurement only — no code change). Prior (2026-08-12): v0.5.33 translation parity 22/22 (Argos 11/11 + Gemini 11/11) — see CHANGELOG v0.5.33, TEST_REPORT (2026-08-12), `v0533_parity_acceptance.log` (untracked). Prior (2026-08-06): Entry 16 `UC_NATIVE_THREADS` decode cap (Threads=4), Entry 15 overlay live-line, Entry 14 default promotion (ADR-0008) — see CHANGELOG v0.5.22–v0.5.25, TEST_REPORT (Entry 15/16 + final acceptance), BENCHMARK_REPORT (Entry 16 gate).
+2026-08-14 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **651/651** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 119 Speech.Gemini), `dotnet format` clean. **v0.5.40 investigation COMPLETE (2026-08-14):** 20-run real-Gemini segmentation study — root cause identified (lowercase-only continuation guard misses capitalized continuations), **no production change**, next gate = segmentation-guard unit-test matrix. See BENCHMARK_REPORT.md (Gemini Streaming-Caption Segmentation Study), `gemini_seg_study\` (untracked). Tracer (`GeminiSegmentTrace`) removed after study. Prior (2026-08-13): v0.5.39 goAway fix — 645/645. **Real-app goAway regression PASS (2026-08-13) — v0.5.39 Gemini live-session lifecycle fix** on the Release app + WASAPI loopback + Gemini en→tl: natural goAway at ~9 min → Control Window status "Live translation unavailable: Live translation session ended by server."; overlay stable after goAway (engine detached); OFF→ON toggle resumed a new Gemini session producing translated captions; status recovered to "Capturing system audio." (6/6 checks). See CHANGELOG v0.5.39, `regression-v0539-goaway.ps1`/`regression_v0539_goaway.log` (untracked). Prior (2026-08-13): v0.5.38 stable/unstable partial rendering smoke PASS — two-tone evidence captured live via `UC_NATIVE_PARTIAL_WINDOW=8`; verified sequence first-partial all-green → extension white head + green tail → head-revision re-green → FINAL all-white → Stop green 0. See CHANGELOG v0.5.38, RELEASE_PLAN §3.7, TEST_REPORT (2026-08-13). Prior (2026-08-13): v0.5.37 mixed-language history scrub smoke PASS — see CHANGELOG v0.5.37, RELEASE_PLAN §3.6, TEST_REPORT (2026-08-13). Prior (2026-08-12): runtime Gemini-toggle latency verification (CHANGELOG v0.5.35, measurement only — no code change). Prior (2026-08-12): v0.5.33 translation parity 22/22 (Argos 11/11 + Gemini 11/11) — see CHANGELOG v0.5.33, TEST_REPORT (2026-08-12), `v0533_parity_acceptance.log` (untracked). Prior (2026-08-06): Entry 16 `UC_NATIVE_THREADS` decode cap (Threads=4), Entry 15 overlay live-line, Entry 14 default promotion (ADR-0008) — see CHANGELOG v0.5.22–v0.5.25, TEST_REPORT (Entry 15/16 + final acceptance), BENCHMARK_REPORT (Entry 16 gate).
