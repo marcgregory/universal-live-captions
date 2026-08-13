@@ -56,18 +56,41 @@ Last updated: 2026-08-06
 
 ## Sprint Queue
 
-- **v0.5.40 — Gemini streaming-caption segmentation investigation (OPEN, logged 2026-08-13).** Separately
-  tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (which is closed and released — this is
-  NOT a v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right
-  after a `FINAL`, e.g. `FRAG "at halos tugma"` following a completed `FINAL`. **Explicitly out of scope
-  (do not change yet):** Whisper, the translation engine, partial-rendering UX (v0.5.38 two-tone), and the
-  goAway lifecycle. **Evidence preserved:** `gemini_seg_trace.log` / `gemini_seg_trace_run2.log` /
-  `gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1` (untracked). **No fix to be coded yet.**
-  **Next investigation:** capture a minimal reproducible trace around `FINAL → next FRAG → subsequent
-  segments`, then determine whether the mid-sentence boundary originates in Gemini's segmentation boundary,
-  our segment assembly (`GeminiLiveTranslateEngine` — the accumulator / `FlushAccumulatorAsFinal` /
-  fragment-vs-final classification), or post-FINAL handling (the committer / partial-path). Decision
-  recorded in PROJECT_STATUS.md when closed.
+- **v0.5.40 — Gemini streaming-caption segmentation investigation (DIAGNOSED 2026-08-13, docs-only).**
+  Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (which is closed and
+  released — this is NOT a v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a
+  mid-sentence fragment right after a `FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` →
+  `FRAG init " at halos tugma"` → `FINAL "at halos tugma ito."`. **Diagnosis (evidence-based, traced
+  against `GeminiLiveTranslateEngine`):**
+  - **Gemini (primary, non-deterministic):** in run 1 the service delivered `" description."` as a
+    fragment carrying a **mid-sentence period**, then streamed the true continuation `" at halos
+    tugma"` as a new `ServerContent` fragment (leading whitespace + lowercase = grammatical
+    continuation, not a new sentence). The **same audio in run 2** produced one clean FINAL
+    (`"Nabuod mo na ang job description at halos tugma ka nang perpekto."`), confirming Gemini's
+    segmentation is not stable across runs.
+  - **Our engine (secondary):** `HandleServerContent`'s flush gate (GeminiLiveTranslateEngine.cs:434–440)
+    flushes the accumulator to a FINAL whenever a new fragment arrives while the accumulator ends in
+    punctuation — it has **no continuation heuristic** (only rejects cumulative restatements, not
+    sentence continuations). The premature flush happens **before** the new fragment reaches
+    `Accumulate`/`IsCumulativeRestatement`, so classification is not the cause.
+  - **Idle timer: not responsible** — the 1.5 s ARM-IDLE armed at 2.448 s would have fired ~3.95 s;
+    the new fragment arrived at 3.701 s and the flush was `reason=sentence-boundary`. Run 1 has 0
+    idle-timeout FINALs without terminal punctuation.
+  - **Reproduction evidence:** `gemini_seg_trace.log` lines 112–131 (cut) vs `gemini_seg_app_stderr.log`
+    lines 1844–1862 (clean same-audio run). Evidence preserved untracked: `gemini_seg_trace.log` /
+    `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1`.
+  **Candidate minimal fixes (not implemented — evaluation order):** **Option A** (recommended)
+  continuation guard — if the accumulator ends in punctuation but the incoming fragment begins with
+  whitespace + lowercase, **append** instead of flush; **Option B** stronger linguistic continuation
+  heuristic (leading-whitespace + lowercase, conjunction/preposition continuations, incomplete phrases
+  — more coverage but more heuristic risk of wrongly joining two sentences); **Option C** remove the
+  punctuation-based immediate flush and let Gemini's explicit final/idle behavior decide the boundary
+  (not preferred first — punctuation currently provides useful responsiveness). **Next step (agreed,
+  no production code yet):** unit-test matrix against the existing flush gate —
+  `"Hello world." + " And next..."`→flush, `+ " and next..."`→append, `+ " at halos tugma"`→append,
+  `+ " This is new..."`→flush, `+ " Nabasa..."`→flush — then a real Gemini session to verify the
+  `description.`→`at halos tugma` case stays in one accumulator. No production change until that test
+  behavior is agreed.
 
 ## Future
 

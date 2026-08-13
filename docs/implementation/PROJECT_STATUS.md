@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-13 (v0.5.39 shipped; v0.5.40 investigation logged)
+Last updated: 2026-08-13 (v0.5.39 shipped; v0.5.40 segmentation investigation diagnosed, docs-only)
 
 ## Metadata
 
@@ -286,15 +286,31 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**v0.5.40 — Gemini streaming-caption segmentation investigation (OPEN, logged 2026-08-13).** Separately
-tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (closed + released; NOT a v0.5.39
-defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right after a `FINAL`,
-e.g. `FRAG "at halos tugma"` following a completed `FINAL`. **Explicitly out of scope (do not change
-yet):** Whisper, the translation engine, partial-rendering UX (v0.5.38 two-tone), and the goAway
-lifecycle. **No fix to be coded yet.** **Next investigation:** capture a minimal reproducible trace around
-`FINAL → next FRAG → subsequent segments`, then establish which layer creates the mid-sentence boundary —
-Gemini's segmentation boundary, our segment assembly (`GeminiLiveTranslateEngine` — the accumulator /
-`FlushAccumulatorAsFinal` / fragment-vs-final classification), or post-FINAL handling. Evidence preserved:
+**v0.5.40 — Gemini streaming-caption segmentation investigation (DIAGNOSED 2026-08-13, docs-only).**
+Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (closed + released; NOT a
+v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right after a
+`FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` → `FRAG init " at halos tugma"` → `FINAL
+"at halos tugma ito."`. **Diagnosis (evidence-based, traced against `GeminiLiveTranslateEngine`):**
+**(1) Gemini (primary, non-deterministic):** run 1 delivered `" description."` as a fragment carrying a
+mid-sentence period, then streamed the true continuation `" at halos tugma"` (leading whitespace +
+lowercase) as a new `ServerContent` fragment; the **same audio in run 2** produced one clean FINAL,
+confirming Gemini's segmentation is not stable. **(2) Our engine (secondary):** the flush gate
+(`GeminiLiveTranslateEngine.cs:434–440`) commits a FINAL whenever a new fragment arrives while the
+accumulator ends in punctuation — no continuation heuristic (only cumulative restatements are rejected);
+the premature flush happens before the fragment reaches `Accumulate`/`IsCumulativeRestatement`, so
+classification is not the cause. **(3) Idle timer: not responsible** (1.5 s ARM-IDLE armed at 2.448 s
+would fire ~3.95 s; the fragment arrived at 3.701 s and the flush was `reason=sentence-boundary`; run 1
+has 0 idle-timeout FINALs without terminal punctuation). **(4) Repro variance:** `gemini_seg_trace.log`
+lines 112–131 (cut) vs `gemini_seg_app_stderr.log` lines 1844–1862 (clean same-audio run). **Candidate
+fixes (not implemented):** Option A (recommended) continuation guard — accumulator ends in punctuation
+but incoming fragment begins with whitespace+lowercase → append, not flush; Option B stronger linguistic
+continuation heuristic (more coverage, more wrongly-join-two-sentences risk); Option C remove
+punctuation-based immediate flush (not preferred first — punctuation gives useful responsiveness). **Next
+step (agreed, no production code yet):** unit-test matrix against the existing flush gate
+(`"Hello world." + " And next..."`→flush; `+ " and next..."`→append; `+ " at halos tugma"`→append;
+`+ " This is new..."`→flush; `+ " Nabasa..."`→flush) then a real Gemini session verifying the
+`description.`→`at halos tugma` case stays in one accumulator. **Explicitly out of scope:** Whisper, the
+translation engine, partial-rendering UX (v0.5.38 two-tone), the goAway lifecycle. Evidence preserved:
 `gemini_seg_trace.log` / `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` /
 `acceptance-gemini-seg-trace.ps1` (untracked). See ROADMAP.md (Sprint Queue).
 
