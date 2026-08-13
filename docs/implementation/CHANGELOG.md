@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-13
+Last updated: 2026-08-13 (v0.5.38)
 
 ## Metadata
 
@@ -16,6 +16,16 @@ Last updated: 2026-08-13
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.38 - 2026-08-13
+
+### Stable/unstable partial rendering — stable word head white, unstable partial tail subtle green
+
+- **Problem:** the overlay painted every live partial in the same color, so the user could not tell which words Whisper has already committed to (the stable head) vs the speculative tail that a later partial is likely to revise. Chrome-Live-Captions-like live partials rendered without any visual signal of how much of the line was already stable.
+- **Fix (code-behind only):** the source-STT active line is now painted in two tones — the **stable word head** stays white and the **unstable partial tail** is rendered in a subtle green (`PartialUnstableBrush`, frozen `#9EC99E`). New pure `CaptionPartialStability.StableWordCount` compares the previous partial's word head to the current partial and returns how many leading words are stable; `SplitAtWord` splits the rendered text at that word boundary so `CaptionOverlayWindow` can paint the head white and the tail green in a single mutable active block (`CreateActiveCaptionBlock` / `PaintActiveCaptionBlock` / `GetBlockText`). When Whisper revises the head, the whole line re-greens; when the FINAL commits, the line freezes all-white.
+- **Real-app evidence (2026-08-13):** two-tone captured live via the config-only knob `UC_NATIVE_PARTIAL_WINDOW=8` (the production default 4 s partial window rolls — `SpeechSegmentDetector.TryGetPartial` snapshots the trailing `PartialDecodeWindow`, so consecutive partials rarely share a displayed prefix and the two-tone is not visible at 4 s). With the 8 s window the head stays anchored: `and your experience matches.` white head + `what they're looking for…` green tail on the same caption line, then FINAL freeze all-white. Behavior sequence verified: first partial all-green → extension white head + green tail → head-revision whole line re-greens → FINAL all-white → Stop green 0.
+- **Tests:** **642/642** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 182 App + 112 Speech.Gemini) — **21 new App tests** (16 new `CaptionPartialStabilityTests` on the pure stability logic; `CaptionRenderIdentityTests` rewritten 6→11 with an inline-aware seam asserting partials rewrite the same block, growing stream = one block with no history churn, no partial in history, FINAL freeze, cleared active removes block). Release 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean.
+- **Commit:** `95f5049` — 4 files (+439/−8): `CaptionPartialStability.cs` (+88, new), `CaptionOverlayWindow.xaml.cs` (+95), `CaptionRenderIdentityTests.cs` (+142), `CaptionPartialStabilityTests.cs` (+122, new). No engine / worker / protocol / translation / overlay-history changes.
 
 ## v0.5.37 - 2026-08-13
 

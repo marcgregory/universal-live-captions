@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13 (v0.5.38)
 
 ## Metadata
 
@@ -16,6 +16,35 @@ Last updated: 2026-08-12
 ---
 
 ## Summary
+
+**v0.5.38 stable/unstable partial rendering (2026-08-13): full suite now 642/642 passing** (106
+Audio + 89 Captions + 111 Speech + 42 Translation + 182 App + 112 Speech.Gemini), Release build 0
+warnings / 0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. The source-STT
+active line now paints in two tones: **stable word head white, unstable partial tail subtle green**
+(`PartialUnstableBrush` frozen `#9EC99E`). Pure `CaptionPartialStability.StableWordCount` (previous
+partial's word head vs current) + `SplitAtWord`; `CaptionOverlayWindow` paints both tones in a single
+mutable active block. **21 new App tests** — 16 new `CaptionPartialStabilityTests` (empty/one-word
+inputs, exact-match full-stable, revisions drop unstable words, case-sensitive matching, punctuation,
+leading-word stability); `CaptionRenderIdentityTests` rewritten 6→11 with an inline-aware seam
+asserting partial rewrites hit the same block, a growing stream is one block with no history churn,
+no partial ever lands in history, the FINAL freezes the active line into history, and a cleared
+active line removes the block while history is retained. **Real-app smoke PASS (2026-08-13):**
+two-tone evidence captured live via config-only `UC_NATIVE_PARTIAL_WINDOW=8` (production 4 s window
+rolls — `TryGetPartial` snapshots the trailing window — so consecutive partials rarely share a
+displayed prefix at 4 s); at 8 s the head stays anchored and the captured row shows a white head
+(`and your experience matches.`) + green tail (`what they're looking for…`) on the same caption
+line, then FINAL freezes all-white. Verified sequence: first partial all-green → extension white
+head + green tail → head-revision whole line re-greens → FINAL all-white → Stop green 0. Evidence:
+CHANGELOG v0.5.38, RELEASE_PLAN §3.7, `smoke_v0538_twotone_evidence.png` (untracked). Commit `95f5049`.
+
+**v0.5.37 mixed-language history scrub (2026-08-13): full suite 621/621 passing** (107 Audio + 81
+Captions + 111 Speech + 42 Translation + 161 App + 119 Speech.Gemini), Release build 0 warnings / 0
+errors, `dotnet format` clean. New `ICaptionService.ClearTranslationHistory()` scrubs every
+`LineOrigin.Translation` entry from the committed history (SourceStt preserved) on Translate OFF and
+on a mid-session target change (`tl → ja`); 8 new tests. Real-app smoke PASS on the Release app +
+WASAPI loopback + Gemini provider (in-session sequence, no Stop/Start): OFF+English → ON+Tagalog →
+target ja (previous history cleared, new JA session) → OFF (Tagalog/Japanese history cleared,
+English SourceStt preserved). See CHANGELOG v0.5.37, RELEASE_PLAN §3.6, `v0537_mixed_history_smoke_*.png`.
 
 **Final real-world acceptance — v0.5.33 translation parity PASS (2026-08-12): 22/22 checks (Argos
 11/11 + Gemini 11/11)** on the Release app over real WASAPI loopback (looped

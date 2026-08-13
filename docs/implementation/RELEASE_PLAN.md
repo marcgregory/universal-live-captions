@@ -1,4 +1,4 @@
-# Universal Live Captions Release Plan — v0.5.37
+# Universal Live Captions Release Plan — v0.5.38
 
 Last updated: 2026-08-13
 
@@ -12,29 +12,30 @@ Last updated: 2026-08-13
 
 | Attribute | Value |
 |---|---|
-| Purpose | Define the v0.5.37 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
-| Scope | Everything that must be true before v0.5.37 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
+| Purpose | Define the v0.5.38 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
+| Scope | Everything that must be true before v0.5.38 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | Active — v0.5.37 close-out 2026-08-13 (awaiting tag cut) |
+| Status | Active — v0.5.38 close-out 2026-08-13 (awaiting tag cut) |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: READY — v0.5.37 close-out 2026-08-13 (awaiting tag cut and GitHub release).**
+**Decision: READY — v0.5.38 close-out 2026-08-13 (awaiting tag cut and GitHub release).**
 
 | Release | Tag | GitHub Release | Artifacts |
 |---|---|---|---|
 | **v0.5.33** — Gemini Live translation (parity acceptance) | `v0.5.33` (commit `d7333c1`) | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) | `UniversalCaptions-Setup-0.5.33.exe` + `UniversalCaptions-0.5.33-win-x64-full.zip` |
 | **v0.5.34** — Gemini API-key onboarding link | `v0.5.34` (commit `b50cc2a`) | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) | `UniversalCaptions-Setup-0.5.34.exe` + `UniversalCaptions-0.5.34-win-x64-full.zip` |
-| **v0.5.37** — Mixed-language history scrub on Translate OFF + target change (**Latest**) | `v0.5.37` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
+| **v0.5.37** — Mixed-language history scrub on Translate OFF + target change | `v0.5.37` (commit `8b5dd53`) | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
+| **v0.5.38** — Stable/unstable partial rendering (**Latest**) | `v0.5.38` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
 
-- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34 → v0.5.37`.
+- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34 → v0.5.37 → v0.5.38`.
 - **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix documented in CHANGELOG but not separately published.
 - Both artifacts for each release ship the **same staged closure** (single `Stage` tree → both outputs), per `packaging/build-package.ps1` v0.5.31+.
-- Landing page (`landing/`) needs to be updated to v0.5.37 once the tag is cut.
+- Landing page (`landing/`) needs to be updated to v0.5.38 once the tag is cut.
 
 ---
 
@@ -42,12 +43,12 @@ Last updated: 2026-08-13
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.37** (see §1) |
+| Version | **v0.5.38** (see §1) |
 | Release date | **2026-08-13** (close-out; tag cut pending) |
-| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.37 - 2026-08-13` |
-| Source-tree anchors | v0.5.37 = pending commit (mixed-language history scrub) |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.38 - 2026-08-13` |
+| Source-tree anchors | v0.5.38 = commit `95f5049` (stable/unstable partial rendering) |
 | Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6.7.3, per-user, no admin, no UAC) |
-| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.37.exe` |
+| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.38.exe` |
 | Installer launcher | `packaging/launcher.cmd` (process-scoped env only — no global pollution) |
 | Install location | `%LocalAppData%\UniversalCaptions\` (per-user, `asInvoker` manifest preserved from v0.5.26) |
 | Installed size (target) | ~1,634 MB (matches v0.5.26 measurement — see [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §2 size summary) |
@@ -134,10 +135,12 @@ Per [CHANGELOG.md](CHANGELOG.md) v0.5.26 "Verified (Phase 2 — app-by-app valid
 
 ### 3.4 Test suite
 
-**Full suite: 621/621 passing** (107 Audio + 81 Captions + 111 Speech + 42
-Translation + 161 App + 119 Speech.Gemini) per [PROJECT_STATUS.md](PROJECT_STATUS.md)
+**Full suite: 642/642 passing** (106 Audio + 89 Captions + 111 Speech + 42
+Translation + 182 App + 112 Speech.Gemini) per [PROJECT_STATUS.md](PROJECT_STATUS.md)
 "Last Build". Release build 0 warnings / 0 errors. `dotnet format --verify-no-changes`
-clean. No vulnerable packages.
+clean. No vulnerable packages (the documented `dotnet list … --vulnerable` check;
+transitive test-SDK `System.*` 4.3.0 advisories are a known false positive in test
+projects only, not shipped).
 
 ### 3.5 v0.5.33 final real-world acceptance — 22/22 PASS on live WASAPI loopback (2026-08-12)
 
@@ -174,6 +177,22 @@ No code change beyond the v0.5.37 caption-service API + state additions describe
 in [CHANGELOG.md](CHANGELOG.md) v0.5.37. Visual evidence captured in-session
 (`v0537_mixed_history_smoke_*.png`).
 
+### 3.7 v0.5.38 stable/unstable partial rendering smoke PASS (2026-08-13)
+
+Per [CHANGELOG.md](CHANGELOG.md) v0.5.38. Release app + WASAPI loopback, live
+partials, translation OFF. Two-tone evidence (stable white head + unstable green
+tail on the same caption line) captured live with the config-only knob
+`UC_NATIVE_PARTIAL_WINDOW=8` (the production default 4 s window rolls —
+`SpeechSegmentDetector.TryGetPartial` snapshots the trailing window — so at 4 s
+consecutive partials rarely share a displayed prefix and the two-tone is not
+visible; at 8 s the head stays anchored). Verified sequence: first partial all
+green → extension white head + green tail → head-revision whole line re-greens →
+FINAL freeze all-white → Stop green 0.
+
+**Evidence (untracked, kept locally):** `smoke_v0538_twotone_evidence.png`
+(two-tone in-shot), `smoke-v0538.ps1` (harness with `-PartialWindow` param),
+`smoke_v0538_captions_v0538c.txt` / `smoke_v0538_shots_v0538c/` (run evidence).
+
 ---
 
 ## 4. Landing-Page Status
@@ -183,11 +202,11 @@ in [CHANGELOG.md](CHANGELOG.md) v0.5.37. Visual evidence captured in-session
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
 | Positioning (four angles, all live on the page) | (1) Offline-first / privacy (trust strip + #why) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Optional Gemini for higher-quality realtime translation (#gemini card — **OPTIONAL CLOUD UPGRADE**, shipped since v0.5.33; see §6) |
-| Version tag | `v0.5.37` (matches the latest release; landing update pending tag cut) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.37/UniversalCaptions-Setup-0.5.37.exe` — see §5 |
+| Version tag | `v0.5.38` (matches the latest release; landing update pending tag cut) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-Setup-0.5.38.exe` — see §5 |
 
-The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.37
-download link becomes active once the v0.5.37 GitHub release is created.
+The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.38
+download link becomes active once the v0.5.38 GitHub release is created.
 
 ---
 
@@ -195,12 +214,12 @@ download link becomes active once the v0.5.37 GitHub release is created.
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.37/UniversalCaptions-Setup-0.5.37.exe` |
-| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.37/UniversalCaptions-0.5.37-win-x64-full.zip` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-Setup-0.5.38.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-0.5.38-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.37 release tag**, not at the
+The primary CTA points at the **specific v0.5.38 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
 match the artifact that ships.
 
@@ -241,11 +260,13 @@ detail lives in [CHANGELOG.md](CHANGELOG.md) v0.5.32 / v0.5.33 / v0.5.34 and
 Drives §3.1 / §3.2 / §3.3 acceptance. Each row maps to an existing harness run.
 
 - [x] Release App builds with 0 warnings / 0 errors (Release configuration).
-- [x] `dotnet test UniversalCaptions.slnx` passes **610/610**.
+- [x] `dotnet test UniversalCaptions.slnx` passes **642/642**.
 - [x] `dotnet format --verify-no-changes` clean.
 - [x] `dotnet list UniversalCaptions.slnx package --vulnerable` clean.
 - [x] **Final real-world acceptance** (v0.5.25, production default): Tagalog leg PASS (Leg 1) + English + en→tl leg PASS (Leg 2). Per [PROJECT_STATUS.md](PROJECT_STATUS.md).
 - [x] **v0.5.33 parity acceptance** (Argos + Gemini, 22/22 live-WASAPI checks). Per [CHANGELOG.md](CHANGELOG.md) v0.5.33 / §3.5.
+- [x] **v0.5.37 mixed-language history scrub smoke** (in-session, no Stop/Start). Per [CHANGELOG.md](CHANGELOG.md) v0.5.37 / §3.6.
+- [x] **v0.5.38 stable/unstable partial rendering smoke** (two-tone real-app evidence). Per [CHANGELOG.md](CHANGELOG.md) v0.5.38 / §3.7.
 - [x] **Installed-bundle acceptance** (v0.5.26): install exit 0, launch via `launcher.cmd`, real WASAPI loopback, real en→tl, clean Start / Stop / Exit, 0 orphans, clean uninstall exit 0 (user-data preserved). Per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §9.
 - [x] **App-by-app validation** (v0.5.26): Chrome / YouTube PASS, VLC PASS. Zoom recorded as environment-limited NOT VALIDATED (no UIA, no meeting). Teams N/A (not installed).
 - [ ] **Clean-machine verification** — recorded as an ongoing follow-up (not a blocker to publishing; see §9).
@@ -296,8 +317,8 @@ and 12 / Entry 16.
 
 ## 11. Known Limitations
 
-Carried into v0.5.33 / v0.5.34 (all documented; none are regressions introduced
-by these releases):
+Carried into v0.5.38 (all documented; none are regressions introduced by these
+releases):
 
 - **Argos `tl`-as-source unsupported** (stanza SBD) and `ja→tl` requires an `en`
   pivot (~1050 ms/call). MVP pairs use `tl` as a *target* only. See
@@ -335,26 +356,28 @@ Single signed-off list. Status legend: **DONE** = complete with evidence · **PE
 
 | # | Item | Status | Evidence / Owner |
 |---|---|---|---|
-| 1 | Source tree frozen at v0.5.37 | PENDING (commit to be created when v0.5.37 is tagged) | [CHANGELOG.md](CHANGELOG.md) v0.5.37 |
-| 2 | All tests passing | DONE | 621/621 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
+| 1 | Source tree frozen at v0.5.38 | DONE (commit `95f5049`) | [CHANGELOG.md](CHANGELOG.md) v0.5.38 |
+| 2 | All tests passing | DONE | 642/642 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
 | 3 | Release build 0 warnings / 0 errors | DONE | same |
 | 4 | `dotnet format --verify-no-changes` clean | DONE | same |
 | 5 | No vulnerable packages | DONE | same |
 | 6 | Final real-world acceptance PASS (v0.5.33 parity 22/22) | DONE | §3.5 |
 | 7 | v0.5.37 mixed-language history scrub smoke PASS | DONE | §3.6 |
-| 8 | Installed-bundle acceptance PASS (v0.5.26 baseline) | DONE | §3.2 |
-| 9 | Phase 2 app-by-app validation (Chrome / VLC) | DONE | §3.3 |
-| 10 | Phase 2 Zoom validation | N/A (env-limited, recorded) | §3.3 |
-| 11 | Landing page live + points at v0.5.37 assets | PENDING (landing update on tag cut) | §4, §5 |
-| 12 | Landing-page Gemini section honest (OPTIONAL cloud upgrade, shipped v0.5.33) | DONE | §6 |
-| 13 | v0.5.33 GitHub release created with artifacts | DONE | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) |
-| 14 | v0.5.34 GitHub release created with artifacts | DONE | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) |
-| 15 | v0.5.37 GitHub release created with artifacts (**Latest**) | PENDING (tag cut pending) | (pending) |
-| 16 | v0.5.32 intentionally not published (internal milestone, corrected by v0.5.33) | DONE (recorded) | §1 |
-| 17 | v0.5.35 / v0.5.36 internal/measurement-only (no tag, no release) | DONE (recorded) | §1 |
-| 18 | Documentation updated (CHANGELOG, PROJECT_STATUS, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), this file |
-| 19 | Constitution + Registry alignment (`landing/`, `packaging/`, `artifacts/` governed) | DONE | [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1, [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md) |
-| 20 | Decision: **READY** | **DONE** | §1 |
+| 8 | v0.5.38 stable/unstable partial rendering smoke PASS | DONE | §3.7 |
+| 9 | Installed-bundle acceptance PASS (v0.5.26 baseline) | DONE | §3.2 |
+| 10 | Phase 2 app-by-app validation (Chrome / VLC) | DONE | §3.3 |
+| 11 | Phase 2 Zoom validation | N/A (env-limited, recorded) | §3.3 |
+| 12 | Landing page live + points at v0.5.38 assets | PENDING (landing update on tag cut) | §4, §5 |
+| 13 | Landing-page Gemini section honest (OPTIONAL cloud upgrade, shipped v0.5.33) | DONE | §6 |
+| 14 | v0.5.33 GitHub release created with artifacts | DONE | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) |
+| 15 | v0.5.34 GitHub release created with artifacts | DONE | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) |
+| 16 | v0.5.37 GitHub release created with artifacts | DONE | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) |
+| 17 | v0.5.38 GitHub release created with artifacts (**Latest**) | PENDING (tag cut pending) | (pending) |
+| 18 | v0.5.32 intentionally not published (internal milestone, corrected by v0.5.33) | DONE (recorded) | §1 |
+| 19 | v0.5.35 / v0.5.36 internal/measurement-only (no tag, no release) | DONE (recorded) | §1 |
+| 20 | Documentation updated (CHANGELOG, PROJECT_STATUS, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), this file |
+| 21 | Constitution + Registry alignment (`landing/`, `packaging/`, `artifacts/` governed) | DONE | [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1, [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md) |
+| 22 | Decision: **READY** | **DONE** | §1 |
 
-This document is the single source of truth that the release is Ready. v0.5.37
+This document is the single source of truth that the release is Ready. v0.5.38
 documentation is in place; tag cut and GitHub release creation remain pending.
