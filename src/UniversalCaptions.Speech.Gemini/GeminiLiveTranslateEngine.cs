@@ -385,6 +385,16 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                         // belt-and-braces backup for the path where the server closes without
                         // sending goAway.
                         FlushAccumulatorAsFinal();
+                        // Surface a graceful-session-end event so the pipeline can detach the
+                        // engine and clear the active translation line. Without this, the consumer
+                        // has no signal that the receive loop exited via goAway — the engine would
+                        // silently stop emitting partials/finals while still being attached, and
+                        // the overlay would freeze on whatever translated text it had. This is the
+                        // same chokepoint every other failure routes through.
+                        await RaiseTranslationFailedAsync(new LiveTranslationError(
+                            LiveTranslationErrorKind.ServerError,
+                            "Live translation session ended by server.",
+                            null)).ConfigureAwait(false);
                         return;
 
                     case GeminiServerMessage.SessionResumptionUpdate:

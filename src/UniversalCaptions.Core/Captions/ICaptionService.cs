@@ -134,6 +134,16 @@ public interface ICaptionService : IDisposable
     void ClearTranslationHistory();
 
     /// <summary>
+    /// Discards the active translation line and raises <see cref="StateChanged"/>. Used by the
+    /// pipeline when the live audio translation engine raises
+    /// <see cref="Translation.ILiveAudioTranslationEngine.TranslationFailed"/> so the overlay stops
+    /// painting a stale in-progress translation. Committed translated history stays visible while
+    /// translation is ON (live-translation display policy). No-op when translation is disabled, no
+    /// translation active line is set, or the service is not running.
+    /// </summary>
+    void ClearLiveTranslationActiveLine();
+
+    /// <summary>
     /// Waits until all in-flight translations have settled (completed, failed, or cancelled).
     /// </summary>
     /// <param name="cancellationToken">Cancels the wait.</param>

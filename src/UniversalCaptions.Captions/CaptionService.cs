@@ -378,6 +378,27 @@ public sealed class CaptionService : ICaptionService
     }
 
     /// <inheritdoc />
+    public void ClearLiveTranslationActiveLine()
+    {
+        if (!_running || !_state.TranslationEnabled)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (_state.ActiveTranslationLine is null)
+            {
+                return;
+            }
+
+            _state.ClearTranslationActiveLine();
+        }
+
+        StateChanged?.Invoke(this, _state);
+    }
+
+    /// <inheritdoc />
     public void SetCaptionLineTranslation(bool enabled)
     {
         lock (_gate)

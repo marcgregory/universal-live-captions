@@ -806,8 +806,19 @@ public sealed class CaptionPipeline : IDisposable
     /// the events, raise a status for the UI, null the field, and fire-and-forget the dispose on a
     /// background task. Whisper continues running; the pipeline is NOT marked faulted.
     /// </summary>
+    /// <remarks>
+    /// Clears the caption service's translation active line so the overlay stops painting a stale
+    /// in-progress translation. The active translation line only exists in the live-translation path
+    /// (Gemini); without this clear, the overlay would keep showing the last translated sentence as
+    /// the live line while the engine has actually stopped, with no status change. The committed
+    /// Tagalog history stays visible (live-translation display policy keeps the overlay translated
+    /// while translation is ON); the user toggles translation OFF to return to source captions, and
+    /// re-enabling starts a fresh session. The clear happens before detach so the cleared state is
+    /// published alongside the failure status.
+    /// </remarks>
     private void OnLiveTranslationFailed(object? sender, LiveTranslationError error)
     {
+        _captions.ClearLiveTranslationActiveLine();
         DetachAndDisposeLiveTranslation();
         RaiseStatus(new PipelineStatus(
             PipelineStatusKind.Error,
