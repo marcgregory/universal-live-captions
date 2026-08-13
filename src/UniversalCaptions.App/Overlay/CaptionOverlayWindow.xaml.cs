@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -42,6 +43,22 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     // place and a Final freezes into history — partials never churn the committed blocks.
     private readonly List<TextBlock> _historyBlocks = new();
     private TextBlock? _activeBlock;
+
+    /// <summary>
+    /// The subtle green used for the unstable tail of the live partial line (v0.5.38): words
+    /// Whisper has not yet confirmed are tinted green until the next partial re-recognizes them or
+    /// a FINAL freezes the line into history. Kept deliberately muted so the stable white head stays
+    /// the visual dominant. Frozen so any thread can read it (tests run each case on its own STA
+    /// thread).
+    /// </summary>
+    private static readonly Brush PartialUnstableBrush = CreatePartialUnstableBrush();
+
+    private static Brush CreatePartialUnstableBrush()
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(0x9E, 0xC9, 0x9E));
+        brush.Freeze();
+        return brush;
+    }
 
     /// <summary>
     /// Creates the overlay. Caption state events are consumed on the dispatcher. Persisted settings
@@ -262,13 +279,16 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         {
             if (_activeBlock is null)
             {
-                _activeBlock = CreateCaptionBlock(active.Text, active.Sequence);
+                _activeBlock = CreateActiveCaptionBlock(active.Text, active.Sequence);
                 CaptionPanel.Children.Add(_activeBlock);
                 newBlockAdded = true;
             }
-            else if (!string.Equals(_activeBlock.Text, active.Text, StringComparison.Ordinal))
+            else if (!string.Equals(GetBlockText(_activeBlock), active.Text, StringComparison.Ordinal))
             {
-                _activeBlock.Text = active.Text;
+                // v0.5.38: re-paint the live block with the stable/unstable word split against the
+                // immediately-previous partial text. The whole block instance is still rewritten in
+                // place — only its Inlines change, never its identity.
+                PaintActiveCaptionBlock(_activeBlock, active.Text);
             }
         }
         else if (_activeBlock is not null)
@@ -364,6 +384,65 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     }
 
     /// <summary>
+    /// Creates the live active-line block. v0.5.38: painted with the stable/unstable two-tone split
+    /// (never plain Text) so a partial instantly communicates which words are confirmed. The first
+    /// partial of an utterance has no previous partial, so it paints entirely in the unstable tint.
+    /// </summary>
+    private TextBlock CreateActiveCaptionBlock(string text, long sequence)
+    {
+        TextBlock block = CreateCaptionBlock(string.Empty, sequence);
+        PaintActiveCaptionBlock(block, text);
+        return block;
+    }
+
+    /// <summary>
+    /// Rewrites the live active block's Inlines in place with the v0.5.38 two-tone split: the stable
+    /// word prefix (common with the immediately-previous partial) stays white/normal, and the
+    /// unstable tail paints in the subtle partial tint. The block instance is preserved — only its
+    /// Inlines change, never its identity.
+    /// </summary>
+    private void PaintActiveCaptionBlock(TextBlock block, string text)
+    {
+        string previous = GetBlockText(block);
+        int stableWordCount = CaptionPartialStability.StableWordCount(previous, text);
+        (string stable, string unstable) = CaptionPartialStability.SplitAtWord(text, stableWordCount);
+
+        block.Inlines.Clear();
+        if (stable.Length > 0)
+        {
+            block.Inlines.Add(new Run(stable));
+        }
+
+        if (unstable.Length > 0)
+        {
+            block.Inlines.Add(new Run(unstable) { Foreground = PartialUnstableBrush });
+        }
+    }
+
+    /// <summary>
+    /// Reads a caption block's display text whether it stores plain Text (history blocks) or
+    /// two-tone Inlines (the live active block).
+    /// </summary>
+    private static string GetBlockText(TextBlock block)
+    {
+        if (block.Inlines.Count > 0)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (Inline inline in block.Inlines)
+            {
+                if (inline is Run run)
+                {
+                    sb.Append(run.Text);
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        return block.Text;
+    }
+
+    /// <summary>
     /// Advances the scroll position only when the content overflows the fixed-height viewport, so
     /// the newest caption remains visible. When everything fits, no scroll pass runs at all.
     /// </summary>
@@ -433,14 +512,20 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         var sb = new System.Text.StringBuilder();
         foreach (object child in CaptionPanel.Children)
         {
-            if (child is TextBlock block && !string.IsNullOrWhiteSpace(block.Text))
+            if (child is TextBlock block)
             {
+                string blockText = GetBlockText(block);
+                if (string.IsNullOrWhiteSpace(blockText))
+                {
+                    continue;
+                }
+
                 if (sb.Length > 0)
                 {
                     sb.AppendLine();
                 }
 
-                sb.Append(block.Text);
+                sb.Append(blockText);
             }
         }
 

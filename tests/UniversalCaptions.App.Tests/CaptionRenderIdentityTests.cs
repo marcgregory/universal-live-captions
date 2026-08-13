@@ -1,6 +1,8 @@
 using System.IO;
 using System.Reflection;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Media;
 using UniversalCaptions.App.Overlay;
 using UniversalCaptions.App.Settings;
 using UniversalCaptions.Core.Captions;
@@ -78,7 +80,7 @@ public class CaptionRenderIdentityTests
 
             TextBlock[] before = caller.HistoryBlocks().ToArray();
             TextBlock activeBefore = Assert.IsType<TextBlock>(caller.ActiveBlock());
-            Assert.Equal("hell", activeBefore.Text);
+            Assert.Equal("hell", caller.ActiveText());
 
             // A newer partial for the same in-flight utterance arrives.
             caller.Update(new CaptionDisplayModel(
@@ -110,7 +112,7 @@ public class CaptionRenderIdentityTests
                 History: Array.Empty<CaptionDisplayLine>()));
 
             TextBlock active = Assert.IsType<TextBlock>(caller.ActiveBlock());
-            Assert.Equal("the quick", active.Text);
+            Assert.Equal("the quick", caller.ActiveText());
 
             caller.Update(new CaptionDisplayModel(
                 ActiveLine: D("the quick brown", 0),
@@ -212,6 +214,127 @@ public class CaptionRenderIdentityTests
         });
     }
 
+    [Fact]
+    public void First_partial_paints_the_entire_line_unstable()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            // No previous partial for this utterance, so nothing is confirmed yet.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            IList<(string Text, Brush? Foreground)>? runs = caller.ActiveRuns();
+            Assert.NotNull(runs);
+            Assert.Single(runs);
+            Assert.Equal("the quick brown", runs![0].Text);
+            Assert.NotEqual(Brushes.White, runs[0].Foreground);
+            Assert.NotNull(runs[0].Foreground);
+            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[0].Foreground!).Color);
+        });
+    }
+
+    [Fact]
+    public void Growing_partial_paints_the_stable_head_white_and_tail_green()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            IList<(string Text, Brush? Foreground)>? runs = caller.ActiveRuns();
+            Assert.NotNull(runs);
+            Assert.Equal(2, runs!.Count);
+            Assert.Equal("the quick", runs[0].Text);
+            Assert.Equal(Brushes.White, runs[0].Foreground);
+            Assert.Equal(" brown", runs[1].Text);
+            Assert.NotEqual(Brushes.White, runs[1].Foreground);
+            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[1].Foreground!).Color);
+        });
+    }
+
+    [Fact]
+    public void Revised_partial_word_returns_to_the_unstable_tail()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown fox", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+            // The next partial revises the last word: the confirmed head stays white, the new
+            // word is unconfirmed again and paints in the subtle green.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown cat", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            IList<(string Text, Brush? Foreground)>? runs = caller.ActiveRuns();
+            Assert.NotNull(runs);
+            Assert.Equal(2, runs!.Count);
+            Assert.Equal("the quick brown", runs[0].Text);
+            Assert.Equal(Brushes.White, runs[0].Foreground);
+            Assert.Equal(" cat", runs[1].Text);
+            Assert.NotEqual(Brushes.White, runs[1].Foreground);
+            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[1].Foreground!).Color);
+        });
+    }
+
+    [Fact]
+    public void Revised_head_word_repaints_the_entire_line_unstable()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("Administrtion is", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+            // The head word is corrected ("Administrtion" -> "Administration"), so the common
+            // prefix with the previous partial is empty: the whole line is unconfirmed again.
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("Administration is a", 0),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            IList<(string Text, Brush? Foreground)>? runs = caller.ActiveRuns();
+            Assert.NotNull(runs);
+            Assert.Single(runs);
+            Assert.Equal("Administration is a", runs![0].Text);
+            Assert.NotEqual(Brushes.White, runs[0].Foreground);
+            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[0].Foreground!).Color);
+        });
+    }
+
+    [Fact]
+    public void Final_freeze_removes_the_green_and_history_is_plain_white_text()
+    {
+        RunOnSta(() =>
+        {
+            var caller = CreateOverlay();
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: D("the quick brown fox", 1),
+                History: Array.Empty<CaptionDisplayLine>()));
+
+            // The final commits: the active block is removed and history holds plain Text (white).
+            caller.Update(new CaptionDisplayModel(
+                ActiveLine: null,
+                History: new[] { D("the quick brown fox", 1) }));
+
+            Assert.Null(caller.ActiveBlock());
+            Assert.Single(caller.HistoryBlocks());
+            Assert.Equal("the quick brown fox", caller.HistoryBlocks()[0].Text);
+            Assert.Equal(Brushes.White, caller.HistoryBlocks()[0].Foreground);
+            // The final froze into history as plain white text: no green-tinted run remains.
+            Assert.All(caller.HistoryBlocks()[0].Inlines.OfType<Run>(),
+                run => Assert.NotEqual(Color.FromRgb(0x9E, 0xC9, 0x9E),
+                    (run.Foreground as SolidColorBrush)?.Color));
+        });
+    }
+
     /// <summary>Thin reflection wrapper around the overlay's private render seams.</summary>
     private sealed class CaptionDisplayCaller
     {
@@ -237,7 +360,20 @@ public class CaptionRenderIdentityTests
 
         public TextBlock? ActiveBlock() => (TextBlock?)_active.GetValue(_overlay);
 
-        public string? ActiveText() => ActiveBlock()?.Text;
+        public string? ActiveText() => ActiveBlock() is null ? null : ReadText(ActiveBlock()!);
+
+        /// <summary>Reads a block's display text whether it is plain Text or two-tone Inlines.</summary>
+        public static string ReadText(TextBlock block) =>
+            block.Inlines.Count > 0
+                ? string.Concat(block.Inlines.OfType<Run>().Select(run => run.Text))
+                : block.Text;
+
+        /// <summary>Returns the active block's painted runs, or null when there is no active block.</summary>
+        public IList<(string Text, Brush? Foreground)>? ActiveRuns() =>
+            ActiveBlock() is null
+                ? null
+                : ActiveBlock()!.Inlines.OfType<Run>()
+                    .Select(run => (run.Text, (Brush?)run.Foreground)).ToList();
 
         public IList<string> HistoryTexts() => HistoryBlocks().Select(b => b.Text).ToList();
     }
