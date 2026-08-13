@@ -162,6 +162,21 @@ public sealed class CaptionState
         _translationActiveLine = null;
     }
 
+    /// <summary>
+    /// Removes every <see cref="LineOrigin.Translation"/> entry from the committed history, leaving
+    /// <see cref="LineOrigin.SourceStt"/> entries (and any other origins) untouched. Used when the
+    /// user toggles translation OFF so the overlay does not leave target-language lines mixed into
+    /// the new source-only stream. Language-agnostic: filters by <see cref="LineOrigin"/>, not by
+    /// target language. The active translation line is NOT touched — that is
+    /// <see cref="ClearTranslationActiveLine"/>'s job.
+    /// </summary>
+    /// <returns>The number of history entries removed.</returns>
+    public int ClearTranslationHistory()
+    {
+        int removed = _history.RemoveAll(caption => caption.Origin == LineOrigin.Translation);
+        return removed;
+    }
+
     /// <summary>Discards only the STT active line.</summary>
     public void ClearSourceActiveLine() => _sourceActiveLine = null;
 

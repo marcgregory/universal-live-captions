@@ -40,6 +40,8 @@ public class CaptionRenderIdentityTests
         public void ProcessFinal(FinalTranscript transcript) { }
         public void ProcessPartialTranslation(UniversalCaptions.Core.Translation.PartialTranslation translation) { }
         public void ProcessFinalTranslation(UniversalCaptions.Core.Translation.FinalTranslation translation) { }
+        public void ClearLiveTranslationActiveLine() { }
+        public void ClearTranslationHistory() { }
         public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void Dispose() { }
     }

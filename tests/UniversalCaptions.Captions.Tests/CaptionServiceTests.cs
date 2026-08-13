@@ -1,3 +1,4 @@
+using System.Linq;
 using UniversalCaptions.Captions.Tests.Support;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Speech;
@@ -877,6 +878,215 @@ public sealed class CaptionServiceTests
             null, "pupunta na", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 5));
 
         Assert.Null(service.State.ActiveTranslationLine);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_False_RemovesTranslationOriginHistory_KeepsSourceHistory()
+    {
+        // v0.5.37 fix for the "mixed English + Tagalog after toggling Translate OFF" symptom.
+        // The committed history must contain ONLY LineOrigin.SourceStt entries after the toggle;
+        // every LineOrigin.Translation entry (Tagalog, Japanese, etc.) is scrubbed regardless of
+        // target language. Existing English/source history is preserved.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        // Seed a mixed history: English source partials (will commit when finals arrive) interleaved
+        // with translation-origin finals from the live engine. The caption-line path is suppressed,
+        // so the source commits are pure English and the translation commits are pure target text.
+        service.ProcessPartial(Partial(1, "english one"));
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog one", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+        service.ProcessFinal(Final(3, "english two"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog two", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 4, committedAtUtc: DateTime.UtcNow));
+
+        Assert.Equal(4, service.State.History.Count);
+        Assert.Equal(2, service.State.History.Count(c => c.Origin == LineOrigin.Translation));
+        Assert.Equal(2, service.State.History.Count(c => c.Origin == LineOrigin.SourceStt));
+
+        service.SetTranslationEnabled(false);
+
+        // After toggle: every translation-origin entry is removed; every source entry survives.
+        var history = service.State.History;
+        Assert.Equal(2, history.Count);
+        Assert.All(history, line => Assert.Equal(LineOrigin.SourceStt, line.Origin));
+        Assert.Equal(new[] { "english one", "english two" }, history.Select(line => line.Text));
+        Assert.Null(service.State.ActiveTranslationLine);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_False_AfterNewCaptions_OnlyNewSourceIsShown_NoMixed()
+    {
+        // After the toggle, a new Whisper partial/final arrives. The overlay must receive ONLY that
+        // English line — no stale Tagalog lines from the previous session should reappear in history.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog one", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+
+        service.SetTranslationEnabled(false);
+
+        // New Whisper final after the toggle.
+        service.ProcessFinal(Final(3, "english two"));
+
+        var history = service.State.History;
+        Assert.Equal(2, history.Count);
+        Assert.All(history, line => Assert.Equal(LineOrigin.SourceStt, line.Origin));
+        Assert.DoesNotContain(history, line => line.Text == "tagalog one");
+        Assert.Contains(history, line => line.Text == "english two");
+    }
+
+    [Fact]
+    public void ClearTranslationHistory_WhenNotRunning_IsNoop()
+    {
+        // Defensive no-op when the service isn't started: clears must not run before a session exists.
+        var service = CreateService();
+        // Intentionally do NOT call service.Start().
+
+        var stateChanges = 0;
+        service.StateChanged += (_, _) => stateChanges++;
+
+        service.ClearTranslationHistory();
+
+        Assert.Equal(0, stateChanges);
+        Assert.Empty(service.State.History);
+    }
+
+    [Fact]
+    public void ClearTranslationHistory_WhenNothingToClear_DoesNotRaiseStateChanged()
+    {
+        // The overlay would re-render for no reason if StateChanged fired on a no-op clear. The
+        // service returns the cleared-count from CaptionState and gates the event on it being > 0.
+        var service = CreateService();
+        service.Start();
+
+        var stateChanges = 0;
+        service.StateChanged += (_, _) => stateChanges++;
+
+        service.ClearTranslationHistory();
+
+        Assert.Equal(0, stateChanges);
+    }
+
+    [Fact]
+    public void ClearTranslationHistory_PreservesSourceEntries_AndRaisesStateChanged()
+    {
+        // Direct exercise of the new API: scrubbing translation history must not touch source entries
+        // and must raise exactly one StateChanged when it actually clears something.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+
+        var stateChanges = 0;
+        service.StateChanged += (_, _) => stateChanges++;
+
+        service.ClearTranslationHistory();
+
+        Assert.Equal(1, stateChanges);
+        var history = service.State.History;
+        Assert.Single(history);
+        Assert.Equal("english", history[0].Text);
+        Assert.Equal(LineOrigin.SourceStt, history[0].Origin);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_ChangingTargetLanguageWhileOn_ClearsPreviousTargetHistory()
+    {
+        // v0.5.37 extension: switching target language (tl → ja) mid-session scrubs the previous
+        // target's history so the new session starts clean. SourceStt history is preserved as the
+        // shared ground truth across both targets.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        // Seed mixed history: two source finals + two Tagalog finals.
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog one", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+        service.ProcessFinal(Final(3, "english two"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog two", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 4, committedAtUtc: DateTime.UtcNow));
+
+        // Switch target language: tl → ja. The previous target's history must be scrubbed.
+        service.SetTranslationEnabled(true, "ja");
+
+        var history = service.State.History;
+        Assert.Equal(2, history.Count);
+        Assert.All(history, line => Assert.Equal(LineOrigin.SourceStt, line.Origin));
+        Assert.Equal(new[] { "english one", "english two" }, history.Select(line => line.Text));
+        Assert.True(service.State.TranslationEnabled);
+        Assert.Equal("ja", service.State.TargetLanguage);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_SettingSameTargetWhileOn_DoesNotClearHistory()
+    {
+        // Setting the same target language again must NOT scrub history. Only an actual change
+        // triggers the clear — otherwise every settings-UI re-save would wipe the user's session.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog one", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+
+        // Same target again — this must be a no-op for history.
+        service.SetTranslationEnabled(true, "tl");
+
+        var history = service.State.History;
+        Assert.Equal(2, history.Count);
+        Assert.Contains(history, line => line.Text == "tagalog one" && line.Origin == LineOrigin.Translation);
+        Assert.Contains(history, line => line.Text == "english one" && line.Origin == LineOrigin.SourceStt);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_ChangingTargetAfterOff_DoesNotRunClearAgain()
+    {
+        // Edge: OFF already cleared translation history. A subsequent ON with a different target
+        // must NOT error or re-clear (no-op — history is already source-only). Verifies the OFF
+        // path and the language-change path are independent.
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "tagalog one", "en", "tl",
+            DateTime.UtcNow, DateTime.UtcNow, 2, committedAtUtc: DateTime.UtcNow));
+
+        service.SetTranslationEnabled(false);
+        Assert.Single(service.State.History);
+        Assert.Equal("english one", service.State.History[0].Text);
+
+        // Different target — but translation is OFF, so the language-change branch must NOT fire
+        // (it requires TranslationEnabled == true to detect a change). This is just an ON toggle.
+        service.SetTranslationEnabled(true, "ja");
+        Assert.Single(service.State.History);
+        Assert.Equal("english one", service.State.History[0].Text);
+        Assert.Equal("ja", service.State.TargetLanguage);
     }
 
     /// <summary>

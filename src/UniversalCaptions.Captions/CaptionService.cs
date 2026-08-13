@@ -317,12 +317,35 @@ public sealed class CaptionService : ICaptionService
         string? target = targetLanguage ?? _options.TargetLanguage;
         lock (_gate)
         {
+            // Detect a target-language change while translation stays on: scrubbing the previous
+            // target's history prevents mixed-language history (e.g. Tagalog lines bleeding into a
+            // newly-selected Japanese session). Comparing to the state's current target (lowercased
+            // by CaptionState.SetTranslation) means "set same language again" is correctly a no-op.
+            bool languageChanged = enabled
+                && _state.TranslationEnabled
+                && !string.Equals(_state.TargetLanguage, target, StringComparison.Ordinal);
+
             _state.SetTranslation(enabled, target);
             if (!enabled)
             {
                 // The live translation line belongs to a session that has been switched off: drop it
                 // so re-enabling never resurfaces stale translated text from before the toggle.
                 _state.ClearTranslationActiveLine();
+
+                // Toggling translation OFF must not leave target-language history mixed into the new
+                // English-only source stream. Clear every LineOrigin.Translation entry (language-
+                // agnostic: Tagalog, Japanese, French, etc.) so the overlay returns to a pure source
+                // display. The active translation line is handled by ClearTranslationActiveLine above;
+                // this method is scoped to the committed history.
+                _state.ClearTranslationHistory();
+            }
+            else if (languageChanged)
+            {
+                // Switching target language mid-session (e.g. tl → ja) must drop the previous target's
+                // history so the new session starts clean. SourceStt history is untouched because
+                // it is the shared ground truth across both targets. The new target's history will
+                // populate as the live engine emits.
+                _state.ClearTranslationHistory();
             }
         }
 
@@ -332,6 +355,26 @@ public sealed class CaptionService : ICaptionService
         }
 
         StateChanged?.Invoke(this, _state);
+    }
+
+    /// <inheritdoc />
+    public void ClearTranslationHistory()
+    {
+        if (!_running)
+        {
+            return;
+        }
+
+        bool cleared;
+        lock (_gate)
+        {
+            cleared = _state.ClearTranslationHistory() > 0;
+        }
+
+        if (cleared)
+        {
+            StateChanged?.Invoke(this, _state);
+        }
     }
 
     /// <inheritdoc />

@@ -65,6 +65,17 @@ public interface ICaptionService : IDisposable
     /// translated to <paramref name="targetLanguage"/> (or the configured default when null) as long
     /// as a translation engine is available.
     /// </summary>
+    /// <remarks>
+    /// Two history-scrubbing transitions are tied to this method:
+    /// <list type="bullet">
+    ///   <item>Disabling translation: clears every <see cref="LineOrigin.Translation"/> entry from
+    ///   the committed history so the overlay returns to a pure source display. The active
+    ///   translation line is also dropped.</item>
+    ///   <item>Switching target language while translation stays on (e.g. <c>tl</c> → <c>ja</c>):
+    ///   clears the previous target's history so the new session starts clean. SourceStt history
+    ///   is preserved. Setting the same target language again is a no-op.</item>
+    /// </list>
+    /// </remarks>
     /// <param name="enabled">Whether translation is enabled.</param>
     /// <param name="targetLanguage">The ISO 639-1 target language, when overriding the configured default.</param>
     void SetTranslationEnabled(bool enabled, string? targetLanguage = null);
@@ -108,6 +119,19 @@ public interface ICaptionService : IDisposable
     /// </summary>
     /// <param name="translation">The final translation. Must not be null.</param>
     void ProcessFinalTranslation(FinalTranslation translation);
+
+    /// <summary>
+    /// Removes every <see cref="LineOrigin.Translation"/> entry from the committed history, leaving
+    /// <see cref="LineOrigin.SourceStt"/> entries (and any other origins) untouched. This is the
+    /// "Translate OFF should not leave translated text mixed into English source captions" hook:
+    /// the live translation session accumulates target-language history while it is on, and toggling
+    /// translation off must scrub those entries so the overlay returns to source-only display.
+    /// Language-agnostic: it does not filter by target language (Tagalog, Japanese, French, etc.),
+    /// only by <see cref="LineOrigin"/>. No-op while not running or when there is nothing to clear
+    /// (does not raise <see cref="StateChanged"/> in that case). The active translation line is NOT
+    /// touched — that is <see cref="ProcessFinalTranslation"/>'s job and the live-failure path's.
+    /// </summary>
+    void ClearTranslationHistory();
 
     /// <summary>
     /// Waits until all in-flight translations have settled (completed, failed, or cancelled).

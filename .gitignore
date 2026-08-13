@@ -52,6 +52,12 @@ artifacts/spike-compare/*.wav
 artifacts/spike-result-*/
 artifacts/validation/
 
+# Ad-hoc Gemini-stop reproduction harness (untracked; runs locally with
+# the user's GEMINI_API_KEY in their shell — the script never holds the key).
+artifacts/spike-corpus/run_gemini_stop_probe.cmd
+artifacts/spike-corpus/.gemini_key
+artifacts/spike-corpus/*.key.txt
+
 # Real-world acceptance runtime diagnostic dumps (PASS evidence lives in *parity_acceptance*.log)
 *_app_stderr.log
 

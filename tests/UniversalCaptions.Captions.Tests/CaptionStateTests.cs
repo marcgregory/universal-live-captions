@@ -242,4 +242,63 @@ public sealed class CaptionStateTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new CaptionState(-1));
     }
+
+    [Fact]
+    public void ClearTranslationHistory_RemovesOnlyTranslationOriginEntries()
+    {
+        // Language-agnostic history scrub for the Translate-OFF path: every LineOrigin.Translation
+        // entry is removed regardless of target language; every LineOrigin.SourceStt entry stays.
+        // The returned count lets the service decide whether StateChanged is worth raising.
+        var state = new CaptionState(20);
+        state.AddFinalLine(Final(1, "english source"));                                         // SourceStt
+        state.AddFinalLine(new CaptionLine("tagalog", "en", 2, DateTime.UtcNow,
+            CaptionLineState.Final, committedAtUtc: DateTime.UtcNow, origin: LineOrigin.Translation)); // Translation
+        state.AddFinalLine(Final(3, "another english source"));                                 // SourceStt
+        state.AddFinalLine(new CaptionLine("japanese", "en", 4, DateTime.UtcNow,
+            CaptionLineState.Final, committedAtUtc: DateTime.UtcNow, origin: LineOrigin.Translation)); // Translation
+
+        int removed = state.ClearTranslationHistory();
+
+        Assert.Equal(2, removed);
+        Assert.Equal(new long[] { 1, 3 }, state.History.Select(line => line.Sequence));
+        Assert.All(state.History, line => Assert.Equal(LineOrigin.SourceStt, line.Origin));
+    }
+
+    [Fact]
+    public void ClearTranslationHistory_WhenNoTranslationEntries_ReturnsZero_AndKeepsSource()
+    {
+        // No-op semantics: calling clear when nothing matches does not destroy source history. The
+        // service relies on the zero-return to skip StateChanged (the overlay would re-render for no
+        // reason).
+        var state = new CaptionState(10);
+        state.AddFinalLine(Final(1, "english only"));
+
+        int removed = state.ClearTranslationHistory();
+
+        Assert.Equal(0, removed);
+        Assert.Single(state.History);
+        Assert.Equal("english only", state.History[0].Text);
+    }
+
+    [Fact]
+    public void ClearTranslationHistory_DoesNotTouchActiveTranslationLine()
+    {
+        // The history scrub is scoped to the committed history. The active translation line is a
+        // separate slot owned by ClearTranslationActiveLine / SetTranslationEnabled(false); mixing
+        // the two responsibilities here would let a future caller break either contract.
+        var state = new CaptionState(10);
+        state.UpdateTranslationActiveLine(new CaptionLine("active tagalog partial", "en", 1,
+            DateTime.UtcNow, CaptionLineState.Active, origin: LineOrigin.Translation));
+        // No AddFinalLine here: a committed final at the same sequence would clear the active line
+        // by CaptionState's own commit semantics, which would mask what this test is checking.
+        state.AddFinalLine(new CaptionLine("unrelated english", "en", 99, DateTime.UtcNow,
+            CaptionLineState.Final, committedAtUtc: DateTime.UtcNow));
+
+        state.ClearTranslationHistory();
+
+        Assert.NotNull(state.ActiveTranslationLine);
+        Assert.Equal("active tagalog partial", state.ActiveTranslationLine!.Text);
+        Assert.Single(state.History);
+        Assert.Equal("unrelated english", state.History[0].Text);
+    }
 }

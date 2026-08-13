@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 ## Metadata
 
@@ -16,6 +16,19 @@ Last updated: 2026-08-12
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.37 - 2026-08-13
+
+### Mixed-language history scrub on Translate OFF and target-language change
+
+- **Problem:** a runtime Translate OFF (after a Tagalog/Japanese/... session) could leave translated `LineOrigin.Translation` history lines mixed with the user's new English source captions — "previous Tagalog captions became English" was the visible symptom. The root cause was the old `Reset()`-style `ClearHistory()` semantics: turning translation off scrubbed the active translation line but never touched the committed translation history. A related second symptom: switching target language while Translate was ON (`tl → ja`) left the prior target's history alongside the new target's history.
+- **Fix (caption-service API + state):** new language-agnostic `ICaptionService.ClearTranslationHistory()` removes every `LineOrigin.Translation` entry from the committed history; `LineOrigin.SourceStt` entries (and any other origins) are left untouched. Implemented in `CaptionState.ClearTranslationHistory()` (returns the count of removed entries so the service can decide whether to raise `StateChanged`). The active translation line is **not** touched here — that is `ProcessFinalTranslation`'s job and the live-failure path's.
+- **Hooked into the two transitions:**
+  - `SetTranslationEnabled(false)` → `ClearTranslationActiveLine()` + `ClearTranslationHistory()`. The active translation line is dropped and the committed translation history is scrubbed; the overlay returns to a pure source display. SourceStt history is preserved.
+  - `SetTranslationEnabled(true, target)` where `target` differs from `_state.TargetLanguage` while translation is already on → `ClearTranslationHistory()`. Same source preservation. Setting the same target again is a no-op; `SetTranslationEnabled(true)` after a previous OFF is a no-op for the history scrub (the history already starts clean).
+- **Tests:** **621/621** (107 Audio + 81 Captions + 111 Speech + 42 Translation + 161 App + 119 Speech.Gemini) — 8 new tests total: 3 `CaptionStateTests` (clear removes only translation-origin, no-op when nothing matches, does not touch active translation line), 5 `CaptionServiceTests` (OFF removes translation-origin history / OFF after new captions shows only source / `ClearTranslationHistory` no-op when not running + when nothing to clear + preserves source + raises `StateChanged`, target-language-change clears, same-target no-op, change-after-off no double-clear). Release 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean. `NoopCaptionService` in `CaptionRenderIdentityTests` gained the new interface stub.
+- **Real-app smoke PASS (2026-08-13):** Release app + WASAPI loopback + Gemini provider. Sequence verified in-session: (1) Translate OFF + English source captions visible; (2) Translate ON → Tagalog → Tagalog captions appear; (3) target switch `tl → ja` → previous Tagalog history cleared, new JA session starts; (4) Translate OFF → committed Tagalog/Japanese history cleared, **English SourceStt history preserved** (the English captions that re-appear are the same STT output that was being captured while translation was ON — they are not retranslated/reprocessed versions of the old TL/JA lines). No Stop/Start between any transition.
+- **Honest reading:** the "previous captions became English" symptom is gone because the history scrub removes the entire translation-origin slice; the preserved English is the actually-captured English STT that has been accumulating since the session started. The two are not visually distinguishable after a toggle, but the diagnostic (Timeline: source was emitting English before the OFF toggle) confirms the preserved lines are real SourceStt, not retranslations.
 
 ## v0.5.34 - 2026-08-12
 
