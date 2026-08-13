@@ -1,4 +1,4 @@
-# Universal Live Captions Release Plan — v0.5.38
+# Universal Live Captions Release Plan — v0.5.39
 
 Last updated: 2026-08-13
 
@@ -12,30 +12,31 @@ Last updated: 2026-08-13
 
 | Attribute | Value |
 |---|---|
-| Purpose | Define the v0.5.38 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
-| Scope | Everything that must be true before v0.5.38 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
+| Purpose | Define the v0.5.39 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
+| Scope | Everything that must be true before v0.5.39 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | Active — v0.5.38 close-out 2026-08-13 (awaiting tag cut) |
+| Status | Active — v0.5.39 close-out 2026-08-13 (awaiting tag cut) |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: READY — v0.5.38 close-out 2026-08-13 (awaiting tag cut and GitHub release).**
+**Decision: READY — v0.5.39 close-out 2026-08-13 (awaiting tag cut and GitHub release).**
 
 | Release | Tag | GitHub Release | Artifacts |
 |---|---|---|---|
 | **v0.5.33** — Gemini Live translation (parity acceptance) | `v0.5.33` (commit `d7333c1`) | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) | `UniversalCaptions-Setup-0.5.33.exe` + `UniversalCaptions-0.5.33-win-x64-full.zip` |
 | **v0.5.34** — Gemini API-key onboarding link | `v0.5.34` (commit `b50cc2a`) | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) | `UniversalCaptions-Setup-0.5.34.exe` + `UniversalCaptions-0.5.34-win-x64-full.zip` |
 | **v0.5.37** — Mixed-language history scrub on Translate OFF + target change | `v0.5.37` (commit `8b5dd53`) | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
-| **v0.5.38** — Stable/unstable partial rendering (**Latest**) | `v0.5.38` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
+| **v0.5.38** — Stable/unstable partial rendering | `v0.5.38` (commit `95f5049`) | [releases/tag/v0.5.38](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.38) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
+| **v0.5.39** — Gemini goAway session-lifecycle fix (**Latest**) | `v0.5.39` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.39.exe` + `UniversalCaptions-0.5.39-win-x64-full.zip` |
 
-- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34 → v0.5.37 → v0.5.38`.
-- **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix documented in CHANGELOG but not separately published.
+- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34 → v0.5.37 → v0.5.38 → v0.5.39`.
+- **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix spike worktree (proved the fix; not published — the validated production fix ships as v0.5.39).
 - Both artifacts for each release ship the **same staged closure** (single `Stage` tree → both outputs), per `packaging/build-package.ps1` v0.5.31+.
-- Landing page (`landing/`) needs to be updated to v0.5.38 once the tag is cut.
+- Landing page (`landing/`) needs to be updated to v0.5.39 once the tag is cut.
 
 ---
 
@@ -43,10 +44,10 @@ Last updated: 2026-08-13
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.38** (see §1) |
+| Version | **v0.5.39** (see §1) |
 | Release date | **2026-08-13** (close-out; tag cut pending) |
-| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.38 - 2026-08-13` |
-| Source-tree anchors | v0.5.38 = commit `95f5049` (stable/unstable partial rendering) |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.39 - 2026-08-13` |
+| Source-tree anchors | v0.5.39 = commit `5ae30bc` (Gemini goAway session-lifecycle fix) |
 | Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6.7.3, per-user, no admin, no UAC) |
 | Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.38.exe` |
 | Installer launcher | `packaging/launcher.cmd` (process-scoped env only — no global pollution) |
@@ -193,6 +194,28 @@ FINAL freeze all-white → Stop green 0.
 (two-tone in-shot), `smoke-v0538.ps1` (harness with `-PartialWindow` param),
 `smoke_v0538_captions_v0538c.txt` / `smoke_v0538_shots_v0538c/` (run evidence).
 
+### 3.8 v0.5.39 Gemini goAway session-lifecycle regression PASS (2026-08-13)
+
+Per [CHANGELOG.md](CHANGELOG.md) v0.5.39. Release app + real WASAPI loopback on
+the default device + Gemini en→tl, `behavioral-interview.wav` looped, production
+defaults, **no trace plumbing** (the v0.5.36 spike instrumentation is excluded from
+the artifact). Full lifecycle driven in one session: start → first translated
+Tagalog caption → natural Gemini `goAway` at ~9 min → failure status reaches the
+Control Window → overlay stable (engine detached, no lines growing) → toggle
+translation OFF then ON → **new Gemini session** produces translated captions again
+→ status recovers to "Capturing system audio.". 6/6 checks PASS.
+
+The two discriminating observables that prove the fix:
+1. **Natural goAway surfaced as a failure status** — pre-fix the engine exited the
+   receive loop silently, so the Control Window stayed on "Capturing system audio."
+   forever while the overlay froze on the last translated sentence.
+2. **Session lifecycle restoration** — OFF→ON after a natural goAway starts a fresh
+   Gemini session (new sequence from `FRAG init`, seq reset) that produces captions.
+
+**Evidence (untracked, kept locally):** `regression-v0539-goaway.ps1` (harness),
+`regression_v0539_goaway.log` (check log), `regression_v0539_goaway_app_stderr.log`
+(stderr; `[FW-DIAG]` decode rows continue after goAway — Whisper keeps running).
+
 ---
 
 ## 4. Landing-Page Status
@@ -202,11 +225,11 @@ FINAL freeze all-white → Stop green 0.
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
 | Positioning (four angles, all live on the page) | (1) Offline-first / privacy (trust strip + #why) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Optional Gemini for higher-quality realtime translation (#gemini card — **OPTIONAL CLOUD UPGRADE**, shipped since v0.5.33; see §6) |
-| Version tag | `v0.5.38` (matches the latest release; landing update pending tag cut) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-Setup-0.5.38.exe` — see §5 |
+| Version tag | `v0.5.39` (matches the latest release; landing update pending tag cut) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-Setup-0.5.39.exe` — see §5 |
 
-The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.38
-download link becomes active once the v0.5.38 GitHub release is created.
+The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.39
+download link becomes active once the v0.5.39 GitHub release is created.
 
 ---
 
@@ -214,12 +237,12 @@ download link becomes active once the v0.5.38 GitHub release is created.
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-Setup-0.5.38.exe` |
-| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.38/UniversalCaptions-0.5.38-win-x64-full.zip` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-Setup-0.5.39.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-0.5.39-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.38 release tag**, not at the
+The primary CTA points at the **specific v0.5.39 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
 match the artifact that ships.
 
@@ -356,28 +379,30 @@ Single signed-off list. Status legend: **DONE** = complete with evidence · **PE
 
 | # | Item | Status | Evidence / Owner |
 |---|---|---|---|
-| 1 | Source tree frozen at v0.5.38 | DONE (commit `95f5049`) | [CHANGELOG.md](CHANGELOG.md) v0.5.38 |
-| 2 | All tests passing | DONE | 642/642 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
+| 1 | Source tree frozen at v0.5.39 | DONE (commit `5ae30bc`) | [CHANGELOG.md](CHANGELOG.md) v0.5.39 |
+| 2 | All tests passing | DONE | 645/645 ([PROJECT_STATUS.md](PROJECT_STATUS.md) "Last Build") |
 | 3 | Release build 0 warnings / 0 errors | DONE | same |
 | 4 | `dotnet format --verify-no-changes` clean | DONE | same |
 | 5 | No vulnerable packages | DONE | same |
 | 6 | Final real-world acceptance PASS (v0.5.33 parity 22/22) | DONE | §3.5 |
 | 7 | v0.5.37 mixed-language history scrub smoke PASS | DONE | §3.6 |
 | 8 | v0.5.38 stable/unstable partial rendering smoke PASS | DONE | §3.7 |
+| 9 | v0.5.39 Gemini goAway session-lifecycle regression PASS | DONE | §3.8 |
 | 9 | Installed-bundle acceptance PASS (v0.5.26 baseline) | DONE | §3.2 |
 | 10 | Phase 2 app-by-app validation (Chrome / VLC) | DONE | §3.3 |
 | 11 | Phase 2 Zoom validation | N/A (env-limited, recorded) | §3.3 |
-| 12 | Landing page live + points at v0.5.38 assets | PENDING (landing update on tag cut) | §4, §5 |
+| 12 | Landing page live + points at v0.5.39 assets | PENDING (landing update on tag cut) | §4, §5 |
 | 13 | Landing-page Gemini section honest (OPTIONAL cloud upgrade, shipped v0.5.33) | DONE | §6 |
 | 14 | v0.5.33 GitHub release created with artifacts | DONE | [releases/tag/v0.5.33](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.33) |
 | 15 | v0.5.34 GitHub release created with artifacts | DONE | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) |
 | 16 | v0.5.37 GitHub release created with artifacts | DONE | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) |
-| 17 | v0.5.38 GitHub release created with artifacts (**Latest**) | PENDING (tag cut pending) | (pending) |
+| 17 | v0.5.38 GitHub release created with artifacts | DONE | [releases/tag/v0.5.38](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.38) |
+| 17a | v0.5.39 GitHub release created with artifacts (**Latest**) | PENDING (tag cut pending) | (pending) |
 | 18 | v0.5.32 intentionally not published (internal milestone, corrected by v0.5.33) | DONE (recorded) | §1 |
 | 19 | v0.5.35 / v0.5.36 internal/measurement-only (no tag, no release) | DONE (recorded) | §1 |
-| 20 | Documentation updated (CHANGELOG, PROJECT_STATUS, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), this file |
+| 20 | Documentation updated (CHANGELOG, PROJECT_STATUS, TEST_REPORT, this RELEASE_PLAN) | DONE | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), this file |
 | 21 | Constitution + Registry alignment (`landing/`, `packaging/`, `artifacts/` governed) | DONE | [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1, [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md) |
 | 22 | Decision: **READY** | **DONE** | §1 |
 
-This document is the single source of truth that the release is Ready. v0.5.38
+This document is the single source of truth that the release is Ready. v0.5.39
 documentation is in place; tag cut and GitHub release creation remain pending.
