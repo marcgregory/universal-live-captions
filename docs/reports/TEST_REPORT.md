@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-13 (v0.5.38)
+Last updated: 2026-08-13 (v0.5.39)
 
 ## Metadata
 
@@ -16,6 +16,30 @@ Last updated: 2026-08-13 (v0.5.38)
 ---
 
 ## Summary
+
+**v0.5.39 Gemini live-session lifecycle fix (2026-08-13): full suite now 645/645 passing** (106
+Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 113 Speech.Gemini), Release build 0
+warnings / 0 errors, `dotnet format --verify-no-changes` clean, no vulnerable packages. The Gemini
+server ends a Live session with a graceful `goAway` frame; the released baseline tail-flushed the
+accumulator and exited the receive loop **silently**, so the pipeline kept the engine attached and
+the overlay froze on the last translated sentence. Fix: the `GoAway` branch raises
+`TranslationFailed(ServerError, "Live translation session ended by server.")`; the pipeline clears
+the caption service's translation active line (new `ICaptionService.ClearLiveTranslationActiveLine()`)
+before detaching the engine and raising the error status. **3 new tests** — 
+`GeminiLiveTranslateEngineTests.GoAwayFrame_RaisesTranslationFailed_SoPipelineCanDetachAndClearActiveLine`
+(server-close goAway with an in-flight partial → tail-flush final + ServerError raised);
+`CaptionPipelineTests.Live_translation_failure_clears_active_translation_line_and_keeps_captions_running`
+(active line cleared, committed history preserved, Whisper keeps capturing, error status surfaced);
+`CaptionPipelineTests.Live_translation_failure_when_no_active_line_is_a_noop_clear`.
+**Real-app goAway regression PASS (2026-08-13, v0.5.39 artifact, no trace plumbing):** continuous
+Gemini en→tl on the default device, `behavioral-interview.wav` looped, natural goAway at ~9 min.
+Control Window status reached **"Live translation unavailable: Live translation session ended by
+server."** (the pre-fix silent freeze is gone); overlay stable after goAway (engine detached, no
+lines growing); toggling translation OFF→ON started a **new Gemini session** producing translated
+Tagalog captions again (`Pero dahil hindi sila nakita ng interviewer,`); status recovered to
+"Capturing system audio.". 6/6 checks PASS. Evidence: CHANGELOG v0.5.39,
+`regression-v0539-goaway.ps1` + `regression_v0539_goaway.log` + `regression_v0539_goaway_app_stderr.log`
+(all untracked). Commit `5ae30bc`. Fix isolated from the v0.5.36 spike worktree that proved it.
 
 **v0.5.38 stable/unstable partial rendering (2026-08-13): full suite now 642/642 passing** (106
 Audio + 89 Captions + 111 Speech + 42 Translation + 182 App + 112 Speech.Gemini), Release build 0

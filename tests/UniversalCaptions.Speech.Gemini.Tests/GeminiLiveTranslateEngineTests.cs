@@ -711,6 +711,42 @@ public sealed class GeminiLiveTranslateEngineTests
         Assert.Equal("Paalam na", finals[0].TranslatedText);
     }
 
+    [Fact]
+    public async Task GoAwayFrame_RaisesTranslationFailed_SoPipelineCanDetachAndClearActiveLine()
+    {
+        // The pause/resume symptom: the Gemini server signals a graceful shutdown via goAway. Before
+        // the fix, the engine exited the receive loop silently — the consumer never knew the session
+        // was over, so the active translation line stayed on the overlay while the live engine was
+        // still attached. The engine must surface this through the standard failure channel so the
+        // pipeline's failure handler can detach the engine and clear the active translation line.
+        var channel = new FakeGeminiChannel();
+        await using var engine = CreateEngine(channel);
+        var partials = new List<PartialTranslation>();
+        var finals = new List<FinalTranslation>();
+        var errors = new List<LiveTranslationError>();
+        engine.PartialTranslationAvailable += (_, p) => partials.Add(p);
+        engine.FinalTranslationAvailable += (_, f) => finals.Add(f);
+        engine.TranslationFailed += (_, e) => errors.Add(e);
+
+        channel.ReceiveReturnsNullOnEmpty = true;
+        await engine.StartAsync();
+
+        // Active translation line is in flight, then the server closes the session.
+        channel.QueueServerFrame(BuildServerContent("Hindi pa tapos", partial: true, turnComplete: false));
+        await WaitForAsync(() => partials.Count == 1);
+        channel.QueueServerFrame("{\"goAway\":{}}");
+
+        // The pending sentence is tail-flushed as a final, AND the failure channel is raised so the
+        // pipeline can clean up.
+        await WaitForAsync(() => finals.Count == 1 && errors.Count == 1, timeoutMs: 4000);
+
+        Assert.Single(finals);
+        Assert.Equal("Hindi pa tapos", finals[0].TranslatedText);
+        Assert.Single(errors);
+        Assert.Equal(LiveTranslationErrorKind.ServerError, errors[0].Kind);
+        Assert.Contains("ended by server", errors[0].Message);
+    }
+
     // ----- sessionResumptionUpdate: engine must not fatal -----
 
     [Fact]

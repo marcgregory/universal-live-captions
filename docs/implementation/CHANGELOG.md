@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-13 (v0.5.38)
+Last updated: 2026-08-13 (v0.5.39)
 
 ## Metadata
 
@@ -16,6 +16,20 @@ Last updated: 2026-08-13 (v0.5.38)
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.39 - 2026-08-13
+
+### Gemini live-session lifecycle fix: graceful goAway is now surfaced (no more frozen overlay)
+
+- **Problem:** the Gemini server ends a Live session with a graceful `goAway` frame (observed after ~9 minutes of continuous audio — 537.0 s in the investigation run, 521.9 s in earlier evidence). In the released baseline the engine's `GoAway` branch only tail-flushed the accumulator (`FlushAccumulatorAsFinal()`) and exited the receive loop **silently** — no failure event, no status change. The pipeline kept the engine attached and the display model kept the live-translation active line, so the overlay froze on the last translated sentence while Whisper kept running. The status stayed "Capturing system audio." with no indication the session had ended.
+- **Fix (code-behind only, 4 production files):**
+  - `GeminiLiveTranslateEngine` — the `GoAway` branch now, after tail-flushing, raises `TranslationFailed(LiveTranslationErrorKind.ServerError, "Live translation session ended by server.")` through the standard failure chokepoint. The consumer finally has a signal that the receive loop exited via goAway.
+  - `CaptionPipeline.OnLiveTranslationFailed` — clears the caption service's translation active line before detaching the engine and raising the error status. Without the clear the overlay would keep painting a stale in-progress translation; the committed Tagalog history stays visible by design (live-translation display policy), and the user returns to source captions by toggling translation OFF, which also starts a fresh session.
+  - `ICaptionService` / `CaptionService` — new `ClearLiveTranslationActiveLine()`: discards the active translation line and raises `StateChanged`; no-op when not running, translation disabled, or no active translation line. Added beside the existing `ClearTranslationHistory()` (v0.5.37), which is untouched.
+- **Tests:** **645/645** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 113 Speech.Gemini) — 3 new tests: `GeminiLiveTranslateEngineTests.GoAwayFrame_RaisesTranslationFailed_SoPipelineCanDetachAndClearActiveLine` (server-close goAway with an in-flight partial → tail-flush final + ServerError raised), `CaptionPipelineTests.Live_translation_failure_clears_active_translation_line_and_keeps_captions_running` (active line cleared, committed history preserved, Whisper keeps capturing, error status surfaced), `CaptionPipelineTests.Live_translation_failure_when_no_active_line_is_a_noop_clear`. Release 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean.
+- **Real-app goAway regression PASS (2026-08-13, v0.5.39 Release artifact, no trace plumbing):** continuous Gemini en→tl on the default device, `behavioral-interview.wav` looped, natural goAway at ~9 min. Control Window status reached **"Live translation unavailable: Live translation session ended by server."** (the pre-fix behavior — status frozen on "Capturing system audio." — is gone); overlay stable after goAway (engine detached, no lines growing); toggling translation OFF→ON started a **new Gemini session** that produced translated Tagalog captions again (`Pero dahil hindi sila nakita ng interviewer,`), and the status recovered to "Capturing system audio.". 6/6 checks PASS. Evidence: `regression-v0539-goaway.ps1` + `regression_v0539_goaway.log` + `regression_v0539_goaway_app_stderr.log` (all untracked).
+- **Investigation scope discipline:** the fix was isolated from the v0.5.36 spike worktree that proved it. The minimal diff is 4 production files + 2 test files (+214 lines, 0 deletions). Explicitly **excluded**: the `GeminiSegmentTrace` spike instrumentation, the `FlushAccumulatorAsFinal(reason)` tracer plumbing, `TranslationOriginCaptionServiceTests`, the v0.5.38 partial-rendering changes, and all v0.5.36 harness artifacts. The v0.5.36 stash and `main` were left untouched throughout.
+- **Commit:** `5ae30bc` — 6 files (+214/-0).
 
 ## v0.5.38 - 2026-08-13
 

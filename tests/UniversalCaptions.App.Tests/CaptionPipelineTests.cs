@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using UniversalCaptions.App.Pipeline;
 using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Processing;
@@ -124,6 +125,42 @@ public class CaptionPipelineTests
         public void PushAudio(AudioChunk chunk) => PushAudioCount++;
 
         public void Dispose() => IsDisposed = true;
+
+        public void EmitPartial(string translatedText, long sequence = 1)
+        {
+            PartialTranslationAvailable?.Invoke(
+                this,
+                new PartialTranslation(
+                    sourceText: null,
+                    translatedText: translatedText,
+                    sourceLanguage: "en",
+                    targetLanguage: "tl",
+                    capturedAtUtc: DateTime.UtcNow,
+                    emittedAtUtc: DateTime.UtcNow,
+                    sequence: sequence));
+        }
+
+        public void EmitFinal(
+            string translatedText,
+            long sequence = 1,
+            string sourceText = "good morning",
+            string sourceLanguage = "en",
+            string targetLanguage = "tl")
+        {
+            FinalTranslationAvailable?.Invoke(
+                this,
+                new FinalTranslation(
+                    sourceText: sourceText,
+                    translatedText: translatedText,
+                    sourceLanguage: sourceLanguage,
+                    targetLanguage: targetLanguage,
+                    capturedAtUtc: DateTime.UtcNow,
+                    emittedAtUtc: DateTime.UtcNow,
+                    sequence: sequence,
+                    committedAtUtc: DateTime.UtcNow));
+        }
+
+        public void Fail(LiveTranslationError error) => TranslationFailed?.Invoke(this, error);
     }
 #pragma warning restore CS0067
 
@@ -1089,6 +1126,97 @@ public class CaptionPipelineTests
         // The toggle is honored by the next Start's own configuration, not by the no-op call.
         pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
         Assert.Equal(1, factoryCalls);
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task Live_translation_failure_clears_active_translation_line_and_keeps_captions_running()
+    {
+        // Reproduces the Gemini pause/resume symptom: when the live engine raises TranslationFailed
+        // (which now happens for graceful goAway shutdowns too), the pipeline must clear the active
+        // translation line so the overlay returns to the source captions instead of freezing on
+        // whatever translated text it had. The Whisper pipeline keeps running so source captions
+        // resume immediately.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => live);
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        h.Captions.SetTranslationEnabled(true, "tl");
+
+        // Seed an active translation line and a committed history entry so the assertion proves the
+        // clear is scoped to the translation active slot (the committed history is preserved). The
+        // final clears the active line (engine's commit semantics), so a second partial arrives to
+        // re-populate the active slot — the failure path under test fires while the speaker is
+        // mid-utterance.
+        live.EmitPartial("Magandang umaga", sequence: 1);
+        live.EmitFinal("Magandang umaga lahat.", sequence: 2);
+        live.EmitPartial("Ipinakita", sequence: 3);
+        Assert.NotNull(h.Captions.State.ActiveTranslationLine);
+        Assert.Single(h.Captions.State.History);
+
+        // The live engine raises a graceful-session-end failure (Gemini goAway path).
+        var statuses = new ConcurrentQueue<PipelineStatus>();
+        pipeline.StatusChanged += (_, s) => statuses.Enqueue(s);
+        live.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.ServerError,
+            "Live translation session ended by server.",
+            null));
+
+        // The pipeline clears the active translation line and surfaces an error status. The
+        // committed history is preserved so the overlay still has content to render.
+        Assert.Null(h.Captions.State.ActiveTranslationLine);
+        Assert.Single(h.Captions.State.History);
+        Assert.Equal("Magandang umaga lahat.", h.Captions.State.History[0].TranslatedText);
+        Assert.True(pipeline.IsRunning, "Whisper must keep capturing after a live-translation failure.");
+        Assert.True(h.Capture.IsCapturing);
+        Assert.True(h.SpeechToText.IsRecognizing);
+
+        var errorStatus = statuses.FirstOrDefault(s => s.Kind == PipelineStatusKind.Error);
+        Assert.NotNull(errorStatus);
+        Assert.Contains("ended by server", errorStatus!.Message);
+
+        // The engine is detached but its disposal runs on a background task — wait for it before
+        // teardown so the test does not race a fire-and-forget Task.Run.
+        await pipeline.StopAsync();
+        Assert.True(live.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Live_translation_failure_when_no_active_line_is_a_noop_clear()
+    {
+        // Clearing when there is nothing to clear must not raise StateChanged (the overlay would
+        // rerender for no reason) and must not affect the Whisper pipeline.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => live);
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        h.Captions.SetTranslationEnabled(true, "tl");
+
+        var stateChangedBefore = h.Captions.State;
+        var stateChanges = 0;
+        h.Captions.StateChanged += (_, _) => stateChanges++;
+
+        live.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.ConnectionFailed,
+            "Live translation receive failed.",
+            null));
+
+        Assert.Null(h.Captions.State.ActiveTranslationLine);
+        Assert.True(pipeline.IsRunning);
+        Assert.True(h.Capture.IsCapturing);
+
         await pipeline.StopAsync();
     }
 }
