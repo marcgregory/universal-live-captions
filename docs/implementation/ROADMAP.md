@@ -38,8 +38,8 @@ Last updated: 2026-08-06
 
 ## In Progress
 
-- None currently — all MVP slices (0–6), the Slice 8–12 engine experiments, the Entry 14 default
-  promotion, and the Entry 16 CPU optimization are complete.
+- None — v0.5.39 (Gemini goAway session-lifecycle fix) is closed/released (2026-08-13). The next
+  candidate is the **v0.5.40 Gemini streaming-caption segmentation investigation** (see Sprint Queue).
 
 ## Completed (core done)
 
@@ -56,7 +56,18 @@ Last updated: 2026-08-06
 
 ## Sprint Queue
 
-- (empty — no sprint currently active; next candidates from the Future section when work resumes)
+- **v0.5.40 — Gemini streaming-caption segmentation investigation (OPEN, logged 2026-08-13).** Separately
+  tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (which is closed and released — this is
+  NOT a v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right
+  after a `FINAL`, e.g. `FRAG "at halos tugma"` following a completed `FINAL`. **Explicitly out of scope
+  (do not change yet):** Whisper, the translation engine, partial-rendering UX (v0.5.38 two-tone), and the
+  goAway lifecycle. **Evidence preserved:** `gemini_seg_trace.log` / `gemini_seg_trace_run2.log` /
+  `gemini_seg_app_stderr.log` / `acceptance-gemini-seg-trace.ps1` (untracked). **No fix to be coded yet.**
+  **Next investigation:** capture a minimal reproducible trace around `FINAL → next FRAG → subsequent
+  segments`, then determine whether the mid-sentence boundary originates in Gemini's segmentation boundary,
+  our segment assembly (`GeminiLiveTranslateEngine` — the accumulator / `FlushAccumulatorAsFinal` /
+  fragment-vs-final classification), or post-FINAL handling (the committer / partial-path). Decision
+  recorded in PROJECT_STATUS.md when closed.
 
 ## Future
 

@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-13 (v0.5.39)
+Last updated: 2026-08-13 (v0.5.39 shipped; v0.5.40 investigation logged)
 
 ## Metadata
 
@@ -285,6 +285,18 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 **Original Tagalog recording for ADR-0007 acceptance** — the live evidence for the `"At gusto ko"` / `"Kaya"` / `"artipisyal na katalinuhan"` regression requires the original operator recording, which is unavailable in the workspace; per user, no substitute sample qualifies. ADR-0007 remains `Proposed` until it is supplied and validated through the real App (fragmentation, duplicates, missing words, Stop drain).
 
 ## Next Milestone
+
+**v0.5.40 — Gemini streaming-caption segmentation investigation (OPEN, logged 2026-08-13).** Separately
+tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (closed + released; NOT a v0.5.39
+defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right after a `FINAL`,
+e.g. `FRAG "at halos tugma"` following a completed `FINAL`. **Explicitly out of scope (do not change
+yet):** Whisper, the translation engine, partial-rendering UX (v0.5.38 two-tone), and the goAway
+lifecycle. **No fix to be coded yet.** **Next investigation:** capture a minimal reproducible trace around
+`FINAL → next FRAG → subsequent segments`, then establish which layer creates the mid-sentence boundary —
+Gemini's segmentation boundary, our segment assembly (`GeminiLiveTranslateEngine` — the accumulator /
+`FlushAccumulatorAsFinal` / fragment-vs-final classification), or post-FINAL handling. Evidence preserved:
+`gemini_seg_trace.log` / `gemini_seg_trace_run2.log` / `gemini_seg_app_stderr.log` /
+`acceptance-gemini-seg-trace.ps1` (untracked). See ROADMAP.md (Sprint Queue).
 
 **Core is done (per user criterion, 2026-08-06):** the final real-world acceptance run passed at the
 production default — stable ~32“33% STT + ~1% App CPU over 300 s continuous media, first caption ~3.2 s,
