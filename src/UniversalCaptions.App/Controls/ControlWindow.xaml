@@ -84,7 +84,13 @@
                   Grid.Row="5"
                   Grid.Column="1"
                   Margin="10,4"
-                  SelectionChanged="OnProviderChanged" />
+                  SelectionChanged="OnProviderChanged">
+            <ComboBox.ItemContainerStyle>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                </Style>
+            </ComboBox.ItemContainerStyle>
+        </ComboBox>
 
         <TextBlock Grid.Row="6"
                    Text="Gemini API key"

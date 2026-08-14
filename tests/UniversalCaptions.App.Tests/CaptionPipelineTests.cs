@@ -1037,6 +1037,41 @@ public class CaptionPipelineTests
     }
 
     [Fact]
+    public async Task SetLiveTranslation_syncs_the_caption_services_live_translation_session_flag()
+    {
+        // The overlay's live-translation display mode must be driven by the actual provider, not by
+        // history content: switching Gemini → Argos (same target) clears the flag so source-STT lines
+        // never flash English, and switching Argos → Gemini sets it so the display is target-language
+        // only from the first moment (no English flash while Gemini starts).
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        int factoryCalls = 0;
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: pair =>
+            {
+                factoryCalls++;
+                return live;
+            });
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
+
+        // Gemini → Argos: the live engine is stopped, so the flag clears.
+        pipeline.SetLiveTranslation(null, null, null);
+        Assert.False(h.Captions.GetSnapshot().IsLiveTranslationSession);
+
+        // Argos → Gemini: the live engine is recreated, so the flag sets again.
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
+        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
+
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
     public async Task SetLiveTranslation_target_change_swaps_the_live_engine()
     {
         using var h = new Harness();
@@ -1217,6 +1252,93 @@ public class CaptionPipelineTests
         Assert.True(pipeline.IsRunning);
         Assert.True(h.Capture.IsCapturing);
 
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task Live_translation_failure_raises_classified_error_event()
+    {
+        // The classified failure must surface through LiveTranslationErrorUpdated so the UI can show
+        // an actionable message (invalid key vs quota vs network) and disable Gemini in the dropdown.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => live);
+
+        var errors = new List<LiveTranslationError>();
+        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        live.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.SessionRejected,
+            "API key not valid. Please pass a valid API key.",
+            null));
+
+        LiveTranslationError error = Assert.Single(errors);
+        Assert.Equal(LiveTranslationErrorKind.SessionRejected, error.Kind);
+        Assert.Contains("API key", error.Message);
+        Assert.True(pipeline.IsRunning, "A live-translation failure must never stop source captions.");
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_gemini_with_missing_key_raises_classified_error()
+    {
+        // A Gemini selection whose engine cannot be constructed (the App factory returns null when no
+        // API key is stored) must surface the classified "missing/invalid key" error so the UI can
+        // fall back to Argos instead of showing "Gemini selected, nothing happens".
+        using var h = new Harness();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => null);
+
+        var errors = new List<LiveTranslationError>();
+        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
+
+        pipeline.Start(null, null);
+        Assert.True(pipeline.IsRunning);
+
+        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
+
+        LiveTranslationError error = Assert.Single(errors);
+        Assert.Equal(LiveTranslationErrorKind.SessionRejected, error.Kind);
+        Assert.Contains("API key", error.Message);
+        Assert.True(pipeline.IsRunning, "A missing-key failure must not stop source captions.");
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
+    public async Task SetLiveTranslation_quota_failure_keeps_captions_running()
+    {
+        // Quota classification flows through the event while the Whisper pipeline stays untouched.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => live);
+
+        var errors = new List<LiveTranslationError>();
+        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        live.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.QuotaExceeded,
+            "Quota exceeded for the day.",
+            null));
+
+        Assert.Equal(LiveTranslationErrorKind.QuotaExceeded, Assert.Single(errors).Kind);
+        Assert.True(pipeline.IsRunning);
+        Assert.True(h.SpeechToText.IsRecognizing);
         await pipeline.StopAsync();
     }
 }

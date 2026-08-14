@@ -38,12 +38,15 @@ public class CaptionRenderIdentityTests
         public void Reset() { }
         public void SetTranslationEnabled(bool enabled, string? targetLanguage = null) { }
         public void SetCaptionLineTranslation(bool enabled) { }
+        public void SetLiveTranslationSession(bool active) { }
+        public void ClearCaptionContent() { }
         public void ProcessPartial(PartialTranscript transcript) { }
         public void ProcessFinal(FinalTranscript transcript) { }
         public void ProcessPartialTranslation(UniversalCaptions.Core.Translation.PartialTranslation translation) { }
         public void ProcessFinalTranslation(UniversalCaptions.Core.Translation.FinalTranslation translation) { }
         public void ClearLiveTranslationActiveLine() { }
         public void ClearTranslationHistory() { }
+        public void ResetTranslatedContent() { }
         public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void Dispose() { }
     }
@@ -231,12 +234,12 @@ public class CaptionRenderIdentityTests
             Assert.Equal("the quick brown", runs![0].Text);
             Assert.NotEqual(Brushes.White, runs[0].Foreground);
             Assert.NotNull(runs[0].Foreground);
-            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[0].Foreground!).Color);
+            Assert.Equal(Color.FromRgb(0x67, 0xE8, 0xF9), ((SolidColorBrush)runs[0].Foreground!).Color);
         });
     }
 
     [Fact]
-    public void Growing_partial_paints_the_stable_head_white_and_tail_green()
+    public void Growing_partial_paints_the_stable_head_white_and_tail_cyan()
     {
         RunOnSta(() =>
         {
@@ -255,7 +258,7 @@ public class CaptionRenderIdentityTests
             Assert.Equal(Brushes.White, runs[0].Foreground);
             Assert.Equal(" brown", runs[1].Text);
             Assert.NotEqual(Brushes.White, runs[1].Foreground);
-            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[1].Foreground!).Color);
+            Assert.Equal(Color.FromRgb(0x67, 0xE8, 0xF9), ((SolidColorBrush)runs[1].Foreground!).Color);
         });
     }
 
@@ -269,7 +272,7 @@ public class CaptionRenderIdentityTests
                 ActiveLine: D("the quick brown fox", 0),
                 History: Array.Empty<CaptionDisplayLine>()));
             // The next partial revises the last word: the confirmed head stays white, the new
-            // word is unconfirmed again and paints in the subtle green.
+            // word is unconfirmed again and paints in the subtle cyan.
             caller.Update(new CaptionDisplayModel(
                 ActiveLine: D("the quick brown cat", 0),
                 History: Array.Empty<CaptionDisplayLine>()));
@@ -281,7 +284,7 @@ public class CaptionRenderIdentityTests
             Assert.Equal(Brushes.White, runs[0].Foreground);
             Assert.Equal(" cat", runs[1].Text);
             Assert.NotEqual(Brushes.White, runs[1].Foreground);
-            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[1].Foreground!).Color);
+            Assert.Equal(Color.FromRgb(0x67, 0xE8, 0xF9), ((SolidColorBrush)runs[1].Foreground!).Color);
         });
     }
 
@@ -305,12 +308,12 @@ public class CaptionRenderIdentityTests
             Assert.Single(runs);
             Assert.Equal("Administration is a", runs![0].Text);
             Assert.NotEqual(Brushes.White, runs[0].Foreground);
-            Assert.Equal(Color.FromRgb(0x9E, 0xC9, 0x9E), ((SolidColorBrush)runs[0].Foreground!).Color);
+            Assert.Equal(Color.FromRgb(0x67, 0xE8, 0xF9), ((SolidColorBrush)runs[0].Foreground!).Color);
         });
     }
 
     [Fact]
-    public void Final_freeze_removes_the_green_and_history_is_plain_white_text()
+    public void Final_freeze_removes_the_cyan_and_history_is_plain_white_text()
     {
         RunOnSta(() =>
         {
@@ -328,9 +331,9 @@ public class CaptionRenderIdentityTests
             Assert.Single(caller.HistoryBlocks());
             Assert.Equal("the quick brown fox", caller.HistoryBlocks()[0].Text);
             Assert.Equal(Brushes.White, caller.HistoryBlocks()[0].Foreground);
-            // The final froze into history as plain white text: no green-tinted run remains.
+            // The final froze into history as plain white text: no cyan-tinted run remains.
             Assert.All(caller.HistoryBlocks()[0].Inlines.OfType<Run>(),
-                run => Assert.NotEqual(Color.FromRgb(0x9E, 0xC9, 0x9E),
+                run => Assert.NotEqual(Color.FromRgb(0x67, 0xE8, 0xF9),
                     (run.Foreground as SolidColorBrush)?.Color));
         });
     }

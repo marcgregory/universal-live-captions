@@ -93,6 +93,27 @@ public interface ICaptionService : IDisposable
     void SetCaptionLineTranslation(bool enabled);
 
     /// <summary>
+    /// Sets whether a live audio translation engine (a cloud provider such as Gemini) currently owns
+    /// translation for the session. True when the live engine is the display (the overlay is
+    /// target-language-only and source STT finals are hidden), false when the caption-line
+    /// (local Argos) path owns translation or when translation is off. Drives the overlay's
+    /// live-translation display mode explicitly — the mode must reflect the actual provider, never be
+    /// inferred from stale history content (a provider change could otherwise flash the previous
+    /// provider's untranslated English source).
+    /// </summary>
+    /// <param name="active">True while a live audio translation engine is the translation mechanism.</param>
+    void SetLiveTranslationSession(bool active);
+
+    /// <summary>
+    /// Clears the committed history and both active lines while KEEPING the translation configuration
+    /// (<see cref="CaptionState.TranslationEnabled"/> and <see cref="CaptionState.TargetLanguage"/>)
+    /// and the running session. Used on a runtime provider change so the overlay starts clean under
+    /// the new provider in the SAME target language — the selected target is never reset by switching
+    /// the translation provider. Raises <see cref="StateChanged"/>.
+    /// </summary>
+    void ClearCaptionContent();
+
+    /// <summary>
     /// Replaces the active line with a caption built from a partial transcript. Ignored while not running.
     /// </summary>
     /// <param name="transcript">The partial transcript. Must not be null.</param>
@@ -132,6 +153,18 @@ public interface ICaptionService : IDisposable
     /// touched — that is <see cref="ProcessFinalTranslation"/>'s job and the live-failure path's.
     /// </summary>
     void ClearTranslationHistory();
+
+    /// <summary>
+    /// Resets every <em>displayed</em> translation from the committed history and the active
+    /// translation line, so a runtime reconfiguration (target-language or provider change) starts
+    /// clean: both the translation-origin lines a live engine (Gemini) produces AND the completed
+    /// translations Argos attaches to source lines are dropped — the overlay must never mix one
+    /// target's or provider's output into the next. Source STT history that carries no translation
+    /// is untouched (unlike <see cref="ClearTranslationHistory"/>, which only handles the live-engine
+    /// path). The active translation line is cleared so a stopped provider's in-progress line cannot
+    /// linger as the display. Raises <see cref="StateChanged"/> when something was cleared.
+    /// </summary>
+    void ResetTranslatedContent();
 
     /// <summary>
     /// Discards the active translation line and raises <see cref="StateChanged"/>. Used by the

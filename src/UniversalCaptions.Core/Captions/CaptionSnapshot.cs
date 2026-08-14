@@ -17,4 +17,5 @@ public sealed record CaptionSnapshot(
     bool IsSessionActive,
     bool TranslationEnabled,
     string? TargetLanguage,
-    CaptionLine? ActiveTranslationLine = null);
+    CaptionLine? ActiveTranslationLine = null,
+    bool IsLiveTranslationSession = false);

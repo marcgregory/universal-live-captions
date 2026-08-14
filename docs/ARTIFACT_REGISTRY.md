@@ -1,6 +1,6 @@
 # Universal Live Captions Artifact Registry
 
-Last updated: 2026-07-31
+Last updated: 2026-08-14
 
 ## Metadata
 
@@ -37,6 +37,7 @@ Every concept has exactly one authoritative document. An agent must update that 
 | Product Backlog | [ROADMAP.md](implementation/ROADMAP.md) | Answer "What should be built?" | Bootstrap |
 | Sprint Execution | [BUILD_PLAN.md](implementation/BUILD_PLAN.md) | Answer "How will we build it?" | Bootstrap |
 | History | [CHANGELOG.md](implementation/CHANGELOG.md) | Record versioned changelog | Bootstrap |
+| Condensed Close-Out History | [HISTORY.md](implementation/HISTORY.md) | Condensed sprint/entry close-out summaries (moved out of CLAUDE.md to keep the agent-context file lean); authoritative detail stays in CHANGELOG/PROJECT_STATUS/ROADMAP | 2026-08-14 |
 | Cleanup List | [TECHNICAL_DEBT.md](implementation/TECHNICAL_DEBT.md) | Track technical debt items | Bootstrap |
 | Release Criteria | [RELEASE_PLAN.md](implementation/RELEASE_PLAN.md) | Define finished | Bootstrap |
 | Current Snapshot | [PROJECT_STATUS.md](implementation/PROJECT_STATUS.md) | Show current project state | Bootstrap |
@@ -57,6 +58,7 @@ Every concept has exactly one authoritative document. An agent must update that 
 | Installer Packaging | `packaging/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Inno Setup `.iss` + `launcher.cmd` + `build-package.ps1` that produce `UniversalCaptions-Setup-*.exe` — governed like code; `output/` is gitignored build output | Bootstrap (de facto) + formalized 2026-08-07 |
 | Local Dev Artifacts | `artifacts/` (governed top-level; see [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md) §1) | Gitignored developer-only caches — Whisper models, sample audio, Argos venv + packages, benchmark report outputs. The directory is canonical; its contents are not release-tracked. | Bootstrap (de facto) + formalized 2026-08-07 |
 | Credentials (Gemini API key, Windows Credential Manager) | [SECURITY_PLAN.md](SECURITY_PLAN.md) (Section "Secret Management") + [adr/ADR-0009.md](adr/ADR-0009.md) | One row per secret class; classification lives in SECURITY_PLAN, lifecycle/invariants live in ADR-0009. The raw value never appears in any document. | 2026-08-08 |
+| Completed Investigations | [implementation/investigations/](implementation/investigations/) | Full records of completed measurement/investigation studies (e.g. `gemini-segmentation.md`, `latency-study.md`), keeping only pointers + results in CLAUDE.md | 2026-08-14 |
 
 ---
 
@@ -80,6 +82,8 @@ When working on a concern, update only its owner document. Do not create paralle
 | Landing-page copy or layout | `landing/index.html` + `landing/styles.css` + `landing/script.js` | PRD.md, RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
 | Installer build configuration | `packaging/UniversalCaptions.iss` + `packaging/launcher.cmd` + `packaging/build-package.ps1` | RELEASE_PLAN.md (cross-reference only — readiness decision lives in RELEASE_PLAN.md) |
 | Credential lifecycle / API-key handling | `adr/ADR-0009.md` + `SECURITY_PLAN.md` (Section "Secret Management") | PRD.md, RELEASE_PLAN.md (cross-reference only — provider toggle ships in v0.5.30, see ADR-0009 §Implementation Outline) |
+| A completed measurement/investigation study | `implementation/investigations/<name>.md` | CLAUDE.md (pointer only), CHANGELOG.md, PROJECT_STATUS.md |
+| Condensed close-out history | `implementation/HISTORY.md` | CLAUDE.md (pointer only) |
 
 ---
 

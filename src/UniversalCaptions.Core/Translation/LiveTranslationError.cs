@@ -13,6 +13,9 @@ public enum LiveTranslationErrorKind
     /// <summary>The session was rejected by the server (invalid API key, unsupported model, or quota).</summary>
     SessionRejected,
 
+    /// <summary>The server throttled the session (HTTP 429 / RESOURCE_EXHAUSTED / quota or rate limit).</summary>
+    QuotaExceeded,
+
     /// <summary>The engine emitted a server-side error frame that ended the session.</summary>
     ServerError,
 

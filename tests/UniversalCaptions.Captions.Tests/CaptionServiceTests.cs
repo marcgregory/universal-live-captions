@@ -839,6 +839,115 @@ public sealed class CaptionServiceTests
     }
 
     [Fact]
+    public async Task Provider_switch_live_to_caption_line_preserves_target_and_continues_translation()
+    {
+        // The reported regression: Gemini EN → TL, then switch the provider to Argos WITHOUT touching
+        // the language selection. The provider switch must only change the provider — the selected
+        // target language (tl) must remain, and new captions must keep being translated into it (via
+        // the caption-line path), never fall back to English.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(false); // Gemini owns translation
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "hello"));
+        await service.FlushAsync();
+        Assert.Empty(engine.Requests); // Gemini session: caption-line path suppressed.
+
+        service.SetCaptionLineTranslation(true); // Argos takes over translation.
+        service.SetTranslationEnabled(true, "tl"); // Same target — a no-op on the language axis.
+        Assert.Equal("tl", service.State.TargetLanguage);
+
+        service.ProcessFinal(Final(2, "world"));
+        await service.FlushAsync();
+
+        (string Text, string? Source, string Target) request = Assert.Single(engine.Requests);
+        Assert.Equal("world", request.Text);
+        Assert.Equal("tl", request.Target);
+        Assert.Equal("tl", service.State.TargetLanguage);
+        CaptionLine line = Assert.Single(service.State.History, l => l.Sequence == 2);
+        Assert.Equal("world!", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task Provider_switch_caption_line_to_live_preserves_target()
+    {
+        // The mirror direction: Argos EN → TL → Gemini must still be EN → TL. The target survives the
+        // provider switch, and after Gemini owns translation the caption-line path is suppressed.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true); // Argos owns translation.
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "hello"));
+        await service.FlushAsync();
+        (string Text, string? Source, string Target) argosRequest = Assert.Single(engine.Requests);
+        Assert.Equal("tl", argosRequest.Target);
+
+        service.SetCaptionLineTranslation(false); // Gemini takes over translation.
+        service.SetTranslationEnabled(true, "tl"); // Same target — no-op on the language axis.
+        Assert.Equal("tl", service.State.TargetLanguage);
+
+        service.ProcessFinal(Final(2, "world"));
+        await service.FlushAsync();
+
+        Assert.Single(engine.Requests); // No new caption-line request after the switch.
+        Assert.Equal("tl", service.State.TargetLanguage);
+        CaptionLine line = Assert.Single(service.State.History, l => l.Sequence == 2);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+    }
+
+    [Fact]
+    public void ClearCaptionContent_ClearsContent_KeepsTranslationConfiguration()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        Assert.NotNull(service.State.ActiveLine);
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "pupunta na", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 5));
+        Assert.NotNull(service.State.ActiveTranslationLine);
+
+        service.ProcessFinal(Final(2, "world"));
+        Assert.NotEmpty(service.State.History);
+
+        service.ClearCaptionContent();
+
+        Assert.Empty(service.State.History);
+        Assert.Null(service.State.ActiveLine);
+        Assert.Null(service.State.ActiveTranslationLine);
+        Assert.True(service.State.TranslationEnabled);
+        Assert.Equal("tl", service.State.TargetLanguage);
+        Assert.True(service.IsRunning);
+
+        service.ProcessPartial(Partial(3, "next"));
+        Assert.Equal("next", service.State.ActiveLine?.Text);
+    }
+
+    [Fact]
+    public void SetLiveTranslationSession_ReflectsInSnapshot()
+    {
+        var service = CreateService();
+        service.Start();
+
+        Assert.False(service.GetSnapshot().IsLiveTranslationSession);
+
+        service.SetLiveTranslationSession(true);
+        Assert.True(service.GetSnapshot().IsLiveTranslationSession);
+
+        service.SetLiveTranslationSession(false);
+        Assert.False(service.GetSnapshot().IsLiveTranslationSession);
+    }
+
+    [Fact]
     public void SetTranslationEnabled_False_DropsTranslationOriginContent()
     {
         // Toggling translation off must stop the translation lineage immediately: a stale live-engine
@@ -1087,6 +1196,504 @@ public sealed class CaptionServiceTests
         Assert.Single(service.State.History);
         Assert.Equal("english one", service.State.History[0].Text);
         Assert.Equal("ja", service.State.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task SetTranslationEnabled_ChangingTargetWhileOn_ResetsArgosTranslatedSourceLines()
+    {
+        // THE provider-behaviour parity fix: with the caption-line path (Argos), the translation is
+        // attached to the SOURCE line (SourceStt + TranslatedText), so a runtime target-language
+        // change must scrub that translated text too — not just the Translation-origin lines a live
+        // engine (Gemini) makes. The English ground truth of the old lines SURVIVES (stripped back
+        // to source) — the checklist's "history reset + English source remains".
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        await service.FlushAsync();
+
+        CaptionLine line = Assert.Single(service.State.History);
+        Assert.Equal(LineOrigin.SourceStt, line.Origin);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+        Assert.NotNull(line.TranslatedText);
+
+        service.SetTranslationEnabled(true, "ja");
+
+        CaptionLine after = Assert.Single(service.State.History);
+        Assert.Equal(LineOrigin.SourceStt, after.Origin);
+        Assert.Equal("english one", after.Text);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, after.TranslationStatus);
+        Assert.Null(after.TranslatedText);
+        Assert.Equal("ja", service.State.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task SetTranslationEnabled_False_StripsArgosTranslatedSourceLines()
+    {
+        // THE reported "Argos output mixes Japanese with English" bug: toggling translation OFF must
+        // also strip the translated text off Argos-translated SourceStt lines (not only drop
+        // Translation-origin lines), so the old target's Japanese can never mix into the new
+        // English-only source stream — yet the English ground truth remains.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        service.ProcessFinal(Final(3, "english two"));
+        await service.FlushAsync();
+
+        Assert.All(service.State.History, line => Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus));
+        Assert.All(service.State.History, line => Assert.NotNull(line.TranslatedText));
+
+        service.SetTranslationEnabled(false);
+
+        Assert.False(service.State.TranslationEnabled);
+        Assert.Equal(2, service.State.History.Count);
+        Assert.All(service.State.History, line =>
+        {
+            Assert.Equal(LineOrigin.SourceStt, line.Origin);
+            Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+            Assert.Null(line.TranslatedText);
+            Assert.Null(line.TranslationErrorMessage);
+        });
+        Assert.Equal(new[] { "english one", "english two" }, service.State.History.Select(line => line.Text));
+    }
+
+    [Fact]
+    public async Task CommittedTranslationResult_ForOldTarget_AfterTargetChange_IsDiscarded()
+    {
+        // An Argos committed-line translation in flight when the target changes must be discarded:
+        // applying it would re-mix the old target's output into the new session after the reset.
+        // The pending line is reverted to its English source by the reset (double protection with
+        // the stale-target guard).
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "english one"));
+        Assert.Equal(1, engine.RequestCount);
+
+        service.SetTranslationEnabled(true, "ja");
+
+        engine.CompleteLatest("luma na", "tl");
+        await service.FlushAsync();
+
+        CaptionLine line = Assert.Single(service.State.History);
+        Assert.Equal("english one", line.Text);
+        Assert.Equal(LineOrigin.SourceStt, line.Origin);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+        Assert.Null(line.TranslatedText);
+        Assert.Equal("ja", service.State.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task ActiveLineTranslationResult_ForOldTarget_AfterTargetChange_IsDiscarded()
+    {
+        // Same stale-target guard on the live active-line path: the old target's result is dropped
+        // and the in-progress line re-translates to the NEW target instead.
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        Assert.Equal(1, engine.RequestCount);
+
+        service.SetTranslationEnabled(true, "ja");
+
+        engine.Complete(0, "kumusta", "tl");
+        await WaitForAsync(() => engine.RequestCount >= 2);
+
+        engine.Complete(1, "kumusta po", "ja");
+        await service.FlushAsync();
+
+        CaptionLine? line = service.State.ActiveLine;
+        Assert.NotNull(line);
+        Assert.Equal("kumusta po", line.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.Completed, line.TranslationStatus);
+    }
+
+    [Fact]
+    public void ProcessFinalTranslation_ForOldTarget_IsDropped()
+    {
+        // Stale-target guard on the live-engine (Gemini) path: a final whose target no longer
+        // matches the current session target must not commit (an engine swap races a target change).
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "japanese text", "en", "ja",
+            DateTime.UtcNow, DateTime.UtcNow, 1, committedAtUtc: DateTime.UtcNow));
+
+        Assert.Empty(service.State.History);
+    }
+
+    [Fact]
+    public void ProcessPartialTranslation_ForOldTarget_IsDropped()
+    {
+        var service = CreateService();
+        service.SetCaptionLineTranslation(false);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "japanese text", "en", "ja",
+            DateTime.UtcNow, DateTime.UtcNow, 1));
+
+        Assert.Null(service.State.ActiveTranslationLine);
+    }
+
+    [Fact]
+    public async Task ResetTranslatedContent_RemovesTranslatedHistory_KeepsPureSource_AndClearsActiveLine()
+    {
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetTranslationEnabled(true, "tl");
+        service.Start();
+
+        // Argos-style translated source line.
+        service.ProcessFinal(Final(1, "english one"));
+        await service.FlushAsync();
+        // Gemini-style active translation line.
+        service.ProcessPartialTranslation(new PartialTranslation(
+            null, "tagalog live", "en", "tl", DateTime.UtcNow, DateTime.UtcNow, 2));
+
+        Assert.Equal(CaptionTranslationStatus.Completed, Assert.Single(service.State.History).TranslationStatus);
+        Assert.NotNull(service.State.ActiveTranslationLine);
+
+        service.ResetTranslatedContent();
+
+        CaptionLine source = Assert.Single(service.State.History);
+        Assert.Equal(LineOrigin.SourceStt, source.Origin);
+        Assert.Equal("english one", source.Text);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, source.TranslationStatus);
+        Assert.Null(source.TranslatedText);
+        Assert.Null(service.State.ActiveTranslationLine);
+        Assert.True(service.State.TranslationEnabled);
+        Assert.Equal("tl", service.State.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task Target_change_strips_active_line_translation()
+    {
+        // THE runtime leak: in the Argos caption-line path the ACTIVE source line carries the
+        // in-progress utterance's completed translation. A target change reset only scrubbed the
+        // committed history, so the old target's Japanese stayed on screen as the live line. The
+        // reset must strip the active line's translation too — the English ground truth survives.
+        // A gated engine keeps the post-switch re-translation to the new target in flight, so the
+        // assertions prove the old target is gone the instant the reset runs (the runtime window
+        // where Argos has not yet delivered the new target's output).
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        engine.Complete(0, "hello!", "ja");
+        await WaitForAsync(() => service.State.ActiveLine?.TranslatedText == "hello!");
+        Assert.Equal("ja", service.State.ActiveLine!.TargetLanguage);
+
+        service.SetTranslationEnabled(true, "tl");
+
+        CaptionLine active = service.State.ActiveLine!;
+        Assert.Equal("hello", active.Text);
+        Assert.Null(active.TranslatedText);
+        Assert.Null(active.TargetLanguage);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, active.TranslationStatus);
+        Assert.Equal("tl", service.State.TargetLanguage);
+
+        // When the in-flight re-translation to the NEW target attaches, it is the new target that
+        // lands — the old Japanese is never re-introduced.
+        engine.Complete(1, "hello!", "tl");
+        await WaitForAsync(() => service.State.ActiveLine?.TargetLanguage == "tl");
+        Assert.NotEqual("ja", service.State.ActiveLine!.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task Toggle_off_strips_active_line_translation()
+    {
+        // Same leak via the toggle-off path: switching translation OFF while an Argos-translated
+        // active line is on screen must not leave the old target's text as the live line.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        await service.FlushAsync();
+        Assert.Equal("hello!", service.State.ActiveLine!.TranslatedText);
+
+        service.SetTranslationEnabled(false);
+
+        CaptionLine active = service.State.ActiveLine!;
+        Assert.Equal("hello", active.Text);
+        Assert.Null(active.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, active.TranslationStatus);
+        Assert.False(service.State.TranslationEnabled);
+    }
+
+    [Fact]
+    public async Task Target_change_sequence_never_leaks_old_language()
+    {
+        // The user-reported runtime sequence EN → JA → EN → TL: after the final switch to TL, no
+        // Japanese may remain anywhere in the state — not in committed history, not on the active
+        // line. English source is the ground truth that survives; the translation layer resets and
+        // only the NEW target's output may appear on the live line.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        // EN → JA: a committed final and the in-progress active line are both translated to Japanese.
+        service.ProcessFinal(Final(1, "first sentence"));
+        await service.FlushAsync();
+        Assert.Equal("ja", Assert.Single(service.State.History).TargetLanguage);
+        service.ProcessPartial(Partial(2, "second sentence"));
+        await service.FlushAsync();
+        Assert.Equal("ja", service.State.ActiveLine!.TargetLanguage);
+
+        // JA → EN (target switch): the committed history loses its translation entirely (committed
+        // lines are never re-translated) and the active line is stripped then re-translated to the
+        // NEW target — Japanese must be gone from everywhere.
+        service.SetTranslationEnabled(true, "en");
+        Assert.Equal("en", service.State.TargetLanguage);
+        Assert.All(service.State.History, line =>
+        {
+            Assert.Null(line.TranslatedText);
+            Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+        });
+        Assert.NotEqual("ja", service.State.ActiveLine!.TargetLanguage);
+
+        // EN → TL: history stays source-only; the active line carries only the new target.
+        service.SetTranslationEnabled(true, "tl");
+        Assert.Equal("tl", service.State.TargetLanguage);
+        Assert.All(service.State.History, line =>
+        {
+            Assert.Null(line.TranslatedText);
+            Assert.NotEqual("ja", line.TargetLanguage);
+            Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+        });
+        Assert.NotEqual("ja", service.State.ActiveLine!.TargetLanguage);
+        if (service.State.ActiveLine!.TranslatedText is not null)
+        {
+            Assert.Equal("tl", service.State.ActiveLine!.TargetLanguage);
+        }
+
+        // New content in the TL session is translated to Tagalog, never Japanese.
+        service.ProcessFinal(Final(3, "third sentence"));
+        await service.FlushAsync();
+        CaptionLine latest = Assert.Single(service.State.History, l => l.Sequence == 3);
+        Assert.Equal("tl", latest.TargetLanguage);
+        Assert.NotEqual("ja", latest.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task Reenable_same_target_discards_inflight_translation_from_before_the_off()
+    {
+        // THE reported runtime leak (EN → JA → toggle OFF → re-enable JA): an active-line translation
+        // still in flight when the toggle-off happened completes AFTER the re-enable. The stale-result
+        // guards (TranslationEnabled + target match) are re-armed by the re-enable, and the reset skips
+        // a NotRequested in-flight active line (it has no translation to strip) so the same line
+        // instance survives — without a session boundary the pre-OFF Japanese lands on the live line.
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        // A long utterance's active-line translation is in flight when the toggle-off happens.
+        service.ProcessPartial(Partial(1, "hello"));
+        Assert.Equal(1, engine.RequestCount);
+
+        service.SetTranslationEnabled(false);
+        service.SetTranslationEnabled(true, "ja");
+
+        // Re-enabling with the same target must start a FRESH session: the active line stays source-only.
+        CaptionLine active = service.State.ActiveLine!;
+        Assert.Equal("hello", active.Text);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, active.TranslationStatus);
+
+        // The pre-OFF result arrives after the re-enable — it must be DISCARDED (the fresh session's
+        // own request for the same line then starts in its place).
+        engine.Complete(0, "hello!", "ja");
+        await WaitForAsync(() => engine.RequestCount >= 2);
+        active = service.State.ActiveLine!;
+        Assert.Equal("hello", active.Text);
+        Assert.Null(active.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, active.TranslationStatus);
+
+        // The fresh session's request applies normally — the new session's Japanese, not the old one's.
+        engine.Complete(1, "hello!", "ja");
+        await WaitForAsync(() => service.State.ActiveLine?.TranslatedText == "hello!");
+        Assert.Equal("ja", service.State.ActiveLine!.TargetLanguage);
+    }
+
+    [Fact]
+    public async Task Target_change_to_source_language_issues_no_translation_request()
+    {
+        // Spec (target-language change): changing the target to the SOURCE language is
+        // passthrough/source-only — no translation request should be issued unnecessarily. The old
+        // target's translation is reverted; the active line stays source-only.
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        service.ProcessPartial(Partial(1, "hello"));
+        Assert.Equal(1, engine.RequestCount);
+
+        service.SetTranslationEnabled(true, "en");
+
+        // The active line stays source-only and NO new request is issued for the passthrough target.
+        Assert.Equal("en", service.State.TargetLanguage);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, service.State.ActiveLine!.TranslationStatus);
+        Assert.Null(service.State.ActiveLine!.TranslatedText);
+        Assert.Equal(1, engine.RequestCount);
+
+        // New finals in the passthrough session commit source-only — no request either.
+        service.ProcessFinal(Final(2, "second sentence"));
+        Assert.Equal(1, engine.RequestCount);
+        CaptionLine committed = Assert.Single(service.State.History);
+        Assert.Equal(LineOrigin.SourceStt, committed.Origin);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, committed.TranslationStatus);
+    }
+
+    [Fact]
+    public async Task Target_change_without_new_audio_does_not_fabricate_translations()
+    {
+        // Spec (pause/resume): while no new audio is coming, changing the target still follows session
+        // rules — the old target's translations are cleared, but NO new translation is generated merely
+        // because the target changed. English source history remains. New source commits then translate
+        // to the NEW target.
+        var engine = new GatedTranslationEngine();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "first sentence"));
+        Assert.Equal(1, engine.RequestCount);
+        engine.Complete(0, "first sentence!", "ja");
+        await WaitForAsync(() => service.State.History.Count > 0
+            && service.State.History[0].TranslationStatus == CaptionTranslationStatus.Completed);
+        Assert.Equal("ja", Assert.Single(service.State.History).TargetLanguage);
+
+        // "Paused": the target changes with no new finals. Old Japanese clears; nothing new appears.
+        service.SetTranslationEnabled(true, "tl");
+        Assert.Equal("tl", service.State.TargetLanguage);
+        Assert.Equal(1, engine.RequestCount);
+        CaptionLine committed = Assert.Single(service.State.History);
+        Assert.Equal("first sentence", committed.Text);
+        Assert.Equal(LineOrigin.SourceStt, committed.Origin);
+        Assert.Null(committed.TranslatedText);
+        Assert.Equal(CaptionTranslationStatus.NotRequested, committed.TranslationStatus);
+
+        // Resume: new source content commits and translates to the NEW target.
+        service.ProcessFinal(Final(2, "second sentence"));
+        Assert.Equal(2, engine.RequestCount);
+        engine.Complete(1, "pangalawang pangungusap!", "tl");
+        await WaitForAsync(() => service.State.History.Count >= 2
+            && service.State.History[1].TranslationStatus == CaptionTranslationStatus.Completed);
+        CaptionLine resumed = Assert.Single(service.State.History, l => l.Sequence == 2);
+        Assert.Equal("tl", resumed.TargetLanguage);
+        Assert.Equal("pangalawang pangungusap!", resumed.TranslatedText);
+    }
+
+    [Fact]
+    public async Task Provider_change_reset_keeps_target_and_english_source_history()
+    {
+        // Spec (provider switch): the reset clears/reverts ONLY the translated content while keeping
+        // TranslationEnabled + TargetLanguage AND the English source history — source is persistent
+        // ground truth, translation state is disposable and session-scoped. The provider switch then
+        // starts a fresh session under the new provider with the same target.
+        var engine = StubTranslationEngine.Success();
+        var service = CreateService(engine);
+        service.SetCaptionLineTranslation(true);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        service.ProcessFinal(Final(1, "first sentence"));
+        service.ProcessFinal(Final(2, "second sentence"));
+        await service.FlushAsync();
+        Assert.All(service.State.History, line => Assert.Equal("ja", line.TargetLanguage));
+
+        // The provider switch (e.g. Argos → Gemini) resets translated content.
+        service.ResetTranslatedContent();
+
+        Assert.Equal("ja", service.State.TargetLanguage);
+        Assert.True(service.State.TranslationEnabled);
+        Assert.Equal(new[] { "first sentence", "second sentence" }, service.State.History.Select(line => line.Text));
+        Assert.All(service.State.History, line =>
+        {
+            Assert.Equal(LineOrigin.SourceStt, line.Origin);
+            Assert.Null(line.TranslatedText);
+            Assert.Equal(CaptionTranslationStatus.NotRequested, line.TranslationStatus);
+        });
+
+        // The fresh session under the new provider translates new content to the SAME target.
+        service.ProcessFinal(Final(3, "third sentence"));
+        await service.FlushAsync();
+        CaptionLine latest = Assert.Single(service.State.History, l => l.Sequence == 3);
+        Assert.Equal("ja", latest.TargetLanguage);
+    }
+
+    [Fact]
+    public void Live_session_boundary_drops_old_engines_same_target_translation_input()
+    {
+        // Spec (Gemini OFF → ON with the same target): translation-origin content produced BEFORE the
+        // new live session began must be dropped, even when it carries the same target language — the
+        // stale-target guard alone cannot tell a pre-OFF message from a post-ON one. This is the
+        // Gemini-side counterpart of the Argos epoch guard (toggle OFF → ON is a fresh session).
+        var clock = new MutableClock();
+        var service = CreateService(engine: null, utcNow: clock.UtcNow);
+        service.SetTranslationEnabled(true, "ja");
+        service.Start();
+
+        // The first live session begins; its content is accepted.
+        service.SetLiveTranslationSession(true);
+        clock.Now = new DateTime(2026, 8, 1, 0, 0, 30, DateTimeKind.Utc);
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "luma", "en", "ja", clock.Now, clock.Now, 1, clock.Now));
+        Assert.Single(service.State.History);
+
+        // Toggle OFF then ON with the same target: a NEW live session begins at a later boundary.
+        service.SetTranslationEnabled(false);
+        service.SetLiveTranslationSession(false);
+        Assert.Empty(service.State.History); // translation-origin content was reverted
+        clock.Now = new DateTime(2026, 8, 1, 0, 1, 0, DateTimeKind.Utc);
+        service.SetTranslationEnabled(true, "ja");
+        service.SetLiveTranslationSession(true); // boundary recorded at 00:01:00
+
+        // An OLD-session final (emitted BEFORE the boundary, same target) must be dropped.
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "lumang ja", "en", "ja",
+            new DateTime(2026, 8, 1, 0, 0, 55, DateTimeKind.Utc),
+            new DateTime(2026, 8, 1, 0, 0, 56, DateTimeKind.Utc),
+            2, new DateTime(2026, 8, 1, 0, 0, 56, DateTimeKind.Utc)));
+        Assert.Empty(service.State.History);
+
+        // A NEW-session final (emitted AFTER the boundary) is accepted — even when its CAPTURE time
+        // is before the boundary, mirroring the Gemini live engine which stamps every transcript with
+        // a fixed session-start base capture time set before the service's boundary is recorded. The
+        // guard must separate sessions by emit time, not capture time.
+        service.ProcessFinalTranslation(new FinalTranslation(
+            null, "bagong ja", "en", "ja",
+            new DateTime(2026, 8, 1, 0, 0, 58, DateTimeKind.Utc),
+            new DateTime(2026, 8, 1, 0, 1, 6, DateTimeKind.Utc),
+            3, new DateTime(2026, 8, 1, 0, 1, 6, DateTimeKind.Utc)));
+        CaptionLine line = Assert.Single(service.State.History);
+        Assert.Equal("bagong ja", line.Text);
+        Assert.Equal(LineOrigin.Translation, line.Origin);
     }
 
     /// <summary>

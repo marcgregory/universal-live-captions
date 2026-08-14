@@ -45,17 +45,17 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     private TextBlock? _activeBlock;
 
     /// <summary>
-    /// The subtle green used for the unstable tail of the live partial line (v0.5.38): words
-    /// Whisper has not yet confirmed are tinted green until the next partial re-recognizes them or
-    /// a FINAL freezes the line into history. Kept deliberately muted so the stable white head stays
-    /// the visual dominant. Frozen so any thread can read it (tests run each case on its own STA
-    /// thread).
+    /// The subtle cyan used for the unstable tail of the live partial line (v0.5.38): words
+    /// Whisper has not yet confirmed are tinted cyan (matching the landing-page accent #67e8f9)
+    /// until the next partial re-recognizes them or a FINAL freezes the line into history. Kept
+    /// deliberately muted so the stable white head stays the visual dominant. Frozen so any thread
+    /// can read it (tests run each case on its own STA thread).
     /// </summary>
     private static readonly Brush PartialUnstableBrush = CreatePartialUnstableBrush();
 
     private static Brush CreatePartialUnstableBrush()
     {
-        var brush = new SolidColorBrush(Color.FromRgb(0x9E, 0xC9, 0x9E));
+        var brush = new SolidColorBrush(Color.FromRgb(0x67, 0xE8, 0xF9));
         brush.Freeze();
         return brush;
     }

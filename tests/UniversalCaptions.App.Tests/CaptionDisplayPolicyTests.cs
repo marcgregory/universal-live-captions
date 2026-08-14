@@ -346,7 +346,8 @@ public class CaptionDisplayPolicyTests
                 IsSessionActive: true,
                 TranslationEnabled: true,
                 TargetLanguage: "tl",
-                ActiveTranslationLine: translation));
+                ActiveTranslationLine: translation,
+                IsLiveTranslationSession: true));
 
         Assert.Equal("pupunta na", model.ActiveLine!.Text);
         Assert.True(model.ActiveLine.IsTranslated);
@@ -366,7 +367,8 @@ public class CaptionDisplayPolicyTests
                 IsSessionActive: true,
                 TranslationEnabled: true,
                 TargetLanguage: "tl",
-                ActiveTranslationLine: translation));
+                ActiveTranslationLine: translation,
+                IsLiveTranslationSession: true));
 
         Assert.Equal("maging sobrang galing", model.ActiveLine!.Text);
         Assert.True(model.ActiveLine.IsTranslated);
@@ -391,7 +393,8 @@ public class CaptionDisplayPolicyTests
                 IsSessionActive: true,
                 TranslationEnabled: true,
                 TargetLanguage: "tl",
-                ActiveTranslationLine: tagalogActive));
+                ActiveTranslationLine: tagalogActive,
+                IsLiveTranslationSession: true));
 
         CaptionDisplayLine only = Assert.Single(model.History);
         Assert.Equal("Pupunta na.", only.Text);
@@ -489,7 +492,8 @@ public class CaptionDisplayPolicyTests
                 IsSessionActive: true,
                 TranslationEnabled: true,
                 TargetLanguage: "tl",
-                ActiveTranslationLine: tagalogActive));
+                ActiveTranslationLine: tagalogActive,
+                IsLiveTranslationSession: true));
 
         Assert.True(model.TranslationEnabled);
         Assert.Equal("TL", model.LanguageBadge);
@@ -529,6 +533,100 @@ public class CaptionDisplayPolicyTests
 
         Assert.False(model.TranslationEnabled);
         Assert.Null(model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Provider_switch_to_caption_line_mode_shows_completed_argos_translations()
+    {
+        // Gemini → Argos (same target tl): after the switch the display mode is the Argos caption-line
+        // path (IsLiveTranslationSession false). A new source-STT final whose Argos translation
+        // completed must render as Tagalog — the target-language session continues under Argos exactly
+        // as it did under Gemini, never as English.
+        CaptionLine argosFinal = Final("Good morning.", 2, "Magandang umaga.", CaptionTranslationStatus.Completed);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [argosFinal],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                IsLiveTranslationSession: false));
+
+        CaptionDisplayLine line = Assert.Single(model.History);
+        Assert.Equal("Magandang umaga.", line.Text);
+        Assert.True(line.IsTranslated);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Provider_switch_to_live_mode_hides_source_stt_even_without_translation_content()
+    {
+        // Argos → Gemini (same target tl): the moment the live engine takes over the display becomes
+        // target-language-only (IsLiveTranslationSession true). Even BEFORE the first Gemini content
+        // arrives, the previous provider's English source-STT finals must be hidden — no English flash
+        // during the handoff. This is the case content-inference could not express (no translation
+        // content present, yet the mode must be live).
+        CaptionLine englishFinal1 = Final("Hello.", 1);
+        CaptionLine englishFinal2 = Final("World.", 2);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [englishFinal1, englishFinal2],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                IsLiveTranslationSession: true));
+
+        Assert.Empty(model.History);
+        Assert.Null(model.ActiveLine);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Provider_switch_keeps_target_language_badge_in_caption_line_mode()
+    {
+        // A provider change must only change the provider: the selected target language (and its
+        // badge) survives the switch to the Argos caption-line path.
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                IsLiveTranslationSession: false));
+
+        Assert.True(model.TranslationEnabled);
+        Assert.Equal("TL", model.LanguageBadge);
+    }
+
+    [Fact]
+    public void Provider_switch_keeps_english_source_history_after_revert()
+    {
+        // The provider switch resets ONLY the translated content (ResetTranslatedContent): the English
+        // source history is persistent ground truth and must remain visible in the Argos caption-line
+        // path — the overlay must not go empty, must not show stale translated text, and the target
+        // badge survives.
+        CaptionLine englishFinal1 = Final("Storage, backups are stored at a remote location.", 1);
+        CaptionLine englishFinal2 = Final("Off-site storage provides protection.", 2);
+
+        CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
+            new CaptionSnapshot(
+                null,
+                [englishFinal1, englishFinal2],
+                IsSessionActive: true,
+                TranslationEnabled: true,
+                TargetLanguage: "tl",
+                IsLiveTranslationSession: false));
+
+        Assert.False(model.IsEmpty);
+        Assert.Equal(
+            new[] { "Storage, backups are stored at a remote location.", "Off-site storage provides protection." },
+            model.History.Select(line => line.Text));
+        Assert.All(model.History, line => Assert.False(line.IsTranslated));
+        Assert.Equal("TL", model.LanguageBadge);
     }
 
     [Fact]

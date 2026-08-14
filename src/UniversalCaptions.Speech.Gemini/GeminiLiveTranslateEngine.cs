@@ -695,17 +695,37 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
 
     /// <summary>
     /// Map an exception thrown during <see cref="StartAsync"/> to a
-    /// <see cref="LiveTranslationErrorKind"/>. The mapping is intentionally conservative: any
-    /// non-specific exception during startup is a connection failure (the channel never reached a
-    /// usable state).
+    /// <see cref="LiveTranslationErrorKind"/>. The WebSocket handshake rejects an invalid key with an
+    /// HTTP-level status (observed 400 API_KEY_INVALID), so the exception message carries the status
+    /// code / wording; map those to an actionable category before falling back to a connection failure.
     /// </summary>
     private static LiveTranslationErrorKind MapStartupException(Exception ex)
     {
-        return ex switch
+        if (ex is OperationCanceledException)
         {
-            OperationCanceledException => LiveTranslationErrorKind.Unknown,
-            _ => LiveTranslationErrorKind.ConnectionFailed,
-        };
+            return LiveTranslationErrorKind.Unknown;
+        }
+
+        string message = ex.Message ?? string.Empty;
+        if (message.Contains("API key", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("authentication", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("permission", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("400", StringComparison.Ordinal)
+            || message.Contains("401", StringComparison.Ordinal)
+            || message.Contains("403", StringComparison.Ordinal))
+        {
+            return LiveTranslationErrorKind.SessionRejected;
+        }
+
+        if (message.Contains("quota", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("429", StringComparison.Ordinal)
+            || message.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase))
+        {
+            return LiveTranslationErrorKind.QuotaExceeded;
+        }
+
+        return LiveTranslationErrorKind.ConnectionFailed;
     }
 
     /// <summary>
@@ -718,28 +738,29 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
     {
         if (error.Code is int code)
         {
-            if (code is 401 or 403)
+            if (code is 400 or 401 or 403)
             {
                 return LiveTranslationErrorKind.SessionRejected;
             }
 
             if (code is 429)
             {
-                return LiveTranslationErrorKind.ConnectionFailed;
+                return LiveTranslationErrorKind.QuotaExceeded;
             }
         }
 
         if (!string.IsNullOrWhiteSpace(error.Status))
         {
             if (error.Status.Equals("UNAUTHENTICATED", StringComparison.OrdinalIgnoreCase)
-                || error.Status.Equals("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase))
+                || error.Status.Equals("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase)
+                || error.Status.Equals("INVALID_ARGUMENT", StringComparison.OrdinalIgnoreCase))
             {
                 return LiveTranslationErrorKind.SessionRejected;
             }
 
             if (error.Status.Equals("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase))
             {
-                return LiveTranslationErrorKind.ConnectionFailed;
+                return LiveTranslationErrorKind.QuotaExceeded;
             }
         }
 
@@ -755,7 +776,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
             if (error.Message.Contains("quota", StringComparison.OrdinalIgnoreCase)
                 || error.Message.Contains("rate", StringComparison.OrdinalIgnoreCase))
             {
-                return LiveTranslationErrorKind.ConnectionFailed;
+                return LiveTranslationErrorKind.QuotaExceeded;
             }
         }
 

@@ -178,6 +178,20 @@ public sealed class CaptionLine
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
         TargetLanguage, null, CaptionTranslationStatus.Failed, errorMessage, translationStartedAtUtc, null, Origin);
 
+    /// <summary>
+    /// Returns a copy of this line with ALL translation state stripped back to the pure source:
+    /// <see cref="TranslatedText"/>, <see cref="TranslationStatus"/> (reset to
+    /// <see cref="CaptionTranslationStatus.NotRequested"/>), <see cref="TranslationErrorMessage"/> and
+    /// both translation timestamps are cleared. Used when a runtime reconfiguration (target change,
+    /// translation toggle-off, provider change) ends a translation session and the overlay must return
+    /// to pure source captions WITHOUT losing the English ground truth — this is what keeps the
+    /// reported "Argos output mixes Japanese with English" impossible: the Japanese text is removed,
+    /// the source line survives as English.
+    /// </summary>
+    public CaptionLine WithoutTranslation() => new(
+        Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,
+        null, null, CaptionTranslationStatus.NotRequested, null, null, null, Origin);
+
     /// <inheritdoc />
     public override string ToString() => $"{State}[{Sequence}] {Text}";
 }

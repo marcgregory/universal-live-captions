@@ -732,10 +732,19 @@ public sealed class GeminiLiveTranslateEngineTests
     }
 
     [Fact]
-    public void MapError_Code429_ConnectionFailed()
+    public void MapError_Code400_SessionRejected()
+    {
+        // The observed API_KEY_INVALID rejection surfaces as HTTP 400 / INVALID_ARGUMENT.
+        Assert.Equal(
+            LiveTranslationErrorKind.SessionRejected,
+            InvokeMapError(code: 400, status: null, message: null));
+    }
+
+    [Fact]
+    public void MapError_Code429_QuotaExceeded()
     {
         Assert.Equal(
-            LiveTranslationErrorKind.ConnectionFailed,
+            LiveTranslationErrorKind.QuotaExceeded,
             InvokeMapError(code: 429, status: null, message: null));
     }
 
@@ -756,10 +765,10 @@ public sealed class GeminiLiveTranslateEngineTests
     }
 
     [Fact]
-    public void MapError_StatusResourceExhausted_ConnectionFailed()
+    public void MapError_StatusResourceExhausted_QuotaExceeded()
     {
         Assert.Equal(
-            LiveTranslationErrorKind.ConnectionFailed,
+            LiveTranslationErrorKind.QuotaExceeded,
             InvokeMapError(code: null, status: "RESOURCE_EXHAUSTED", message: null));
     }
 
@@ -772,10 +781,10 @@ public sealed class GeminiLiveTranslateEngineTests
     }
 
     [Fact]
-    public void MapError_MessageContainsQuota_ConnectionFailed()
+    public void MapError_MessageContainsQuota_QuotaExceeded()
     {
         Assert.Equal(
-            LiveTranslationErrorKind.ConnectionFailed,
+            LiveTranslationErrorKind.QuotaExceeded,
             InvokeMapError(code: null, status: null, message: "Quota exceeded for the day."));
     }
 
@@ -790,9 +799,9 @@ public sealed class GeminiLiveTranslateEngineTests
     [Fact]
     public void MapError_CodeWinsOverStatusAndMessage()
     {
-        // 429 should map to ConnectionFailed regardless of the message wording.
+        // 429 should map to QuotaExceeded regardless of the message wording.
         Assert.Equal(
-            LiveTranslationErrorKind.ConnectionFailed,
+            LiveTranslationErrorKind.QuotaExceeded,
             InvokeMapError(code: 429, status: "UNAUTHENTICATED", message: "API key invalid"));
     }
 

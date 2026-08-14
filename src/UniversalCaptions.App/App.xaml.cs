@@ -114,6 +114,13 @@ public partial class App : Application
                 pair.TargetLanguage,
                 pair.Provider));
 
+        // Gemini availability (provider dropdown gating + actionable errors): the evaluator reads the
+        // stored key, applies the fast local syntax gate, and runs an authoritative live validation
+        // via the REST key validator. Registered alongside the credential store so the control window
+        // can disable Gemini in the dropdown and fall back to Argos when the key is unusable.
+        services.AddSingleton<IGeminiApiKeyValidator>(_ => new GeminiRestApiKeyValidator());
+        services.AddSingleton<GeminiAvailabilityEvaluator>();
+
         // TD-002 auto-recovery: a WASAPI endpoint-change notifier feeds the pipeline's
         // default-device recovery coordinator; the pipeline starts/stops monitoring with each session.
         services.AddSingleton<IDeviceChangeMonitor, WasapiDeviceChangeNotifier>();

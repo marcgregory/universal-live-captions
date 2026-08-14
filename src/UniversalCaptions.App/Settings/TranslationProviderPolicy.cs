@@ -40,4 +40,41 @@ public static class TranslationProviderPolicy
     /// </summary>
     public static bool UsesCaptionLineTranslation(TranslationProvider? provider) =>
         provider != TranslationProvider.Gemini;
+
+    /// <summary>
+    /// True when the provider may be offered in the translation-provider dropdown for the current
+    /// Gemini availability. Argos (and the unset default) is always selectable — it is offline and
+    /// requires no credentials. Gemini is selectable except for a definitive key problem
+    /// (<see cref="GeminiAvailability.MissingKey"/>, <see cref="GeminiAvailability.MalformedKey"/>,
+    /// or <see cref="GeminiAvailability.InvalidKey"/>). Transient states
+    /// (<see cref="GeminiAvailability.Unknown"/>, <see cref="GeminiAvailability.NetworkError"/>,
+    /// <see cref="GeminiAvailability.QuotaExceeded"/>) keep Gemini selectable so a temporary outage
+    /// or a throttled-but-valid key does not lock the user out of their configured provider.
+    /// </summary>
+    public static bool IsProviderSelectable(TranslationProvider? provider, GeminiAvailability gemini)
+    {
+        if (provider != TranslationProvider.Gemini)
+        {
+            return true;
+        }
+
+        return gemini is not (GeminiAvailability.MissingKey or GeminiAvailability.MalformedKey or GeminiAvailability.InvalidKey);
+    }
+
+    /// <summary>
+    /// Resolves the provider the session should actually run for a UI selection, given the current
+    /// Gemini availability. When Gemini was selected but is no longer usable, the session falls back
+    /// to Argos — the only always-available provider — so captions keep translating (via the offline
+    /// caption-line path) instead of silently producing nothing. Kept here so the fallback rule is
+    /// pinned by unit tests and the control window cannot regress it into an inline WPF decision.
+    /// </summary>
+    public static TranslationProvider ResolveActiveProvider(TranslationProvider? selected, GeminiAvailability gemini)
+    {
+        if (selected == TranslationProvider.Gemini && !IsProviderSelectable(selected, gemini))
+        {
+            return TranslationProvider.Argos;
+        }
+
+        return selected ?? TranslationProvider.Argos;
+    }
 }

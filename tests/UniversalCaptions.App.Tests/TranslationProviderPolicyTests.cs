@@ -39,4 +39,57 @@ public class TranslationProviderPolicyTests
     {
         Assert.Equal(expected, TranslationProviderPolicy.UsesLiveAudioEngine(provider));
     }
+
+    [Theory]
+    [InlineData(GeminiAvailability.Available, true)]
+    [InlineData(GeminiAvailability.Unknown, true)]
+    [InlineData(GeminiAvailability.NetworkError, true)]
+    [InlineData(GeminiAvailability.QuotaExceeded, true)]
+    [InlineData(GeminiAvailability.MissingKey, false)]
+    [InlineData(GeminiAvailability.MalformedKey, false)]
+    [InlineData(GeminiAvailability.InvalidKey, false)]
+    public void IsProviderSelectable_Gemini_ReflectsAvailability(GeminiAvailability availability, bool expected)
+    {
+        Assert.Equal(expected, TranslationProviderPolicy.IsProviderSelectable(TranslationProvider.Gemini, availability));
+    }
+
+    [Theory]
+    [InlineData(GeminiAvailability.MissingKey)]
+    [InlineData(GeminiAvailability.MalformedKey)]
+    [InlineData(GeminiAvailability.InvalidKey)]
+    [InlineData(GeminiAvailability.QuotaExceeded)]
+    [InlineData(GeminiAvailability.NetworkError)]
+    [InlineData(GeminiAvailability.Unknown)]
+    [InlineData(GeminiAvailability.Available)]
+    public void IsProviderSelectable_Argos_Always_True(GeminiAvailability availability)
+    {
+        Assert.True(TranslationProviderPolicy.IsProviderSelectable(TranslationProvider.Argos, availability));
+        Assert.True(TranslationProviderPolicy.IsProviderSelectable(null, availability));
+    }
+
+    [Theory]
+    [InlineData(GeminiAvailability.MissingKey)]
+    [InlineData(GeminiAvailability.MalformedKey)]
+    [InlineData(GeminiAvailability.InvalidKey)]
+    public void ResolveActiveProvider_GeminiUnavailable_FallsBackToArgos(GeminiAvailability availability)
+    {
+        Assert.Equal(TranslationProvider.Argos, TranslationProviderPolicy.ResolveActiveProvider(TranslationProvider.Gemini, availability));
+    }
+
+    [Theory]
+    [InlineData(GeminiAvailability.Available)]
+    [InlineData(GeminiAvailability.Unknown)]
+    [InlineData(GeminiAvailability.NetworkError)]
+    [InlineData(GeminiAvailability.QuotaExceeded)]
+    public void ResolveActiveProvider_GeminiSelectable_StaysGemini(GeminiAvailability availability)
+    {
+        Assert.Equal(TranslationProvider.Gemini, TranslationProviderPolicy.ResolveActiveProvider(TranslationProvider.Gemini, availability));
+    }
+
+    [Fact]
+    public void ResolveActiveProvider_Null_DefaultsToArgos()
+    {
+        Assert.Equal(TranslationProvider.Argos, TranslationProviderPolicy.ResolveActiveProvider(null, GeminiAvailability.InvalidKey));
+        Assert.Equal(TranslationProvider.Argos, TranslationProviderPolicy.ResolveActiveProvider(null, GeminiAvailability.Available));
+    }
 }

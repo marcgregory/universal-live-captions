@@ -361,7 +361,7 @@ public sealed class FasterWhisperNativeStreamingEngine : ISpeechToTextEngine, IA
             ct).GetAwaiter().GetResult();
 
         string text = JoinSegments(decoded);
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(text) || IsHallucinatedPunctuation(text))
         {
             if (item.IsPartial)
             {
@@ -437,4 +437,10 @@ public sealed class FasterWhisperNativeStreamingEngine : ISpeechToTextEngine, IA
 
     private static string JoinSegments(IReadOnlyList<TranscriptSegment> segments)
         => string.Join(" ", segments.Select(s => s.Text).Where(t => !string.IsNullOrWhiteSpace(t))).Trim();
+
+    private static bool IsHallucinatedPunctuation(string text)
+    {
+        int dots = text.Count(c => c == '.');
+        return dots >= 8 && dots * 2 >= text.Length;
+    }
 }

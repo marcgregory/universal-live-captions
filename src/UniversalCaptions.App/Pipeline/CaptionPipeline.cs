@@ -137,6 +137,15 @@ public sealed class CaptionPipeline : IDisposable
     /// </summary>
     public event EventHandler<EndToEndLatencySample>? EndToEndLatencyUpdated;
 
+    /// <summary>
+    /// Raised when the live translation engine reports a classified failure — invalid/missing API
+    /// key, quota, network, or server error. Carries the categorized <see cref="LiveTranslationError"/>
+    /// so the UI can surface an actionable message and (for a definitive key problem) disable Gemini
+    /// in the provider dropdown. Distinct from <see cref="StatusChanged"/>, which also fires but only
+    /// carries a display string. Whisper and source captions are never affected by this event.
+    /// </summary>
+    public event EventHandler<LiveTranslationError>? LiveTranslationErrorUpdated;
+
     /// <summary>True while a capture session is running.</summary>
     public bool IsRunning => _capture?.IsCapturing == true;
 
@@ -235,6 +244,8 @@ public sealed class CaptionPipeline : IDisposable
             {
                 _liveTranslation = CreateAndStartLiveTranslation(_liveProvider.Value, _liveSourceLanguage, _liveTargetLanguage);
             }
+
+            SyncLiveTranslationSession();
 
             TempaudioLatencyProbe.RecordDeviceStarted();
             UniversalCaptions.Core.Diagnostics.DiagnosticTracer.StartSession();
@@ -617,11 +628,18 @@ public sealed class CaptionPipeline : IDisposable
         catch (Exception ex)
         {
             // Treat the synchronous StartAsync failure identically to a TranslationFailed event:
-            // stop the engine, dispose it, raise status, leave Whisper running.
+            // stop the engine, dispose it, raise status, leave Whisper running. The classification is
+            // coarse (a WebSocket handshake rejection is a connection-level failure at this seam) but
+            // the message carries the actionable detail for the UI.
+            LiveTranslationError startupError = new(
+                LiveTranslationErrorKind.ConnectionFailed,
+                ex.Message,
+                ex);
             DetachAndDisposeLiveTranslation();
             RaiseStatus(new PipelineStatus(
                 PipelineStatusKind.Error,
                 $"Live translation unavailable: {ex.Message}"));
+            LiveTranslationErrorUpdated?.Invoke(this, startupError);
             return null;
         }
 
@@ -711,6 +729,7 @@ public sealed class CaptionPipeline : IDisposable
 
         if (desired is null)
         {
+            SyncLiveTranslationSession();
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
             return;
         }
@@ -720,7 +739,19 @@ public sealed class CaptionPipeline : IDisposable
         {
             // The factory degraded (e.g. no Gemini API key): the caption service's common state is
             // already ON, so surface the missing translation so the user is not misled by the badge.
+            SyncLiveTranslationSession();
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Error, "Live translation unavailable."));
+            if (desired == TranslationProvider.Gemini)
+            {
+                // A Gemini selection that cannot be constructed is a definitive provider problem
+                // (the factory returns null when no key is stored). Raise the classified error so
+                // the UI can mark Gemini unavailable and fall back to Argos.
+                LiveTranslationErrorUpdated?.Invoke(this, new LiveTranslationError(
+                    LiveTranslationErrorKind.SessionRejected,
+                    "Gemini API key is missing or invalid. Add or update the key in the Control Window.",
+                    null));
+            }
+
             return;
         }
 
@@ -728,6 +759,25 @@ public sealed class CaptionPipeline : IDisposable
         {
             _liveTranslation = engine;
         }
+
+        SyncLiveTranslationSession();
+    }
+
+    /// <summary>
+    /// Reflects the pipeline's live-engine state onto the caption service's live-translation-session
+    /// flag, so the overlay's display mode (target-language-only vs. source+translation) is driven by
+    /// the actual provider — never inferred from history content. Reads <see cref="_liveTranslation"/>
+    /// under <see cref="_gate"/>.
+    /// </summary>
+    private void SyncLiveTranslationSession()
+    {
+        bool live;
+        lock (_gate)
+        {
+            live = _liveTranslation is not null;
+        }
+
+        _captions.SetLiveTranslationSession(live);
     }
 
     /// <summary>
@@ -823,6 +873,7 @@ public sealed class CaptionPipeline : IDisposable
         RaiseStatus(new PipelineStatus(
             PipelineStatusKind.Error,
             $"Live translation unavailable: {error.Message}"));
+        LiveTranslationErrorUpdated?.Invoke(this, error);
     }
 
     /// <summary>

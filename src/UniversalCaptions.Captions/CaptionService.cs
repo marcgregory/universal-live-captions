@@ -42,7 +42,10 @@ namespace UniversalCaptions.Captions;
 /// and the source text remains intact in <see cref="CaptionLine.Text"/>. Cancellation (session stopped,
 /// reset, or disposed) leaves the line in <see cref="CaptionTranslationStatus.Pending"/>. A stale
 /// translation result is never applied: it is matched to the exact line instance it was started from,
-/// so a re-committed line under the same sequence or a newer partial cannot be overwritten.
+/// so a re-committed line under the same sequence or a newer partial cannot be overwritten, and it is
+/// guarded by the translation-session identity captured when the request started — a result requested
+/// in a previous session (toggle off then on, target change, provider change) is discarded even when
+/// the current enabled/target state happens to match again.
 /// </para>
 /// </remarks>
 public sealed class CaptionService : ICaptionService
@@ -58,7 +61,27 @@ public sealed class CaptionService : ICaptionService
     private CancellationTokenSource? _retiredCts;
     private Task? _activeLineTranslation;
     private bool _useCaptionLineTranslation = true;
+    private bool _isLiveTranslationSession;
     private volatile bool _running;
+
+    /// <summary>
+    /// Monotonic translation-session identity. Bumped on every session boundary — translation toggle
+    /// on/off, target-language change, caption-line/live mode change, provider content reset — so a
+    /// translation result that was requested in a PREVIOUS session is discarded even when the current
+    /// state (enabled + target) happens to match again. This is what makes "toggle OFF then ON with
+    /// the same target" a fresh session: without it, a pre-OFF in-flight result re-armed the stale
+    /// guards and landed its old-target text on the still-live active line (the reported leak).
+    /// </summary>
+    private long _translationSessionEpoch;
+
+    /// <summary>
+    /// The instant a NEW live-translation session (Gemini engine) became active. Translation-origin
+    /// input that was produced BEFORE this boundary is stale — it belongs to the previous session and
+    /// must not commit into this one even when it carries the same target language (toggle OFF → ON
+    /// with the same target re-arms the enabled/target guards, exactly like the Argos epoch guard
+    /// protects against pre-OFF engine results).
+    /// </summary>
+    private DateTime? _liveSessionStartedAtUtc;
 
     /// <summary>
     /// How long <see cref="BeginStopDrain"/> waits for in-flight committed-final translations to
@@ -138,7 +161,8 @@ public sealed class CaptionService : ICaptionService
                 _state.IsSessionActive,
                 _state.TranslationEnabled,
                 _state.TargetLanguage,
-                _state.ActiveTranslationLine);
+                _state.ActiveTranslationLine,
+                _isLiveTranslationSession);
         }
     }
 
@@ -325,6 +349,13 @@ public sealed class CaptionService : ICaptionService
                 && _state.TranslationEnabled
                 && !string.Equals(_state.TargetLanguage, target, StringComparison.Ordinal);
 
+            // Every toggle or target change is a FRESH translation-session boundary. The in-flight
+            // requests from the previous session must not apply afterwards, even when the user
+            // re-enables with the same target (toggle OFF → ON): the stale-result guards below check
+            // TranslationEnabled + target, which the re-enable re-arms — only the session identity
+            // (captured at request start, compared at apply) can tell a pre-OFF result apart.
+            _translationSessionEpoch++;
+
             _state.SetTranslation(enabled, target);
             if (!enabled)
             {
@@ -333,19 +364,23 @@ public sealed class CaptionService : ICaptionService
                 _state.ClearTranslationActiveLine();
 
                 // Toggling translation OFF must not leave target-language history mixed into the new
-                // English-only source stream. Clear every LineOrigin.Translation entry (language-
-                // agnostic: Tagalog, Japanese, French, etc.) so the overlay returns to a pure source
-                // display. The active translation line is handled by ClearTranslationActiveLine above;
-                // this method is scoped to the committed history.
-                _state.ClearTranslationHistory();
+                // English-only source stream. RevertTranslatedContentToSource removes every
+                // LineOrigin.Translation entry (language-agnostic: Tagalog, Japanese, French, etc.)
+                // AND strips the translated text off Argos-translated SourceStt lines — WITHOUT that
+                // second half, Argos's Japanese stays attached to its source line and mixes with the
+                // new source captions (the reported en→ja then switch-to-English mix). The English
+                // ground truth of those lines survives. The active translation line is handled by
+                // ClearTranslationActiveLine above; this method is scoped to the committed history.
+                _state.RevertTranslatedContentToSource();
             }
             else if (languageChanged)
             {
                 // Switching target language mid-session (e.g. tl → ja) must drop the previous target's
-                // history so the new session starts clean. SourceStt history is untouched because
-                // it is the shared ground truth across both targets. The new target's history will
-                // populate as the live engine emits.
-                _state.ClearTranslationHistory();
+                // output so the new session starts clean: Translation-origin lines (Gemini) are removed
+                // and Argos-translated SourceStt lines revert to English (their shared ground truth).
+                // The new target's history will populate as the engine emits.
+                _state.RevertTranslatedContentToSource();
+                _state.ClearTranslationActiveLine();
             }
         }
 
@@ -399,12 +434,86 @@ public sealed class CaptionService : ICaptionService
     }
 
     /// <inheritdoc />
+    public void ResetTranslatedContent()
+    {
+        if (!_running)
+        {
+            return;
+        }
+
+        bool cleared;
+        lock (_gate)
+        {
+            _translationSessionEpoch++;
+            cleared = _state.RevertTranslatedContentToSource() > 0;
+            if (_state.ActiveTranslationLine is not null)
+            {
+                _state.ClearTranslationActiveLine();
+                cleared = true;
+            }
+        }
+
+        if (cleared)
+        {
+            StateChanged?.Invoke(this, _state);
+        }
+    }
+
+    /// <inheritdoc />
     public void SetCaptionLineTranslation(bool enabled)
     {
         lock (_gate)
         {
+            if (_useCaptionLineTranslation == enabled)
+            {
+                return;
+            }
+
             _useCaptionLineTranslation = enabled;
+
+            // Switching the translation MECHANISM (live-engine vs caption-line) is a session
+            // boundary: results produced under the previous mechanism must not apply under this one.
+            _translationSessionEpoch++;
         }
+    }
+
+    /// <inheritdoc />
+    public void SetLiveTranslationSession(bool active)
+    {
+        lock (_gate)
+        {
+            // A false → true transition means the pipeline started a NEW live engine (a fresh
+            // translation session). Record the boundary so translation-origin input produced before
+            // it is dropped: an old session's message that carries the same target (toggle OFF → ON)
+            // must never commit into the new session.
+            if (!_isLiveTranslationSession && active)
+            {
+                _liveSessionStartedAtUtc = _utcNow();
+            }
+
+            if (_isLiveTranslationSession == active)
+            {
+                return;
+            }
+
+            _isLiveTranslationSession = active;
+        }
+
+        StateChanged?.Invoke(this, _state);
+    }
+
+    /// <inheritdoc />
+    public void ClearCaptionContent()
+    {
+        lock (_gate)
+        {
+            // Provider change = a fresh translation session: any result still in flight under the
+            // previous provider must not apply under the new one.
+            _translationSessionEpoch++;
+            _state.ClearContent();
+        }
+
+        StateChanged?.Invoke(this, _state);
     }
 
     /// <inheritdoc />
@@ -481,6 +590,7 @@ public sealed class CaptionService : ICaptionService
 
         CaptionLine? active;
         string? targetLanguage;
+        long sessionEpoch;
         CancellationToken token;
         lock (_gate)
         {
@@ -496,12 +606,14 @@ public sealed class CaptionService : ICaptionService
                 || !_useCaptionLineTranslation
                 || _translationEngine is null
                 || !_state.TranslationEnabled
-                || _state.TargetLanguage is null)
+                || _state.TargetLanguage is null
+                || string.Equals(_state.TargetLanguage, _options.SourceLanguage, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             targetLanguage = _state.TargetLanguage;
+            sessionEpoch = _translationSessionEpoch;
             token = _lifetimeCts?.Token ?? CancellationToken.None;
             if (token == CancellationToken.None)
             {
@@ -510,7 +622,7 @@ public sealed class CaptionService : ICaptionService
             }
         }
 
-        var task = RunActiveLineTranslationAsync(active, targetLanguage!, token);
+        var task = RunActiveLineTranslationAsync(active, targetLanguage!, sessionEpoch, token);
         lock (_gate)
         {
             _activeLineTranslation = task;
@@ -542,7 +654,7 @@ public sealed class CaptionService : ICaptionService
             TaskScheduler.Default);
     }
 
-    private async Task RunActiveLineTranslationAsync(CaptionLine line, string targetLanguage, CancellationToken cancellationToken)
+    private async Task RunActiveLineTranslationAsync(CaptionLine line, string targetLanguage, long sessionEpoch, CancellationToken cancellationToken)
     {
         DateTime startedAt = _utcNow();
         TranslationResult? result;
@@ -561,21 +673,28 @@ public sealed class CaptionService : ICaptionService
         {
             System.Diagnostics.Trace.WriteLine($"[UniversalCaptions] Active line translation failed: {exc}");
             // A failure is represented on the active line rather than breaking the caption pipeline.
-            ApplyActiveLineTranslation(line, line.WithTranslationFailure(exc.Message, startedAt));
+            ApplyActiveLineTranslation(line, line.WithTranslationFailure(exc.Message, startedAt), targetLanguage, sessionEpoch);
             return;
         }
 
-        ApplyActiveLineTranslation(line, line.WithTranslation(result!.Text, result.TargetLanguage, startedAt, _utcNow()));
+        ApplyActiveLineTranslation(line, line.WithTranslation(result!.Text, result.TargetLanguage, startedAt, _utcNow()), targetLanguage, sessionEpoch);
     }
 
-    private void ApplyActiveLineTranslation(CaptionLine original, CaptionLine updated)
+    private void ApplyActiveLineTranslation(CaptionLine original, CaptionLine updated, string requestedTargetLanguage, long sessionEpoch)
     {
         bool applied;
         lock (_gate)
         {
-            // Translation was turned off while this request was in flight (it is not cancelled to
-            // avoid tearing down the Argos backend); the result is discarded, never applied.
-            if (!_state.TranslationEnabled)
+            // The result belongs to a REQUESTED session: if translation was toggled off, the target
+            // changed, or a fresh translation session began (toggle OFF → ON with the same target,
+            // provider change) while this request was in flight (it is not cancelled to avoid tearing
+            // down the Argos backend), the result is discarded — never applied — otherwise the
+            // previous session's output would leak into the new session.
+            // Compared against the REQUESTED target (the line's own TargetLanguage is null until a
+            // translation attaches, so a failure result cannot carry it).
+            if (sessionEpoch != _translationSessionEpoch
+                || !_state.TranslationEnabled
+                || !string.Equals(_state.TargetLanguage, requestedTargetLanguage, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -663,14 +782,17 @@ public sealed class CaptionService : ICaptionService
 
         CaptionLine? pending = null;
         string? targetLanguage = null;
+        long sessionEpoch = 0;
         CancellationToken token = CancellationToken.None;
         lock (_gate)
         {
             targetLanguage = _state.TargetLanguage;
+            sessionEpoch = _translationSessionEpoch;
             if (_useCaptionLineTranslation
                 && _translationEngine is not null
                 && _state.TranslationEnabled
                 && targetLanguage is not null
+                && !string.Equals(targetLanguage, _options.SourceLanguage, StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(line.Text))
             {
                 // To avoid flashing English text in the overlay when a line is committed (which starts
@@ -712,7 +834,7 @@ public sealed class CaptionService : ICaptionService
         if (pending is not null)
         {
             Commit(pending);
-            StartTranslation(pending, targetLanguage!, token);
+            StartTranslation(pending, targetLanguage!, sessionEpoch, token);
         }
         else
         {
@@ -753,6 +875,22 @@ public sealed class CaptionService : ICaptionService
         EndLifetime();
     }
 
+    /// <summary>
+    /// True when translation-origin input was emitted before the current live session began, i.e. it
+    /// belongs to a previous engine's session (toggle OFF → ON or a stale message racing a boundary).
+    /// Must be called holding <see cref="_gate"/> or with the state already stable.
+    /// <para>
+    /// Compares <see cref="TranslationTranscript.EmittedAtUtc"/> — NOT <see cref="TranslationTranscript.CapturedAtUtc"/> —
+    /// because the Gemini live engine stamps every transcript with a single fixed session-start base
+    /// timestamp (its audio capture time, not a per-message value). A boundary recorded after the new
+    /// engine starts would therefore classify every legitimate new transcript as stale if the guard
+    /// compared capture time. EmittedAtUtc is the real per-message time, so it cleanly separates a
+    /// message produced before the boundary from one produced after it.
+    /// </para>
+    /// </summary>
+    private bool IsStaleLiveSessionInput(DateTime emittedAtUtc) =>
+        _liveSessionStartedAtUtc is { } boundary && emittedAtUtc < boundary;
+
     /// <inheritdoc />
     public void ProcessPartialTranslation(PartialTranslation translation)
     {
@@ -762,6 +900,22 @@ public sealed class CaptionService : ICaptionService
             // Not running, or the user toggled translation off: translation-origin content is not
             // accepted, so the overlay returns to the source captions immediately even if a live
             // engine event is still in flight from just before the toggle.
+            return;
+        }
+
+        // Stale-target guard: a live engine event whose target does not match the current session
+        // target (the user changed target mid-session before the engine swap completed) must be
+        // dropped so the previous target's output never bleeds into the new session.
+        if (!string.Equals(_state.TargetLanguage, translation.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Stale-session guard: translation-origin content produced before the current live session
+        // began (a message from the previous engine that still carries the same target — toggle OFF
+        // → ON with the same target) must not update the new session.
+        if (IsStaleLiveSessionInput(translation.EmittedAtUtc))
+        {
             return;
         }
 
@@ -818,6 +972,21 @@ public sealed class CaptionService : ICaptionService
             return;
         }
 
+        // Stale-target guard: see ProcessPartialTranslation — an old engine's final must not commit
+        // into a session whose target already changed.
+        if (!string.Equals(_state.TargetLanguage, translation.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Stale-session guard: see ProcessPartialTranslation — an old session's final that still
+        // carries the same target (toggle OFF → ON with the same target) must not commit into the
+        // new live session.
+        if (IsStaleLiveSessionInput(translation.EmittedAtUtc))
+        {
+            return;
+        }
+
         string cleanText = CleanText(translation.TranslatedText);
         if (string.IsNullOrWhiteSpace(cleanText))
         {
@@ -863,7 +1032,7 @@ public sealed class CaptionService : ICaptionService
         StateChanged?.Invoke(this, _state);
     }
 
-    private void StartTranslation(CaptionLine line, string targetLanguage, CancellationToken token)
+    private void StartTranslation(CaptionLine line, string targetLanguage, long sessionEpoch, CancellationToken token)
     {
         if (token == CancellationToken.None)
         {
@@ -871,7 +1040,7 @@ public sealed class CaptionService : ICaptionService
             return;
         }
 
-        var task = RunTranslationAsync(line, targetLanguage, token);
+        var task = RunTranslationAsync(line, targetLanguage, sessionEpoch, token);
         lock (_gate)
         {
             _inFlight.Add(task);
@@ -895,7 +1064,7 @@ public sealed class CaptionService : ICaptionService
             TaskScheduler.Default);
     }
 
-    private async Task RunTranslationAsync(CaptionLine line, string targetLanguage, CancellationToken cancellationToken)
+    private async Task RunTranslationAsync(CaptionLine line, string targetLanguage, long sessionEpoch, CancellationToken cancellationToken)
     {
         DateTime startedAt = _utcNow();
         TranslationResult? result;
@@ -915,18 +1084,29 @@ public sealed class CaptionService : ICaptionService
             Console.Error.WriteLine($"[UniversalCaptions] Committed line translation failed: {exc}");
             System.Diagnostics.Trace.WriteLine($"[UniversalCaptions] Committed line translation failed: {exc}");
             // Any translation failure is represented on the line rather than breaking the caption pipeline.
-            ApplyTranslationUpdate(line, line.WithTranslationFailure(exc.Message, startedAt));
+            ApplyTranslationUpdate(line, line.WithTranslationFailure(exc.Message, startedAt), sessionEpoch);
             return;
         }
 
-        ApplyTranslationUpdate(line, line.WithTranslation(result!.Text, result.TargetLanguage, startedAt, _utcNow()));
+        ApplyTranslationUpdate(line, line.WithTranslation(result!.Text, result.TargetLanguage, startedAt, _utcNow()), sessionEpoch);
     }
 
-    private void ApplyTranslationUpdate(CaptionLine original, CaptionLine updated)
+    private void ApplyTranslationUpdate(CaptionLine original, CaptionLine updated, long sessionEpoch)
     {
         bool applied;
         lock (_gate)
         {
+            // Same stale-result guard as ApplyActiveLineTranslation: a committed-line translation that
+            // started before translation was toggled off, the target changed, or a fresh translation
+            // session began (toggle OFF → ON with the same target, provider change) must be discarded,
+            // so an old-session result can never re-mix into the new session after the reset.
+            if (sessionEpoch != _translationSessionEpoch
+                || !_state.TranslationEnabled
+                || !string.Equals(_state.TargetLanguage, updated.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             applied = _state.ReplaceFinalLine(original, updated);
         }
 

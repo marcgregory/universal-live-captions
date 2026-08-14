@@ -252,6 +252,49 @@ public sealed class FasterWhisperNativeStreamingEngineTests
     }
 
     [Fact]
+    public void PunctuationHallucination_DoesNotEmitFinal()
+    {
+        // Whisper emits a long ellipsis run (optionally after a truncated word) on near-silent
+        // segment tails; that is not speech and must not render as a caption line.
+        var vad = new ScriptedVad([true, false, false, false]);
+        var process = new ScriptedFasterWhisperProcess(["The per.... ... ... ... ..."]);
+        using var engine = new FasterWhisperNativeStreamingEngine(TestOptions(), process, vad, DetectorOptions());
+        var finals = new List<string>();
+        engine.FinalTranscriptAvailable += (_, t) => finals.Add(t.Text);
+
+        engine.Start();
+        for (int i = 1; i <= 4; i++)
+        {
+            engine.Process(Chunk(i));
+        }
+
+        WaitUntil(() => process.ReceivedPcm.Count == 1);
+        Thread.Sleep(200);
+
+        Assert.Empty(finals);
+    }
+
+    [Fact]
+    public void NormalSentence_WithOneTrailingPeriod_EmitsFinal()
+    {
+        var vad = new ScriptedVad([true, false, false, false]);
+        var process = new ScriptedFasterWhisperProcess(["Good morning."]);
+        using var engine = new FasterWhisperNativeStreamingEngine(TestOptions(), process, vad, DetectorOptions());
+        var finals = new List<string>();
+        engine.FinalTranscriptAvailable += (_, t) => finals.Add(t.Text);
+
+        engine.Start();
+        for (int i = 1; i <= 4; i++)
+        {
+            engine.Process(Chunk(i));
+        }
+
+        WaitUntil(() => finals.Count == 1);
+
+        Assert.Equal(["Good morning."], finals);
+    }
+
+    [Fact]
     public void Process_WhenNotStartedOrAfterStop_IsIgnored()
     {
         var vad = new ScriptedVad([true, false, false, false]);
