@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-14 (v0.5.40 segmentation investigation + matrix COMPLETE; decision: production gate unchanged)
+Last updated: 2026-08-14 (corpus-driven phrase-guard validation CLOSED — decision: insufficient evidence, do not ship)
 
 ## Metadata
 
@@ -18,6 +18,30 @@ Last updated: 2026-08-14 (v0.5.40 segmentation investigation + matrix COMPLETE; 
 This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
+
+**Corpus-driven phrase-guard validation — CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE — do not
+ship; no production change; v0.5.40 gate untouched; no v0.5.41).** Second, corpus-driven validation
+authorized by the closed segmentation-matrix decision. `PhraseGuardCorpusValidationTests.cs` (11 tests,
+43-case labeled corpus: observed Cat 2 evidence, unseen variants, genuine sentence-start readings, the 8
+Cat 3 pairs, punctuation/capitalization/length axes, English equivalents) drove the real engine gate per
+case (baseline, measured) and layered a **test-side** phrase guard, computing **false-split reduction −
+over-join cost** per candidate. **Measured:** all 7 observed Cat 2 false splits FLUSH under the current
+gate (gap real, pinned); every Tagalog phrase guard nets positive — `At pagkatapos` **+4** (best),
+`Sige, gawin` +2, `At makinig`/`Kaya kailangan`/`Pero pagkatapos`/`Dahil dito`/`Hindi <fragment>` +1 —
+while the rejected bare `at|kaya|sige|hindi` allowlist over-joins **8** genuine new sentences (negative
+control; strictly worse than every phrase guard); multi-word guards are exact-token (`At bukas…`,
+`Kaya narito…`, `Sige, magsisimula…` NOT caught); **English equivalents all net 0**; two **irreducible
+same-surface ambiguities** proven (`Kaya kailangan nating magmadali.` is both the fix and a genuine
+new-sentence reading; `Hindi` fixes `Hindi Lunes.` but over-joins `Hindi ko alam kung saan ito.`).
+**Decision (user gate): do not ship** — the validation proved the guard's mechanics but not the
+real-world over-join cost; the over-join cases are constructed, not frequency-measured. **Established:**
+bare-word allowlist = reject (unsafe); English equivalents = no net benefit; phrase guard = technically
+reduces observed Cat 2 failures; same-surface ambiguity = irreducible with lexical info alone;
+**frequency-weighted real-world cost = unknown** (the deciding unknown). **Do not keep expanding the
+lexical phrase list** until that frequency question is answered. Full suite **711/711** (106 Audio + 89
+Captions + 111 Speech + 42 Translation + 184 App + 179 Speech.Gemini; the 49 matrix tests stay green),
+Release 0 warnings/0 errors, `dotnet format` clean. Evidence + results + decision:
+`docs/implementation/investigations/phrase-guard-validation.md`.
 
 **Segmentation-guard unit-test matrix — CLOSED 2026-08-14 (decision: production gate unchanged).**
 The agreed decision-gate suite (`SegmentationGuardMatrixTests.cs`, 48 runs: **41 PASS / 7 FAIL**,
@@ -305,8 +329,22 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**v0.5.40 — Gemini streaming-caption segmentation investigation + matrix (COMPLETE 2026-08-14;
-decision: production gate unchanged).**
+**Corpus-driven phrase-guard validation — CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE — do not
+ship).** See Current Sprint for the measured reduction−over-join table and the established conclusions
+(bare-word allowlist = reject; English equivalents = no net benefit; phrase guard = technically reduces
+observed Cat 2 failures; same-surface ambiguity = irreducible with lexical info alone; frequency-weighted
+real-world cost = unknown). **Production gate unchanged; no v0.5.41; the 49 matrix tests unchanged.**
+The only thing that would justify Ship is a **frequency-weighted natural-corpus validation**: a
+naturally occurring annotated corpus (NOT more hand-constructed examples) measuring per candidate
+`false-splits-prevented / applicable continuation boundaries` and `false-joins / applicable sentence
+boundaries` — with the frequency-weighted cost reported, not just example counts (e.g. if
+`At pagkatapos` occurs 100 times naturally as 70 continuations + 30 sentence starts, appending all 100
+creates 30 over-joins regardless of the apparent continuation win). Do NOT keep expanding the lexical
+phrase list before that frequency question is answered. Full results:
+`docs/implementation/investigations/phrase-guard-validation.md`.
+
+Prior milestone for the record — **v0.5.40 — Gemini streaming-caption segmentation investigation +
+matrix (COMPLETE 2026-08-14; decision: production gate unchanged).**
 Separately tracked from the resolved v0.5.39 `goAway`/session-lifecycle fix (closed + released; NOT a
 v0.5.39 defect). **Issue:** Gemini streaming segmentation can emit a mid-sentence fragment right after a
 `FINAL`, e.g. `FINAL "Nabasa mo na ang job description."` → `FRAG init " at halos tugma"` → `FINAL

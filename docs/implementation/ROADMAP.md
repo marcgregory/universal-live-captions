@@ -60,10 +60,28 @@ Last updated: 2026-08-14
   − over-join cost before any guard touches production. Evidence: investigations/gemini-segmentation.md,
   PROJECT_STATUS, TEST_REPORT.
 
+- **Corpus-driven phrase-guard validation — CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE, do not
+  ship).** Second, corpus-driven validation authorized by the closed segmentation-matrix decision; no
+  production code change; v0.5.40 gate untouched; no v0.5.41; the 49 matrix tests unchanged.
+  `PhraseGuardCorpusValidationTests.cs` (11 tests, 43-case labeled corpus) drove the real engine gate per
+  case (baseline, measured) and layered a test-side phrase guard, measuring **false-split reduction −
+  over-join cost** per candidate. **Measured:** all 7 observed Cat 2 false splits FLUSH under the current
+  gate (gap real); every Tagalog phrase guard nets positive (`At pagkatapos` +4 best) while the rejected
+  bare `at|kaya|sige|hindi` allowlist over-joins 8 (control); English equivalents all net 0; two
+  irreducible same-surface ambiguities proven. **Decision (user gate): do not ship.** The validation
+  proved the guard's mechanics but not the real-world over-join cost; the over-join cases are
+  constructed, not frequency-measured. Established: bare-word allowlist = reject (unsafe); English
+  equivalents = no net benefit; phrase guard = technically reduces observed Cat 2 failures; same-surface
+  ambiguity = irreducible with lexical info alone; **frequency-weighted real-world cost = unknown** (the
+  deciding unknown). **Ship requires a naturally occurring annotated corpus** measuring
+  `false-splits-prevented / applicable continuation boundaries` and `false-joins / applicable sentence
+  boundaries` frequency-weighted. Full suite **711/711**, Release 0 warnings/0 errors, `dotnet format`
+  clean. Evidence: investigations/phrase-guard-validation.md, PROJECT_STATUS, TEST_REPORT.
+
 ## In Progress
 
-- None currently. (The segmentation-guard unit-test matrix CLOSED 2026-08-14 — see Completed. The
-  corpus-driven phrase-guard validation is a Future candidate, gated on a documented decision.)
+- None currently. (The segmentation-guard unit-test matrix and the corpus-driven phrase-guard
+  validation both CLOSED 2026-08-14 — see Completed.)
 
 ## Completed (core done)
 
@@ -80,9 +98,9 @@ Last updated: 2026-08-14
 
 ## Sprint Queue
 
-- None currently. The segmentation-guard unit-test matrix is **CLOSED — decision recorded, production
-  gate unchanged** (2026-08-14); the corpus-driven phrase-guard validation is a Future candidate (see
-  Future).
+- None currently. The segmentation-guard unit-test matrix and the corpus-driven phrase-guard validation
+  are both **CLOSED 2026-08-14** — decisions recorded, production gate unchanged, phrase guard NOT
+  shipped (see Completed).
 
 ---
 
@@ -146,14 +164,12 @@ segmentation, partial cadence, resampler, CPU threading, overlay architecture, w
 5. **App-by-app validation** — YouTube, VLC, Zoom, Teams, etc.
 
 - **Phase 2 — real-application validation (YouTube/Chrome, VLC, Zoom).** Deferred per user; a reassessment/validation pass over the Slice 6 baseline defaults, not an optimization sweep.
-- **Corpus-driven phrase-guard validation (candidate, gated on a documented decision).** Per the
-  segmentation-matrix decision (2026-08-14), a second smaller corpus-driven suite must establish
-  **false-split reduction − over-join cost** before any phrase-level idiom guard touches production:
-  observed continuation idioms → expected APPEND; the same idioms in genuine sentence-start contexts →
-  expected FLUSH; unseen variants of the same construction; short fragments (esp. `Hindi Lunes.`);
-  punctuation variations; capitalization variations; English equivalents where applicable; negative
-  cases designed specifically to expose over-joining. No production change is authorized by the
-  matrix alone.
+- **Phrase-level idiom guard (production).** NOT authorized by the matrix or the corpus validation
+  (CLOSED 2026-08-14 — insufficient evidence). Only a **frequency-weighted natural-corpus validation**
+  (`false-splits-prevented / applicable continuation boundaries` and `false-joins / applicable sentence
+  boundaries` on naturally occurring audio) with acceptable real-world over-join cost can authorize a
+  production implementation. Do NOT keep expanding the lexical phrase list before that frequency
+  question is answered.
 - Latency display refinement and settings persistence (file-based configuration)
 - Optional VB-CABLE input behind `IAudioCapture` (post-MVP)
 - Optional cloud STT engine behind `ISpeechToTextEngine` with explicit disclosure

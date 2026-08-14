@@ -10,6 +10,30 @@ Chrome-Live-Caption-like live captions for any Windows application. Captures sys
 
 ## Current Sprint
 
+**Corpus-driven phrase-guard validation — CLOSED (2026-08-14; decision: INSUFFICIENT EVIDENCE — do
+not ship; no production change; v0.5.40 gate untouched; no v0.5.41).** Second, corpus-driven validation
+authorized by the closed segmentation-matrix decision. `PhraseGuardCorpusValidationTests.cs` (11 tests,
+43-case labeled corpus) drove the real engine gate per case (baseline, measured — never assumed) and
+layered a **test-side** phrase guard, measuring **false-split reduction − over-join cost** per candidate.
+**Measured:** all 7 observed Cat 2 false splits FLUSH under the current gate (gap real); every Tagalog
+phrase guard nets positive (`At pagkatapos` **+4** best, `Sige, gawin` +2, `At makinig`/`Kaya
+kailangan`/`Pero pagkatapos`/`Dahil dito`/`Hindi <fragment>` +1) while the rejected bare
+`at|kaya|sige|hindi` allowlist over-joins **8** genuine new sentences (negative control); multi-word
+guards are exact-token (`At bukas…`, `Kaya narito…`, `Sige, magsisimula…` NOT caught — the concrete
+improvement over the bare allowlist); **English equivalents (`And then`/`So we need`/`But then`/`Not`)
+all net 0** (reduction cancels over-join on the en side); two **irreducible same-surface ambiguities**
+proven (`Kaya kailangan nating magmadali.` is both the fix and a genuine new-sentence reading; the
+`Hindi` prefix fixes `Hindi Lunes.` but over-joins `Hindi ko alam kung saan ito.`). **Decision (user
+gate): do not ship** — the validation proved the guard's *mechanics* but not the real-world over-join
+cost; the over-join cases are constructed, not frequency-measured. **Established:** bare-word allowlist
+= reject (unsafe); English equivalents = no net benefit; phrase guard = technically reduces observed
+Cat 2 failures; same-surface ambiguity = irreducible with lexical info alone; **frequency-weighted
+real-world cost = unknown** (the deciding unknown). **Do not keep expanding the lexical phrase list**
+until that frequency question is answered. Full suite **711/711** (106 Audio + 89 Captions + 111 Speech
++ 42 Translation + 184 App + 179 Speech.Gemini; the 49 matrix tests stay green), Release 0 warnings/0
+errors, `dotnet format` clean. Evidence + results + decision:
+`docs/implementation/investigations/phrase-guard-validation.md`.
+
 **Gemini streaming-caption segmentation investigation + matrix — COMPLETE (2026-08-14, measurement
 only; no production change; decision: production gate unchanged).** 20-run real-Gemini study: Gemini
 streams ~1 fragment/s (median gap 1000 ms, p90 1244 ms); the app pipeline adds **zero** latency
@@ -169,10 +193,23 @@ See `docs/implementation/TECHNICAL_DEBT.md`. **TD-001 closed (2026-08-05)** — 
 
 ## Next Priority
 
-**Core is done (2026-08-06): the final real-world acceptance run PASSED** — see Current Sprint for the
-full numbers. No further CPU optimization per user. **Gemini streaming-caption segmentation investigation + matrix COMPLETE (2026-08-14):** root cause identified (the v0.5.40 guard `terminal && !restate && !lowercase` only catches lowercase continuations — capitalized continuations like `Hindi Lunes.`/`At pagkatapos` still false-split), the app pipeline adds zero latency (FINAL→COMMIT→RENDER 0 ms median), first visible caption ~8.7–9.7 s is STT+Gemini upstream. **Decision-gate unit-test matrix executed (48 runs: 41 PASS / 7 FAIL):** Cat 2 capitalized continuation idioms are the 7 RED (the measured gap), Cat 3 bare-starter pairs are provably ambiguous (a bare `At|Kaya|Sige|Hindi → APPEND` allowlist would over-join the new-sentence reading), Cat 1/Cat 4 stay green. **Decision: production gate unchanged** — the dangerous axis is insufficient context, not capitalization; the phrase-level idiom guard remains a **candidate** pending a second corpus-driven validation that establishes **false-split reduction − over-join cost**. Remaining work is feature-level/product-level, not core architecture: **Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) stays deferred per user**;
-ADR-0007 stays **Proposed** until the original operator Tagalog recording is available; TD-002 stays
-**frozen/Open** until the real hotplug acceptance test can be run. The production default
-(`fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`) is the validated, frozen configuration.
+**Corpus-driven phrase-guard validation — CLOSED (2026-08-14; decision: INSUFFICIENT EVIDENCE — do
+not ship).** `PhraseGuardCorpusValidationTests.cs` (11 tests, 43-case corpus) measured
+**false-split reduction − over-join cost** per candidate against the real engine gate: every Tagalog
+guard nets positive (`At pagkatapos` +4 best) while the bare `at|kaya|sige|hindi` allowlist over-joins
+8; English equivalents net 0; two irreducible same-surface ambiguities proven. **Decision: do not
+ship** — the real-world over-join cost is unknown (the deciding unknown); the over-join cases are
+constructed, not frequency-measured. Production gate unchanged; no v0.5.41; the 49 matrix tests stay
+unchanged; full suite **711/711**, Release 0 warnings/0 errors, `dotnet format` clean. **The only
+thing that would justify Ship: a naturally occurring annotated corpus** measuring per candidate
+`false-splits-prevented / applicable continuation boundaries` and `false-joins / applicable sentence
+boundaries`, frequency-weighted. **Do not keep expanding the lexical phrase list until that frequency
+question is answered.** Full results + decision:
+`docs/implementation/investigations/phrase-guard-validation.md`. Remaining work is feature-level/
+product-level, not core architecture: **Phase 2 real-app validation (YouTube/Chrome, VLC, Zoom) stays
+deferred per user**; ADR-0007 stays **Proposed** until the original operator Tagalog recording is
+available; TD-002 stays **frozen/Open** until the real hotplug acceptance test can be run. The
+production default (`fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`) is the validated,
+frozen configuration.
 
 Historical close-outs (Entry 16 `Threads=4`, Entry 15 overlay live-line, Entry 14 default promotion, Slices 10-12, Slice 5/6, TD-001/005/016) are recorded in `docs/implementation/HISTORY.md`.
