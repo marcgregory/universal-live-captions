@@ -51,24 +51,94 @@ public partial class ControlWindow : Window
         new("Tagalog (tl)", "tl"),
     ];
 
+    /// <summary>
+    /// Target languages exposed for live translation, matching Google's official Gemini Live
+    /// Translate supported-language table (verified 2026-08-15 at
+    /// https://ai.google.dev/gemini-api/docs/live-api/live-translate). Every code is a BCP-47 tag
+    /// accepted verbatim by the API; the provider gates which entries are selectable
+    /// (<see cref="TranslationProviderPolicy.IsTargetLanguageEnabled"/>).
+    /// </summary>
     private static readonly LanguageOption[] TargetLanguages =
     [
-        new("English (en)", "en"),
-        new("Filipino (tl)", "tl"),
-        new("Japanese (ja)", "ja"),
-        new("Korean (ko)", "ko"),
-        new("Chinese (zh)", "zh"),
-        new("Spanish (es)", "es"),
-        new("French (fr)", "fr"),
-        new("German (de)", "de"),
-        new("Portuguese (pt)", "pt"),
-        new("Russian (ru)", "ru"),
+        new("Afrikaans (af)", "af"),
+        new("Akan (ak)", "ak"),
+        new("Albanian (sq)", "sq"),
+        new("Amharic (am)", "am"),
         new("Arabic (ar)", "ar"),
+        new("Armenian (hy)", "hy"),
+        new("Azerbaijani (az)", "az"),
+        new("Basque (eu)", "eu"),
+        new("Belarusian (be)", "be"),
+        new("Bengali (bn)", "bn"),
+        new("Bulgarian (bg)", "bg"),
+        new("Burmese (my)", "my"),
+        new("Catalan (ca)", "ca"),
+        new("Cebuano (ceb)", "ceb"),
+        new("Chinese Simplified (zh-Hans)", "zh-Hans"),
+        new("Chinese Traditional (zh-Hant)", "zh-Hant"),
+        new("Croatian (hr)", "hr"),
+        new("Czech (cs)", "cs"),
+        new("Danish (da)", "da"),
+        new("Dutch (nl)", "nl"),
+        new("English (en)", "en"),
+        new("Estonian (et)", "et"),
+        new("Filipino (tl)", "tl"),
+        new("Finnish (fi)", "fi"),
+        new("French (fr)", "fr"),
+        new("Galician (gl)", "gl"),
+        new("Georgian (ka)", "ka"),
+        new("German (de)", "de"),
+        new("Greek (el)", "el"),
+        new("Gujarati (gu)", "gu"),
+        new("Hausa (ha)", "ha"),
+        new("Hebrew (he)", "he"),
         new("Hindi (hi)", "hi"),
+        new("Hungarian (hu)", "hu"),
+        new("Icelandic (is)", "is"),
         new("Indonesian (id)", "id"),
+        new("Italian (it)", "it"),
+        new("Japanese (ja)", "ja"),
+        new("Javanese (jv)", "jv"),
+        new("Kannada (kn)", "kn"),
+        new("Kazakh (kk)", "kk"),
+        new("Khmer (km)", "km"),
+        new("Kinyarwanda (rw)", "rw"),
+        new("Korean (ko)", "ko"),
+        new("Lao (lo)", "lo"),
+        new("Latvian (lv)", "lv"),
+        new("Lithuanian (lt)", "lt"),
+        new("Macedonian (mk)", "mk"),
         new("Malay (ms)", "ms"),
+        new("Malayalam (ml)", "ml"),
+        new("Marathi (mr)", "mr"),
+        new("Mongolian (mn)", "mn"),
+        new("Nepali (ne)", "ne"),
+        new("Norwegian (no)", "no"),
+        new("Persian (fa)", "fa"),
+        new("Polish (pl)", "pl"),
+        new("Portuguese Brazil (pt-BR)", "pt-BR"),
+        new("Portuguese Portugal (pt-PT)", "pt-PT"),
+        new("Punjabi (pa)", "pa"),
+        new("Romanian (ro)", "ro"),
+        new("Russian (ru)", "ru"),
+        new("Serbian (sr)", "sr"),
+        new("Sindhi (sd)", "sd"),
+        new("Sinhala (si)", "si"),
+        new("Slovak (sk)", "sk"),
+        new("Slovenian (sl)", "sl"),
+        new("Spanish (es)", "es"),
+        new("Sundanese (su)", "su"),
+        new("Swahili (sw)", "sw"),
+        new("Swedish (sv)", "sv"),
+        new("Tamil (ta)", "ta"),
+        new("Telugu (te)", "te"),
         new("Thai (th)", "th"),
+        new("Turkish (tr)", "tr"),
+        new("Ukrainian (uk)", "uk"),
+        new("Urdu (ur)", "ur"),
+        new("Uzbek (uz)", "uz"),
         new("Vietnamese (vi)", "vi"),
+        new("Zulu (zu)", "zu"),
     ];
 
     /// <summary>
@@ -850,7 +920,7 @@ public partial class ControlWindow : Window
     /// <summary>
     /// Actionable user message for a classified live-translation failure.
     /// </summary>
-    private static string DescribeLiveTranslationError(LiveTranslationError error)
+    internal static string DescribeLiveTranslationError(LiveTranslationError error)
     {
         return error.Kind switch
         {
@@ -860,6 +930,8 @@ public partial class ControlWindow : Window
                 "Gemini quota/rate limit reached. Wait and retry, or switch to Argos.",
             LiveTranslationErrorKind.Timeout =>
                 "Gemini timed out. Check your connection, or switch to Argos.",
+            LiveTranslationErrorKind.SessionEnded =>
+                "Gemini session ended. Toggle translation off/on or restart to resume.",
             _ =>
                 "Gemini is unavailable: " + error.Message + " Check your connection, or switch to Argos.",
         };

@@ -19,6 +19,14 @@ public enum LiveTranslationErrorKind
     /// <summary>The engine emitted a server-side error frame that ended the session.</summary>
     ServerError,
 
+    /// <summary>
+    /// The server ended the session gracefully (a <c>goAway</c> frame), typically because the
+    /// session ran past the provider's wall-clock limit (for example Gemini's audio-only session
+    /// cap) rather than because of a request failure. Expected and recoverable — the user restarts
+    /// the session to resume.
+    /// </summary>
+    SessionEnded,
+
     /// <summary>The engine timed out waiting for new output from the server.</summary>
     Timeout,
 

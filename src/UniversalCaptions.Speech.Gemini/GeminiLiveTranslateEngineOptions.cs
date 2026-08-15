@@ -107,8 +107,11 @@ public sealed class GeminiLiveTranslateEngineOptions
 
     /// <summary>
     /// Resolves the BCP-47 <c>targetLanguageCode</c> for the setup frame. Explicit
-    /// <see cref="TargetLanguageCode"/> override wins; otherwise the App-side
-    /// <see cref="TargetLanguage"/> ISO 639-1 code is mapped via the small built-in table.
+    /// <see cref="TargetLanguageCode"/> override wins; otherwise <see cref="TargetLanguage"/> is
+    /// passed through as-is. Every code the App's target dropdown exposes is a BCP-47 code the Live
+    /// Translate API accepts (verified against Google's official supported-language table), so no
+    /// allow-list mapping is needed — the only legacy form is the App's ISO 639-1 <c>tl</c>, which
+    /// the API expects as <c>fil</c>.
     /// </summary>
     public string ResolveTargetLanguageCode()
     {
@@ -117,26 +120,12 @@ public sealed class GeminiLiveTranslateEngineOptions
             return TargetLanguageCode.Trim();
         }
 
-        string iso = TargetLanguage?.Trim().ToLowerInvariant() ?? string.Empty;
-        return iso switch
+        string code = TargetLanguage?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (string.Equals(code, "tl", StringComparison.OrdinalIgnoreCase))
         {
-            "tl" => "fil",
-            "en" => "en",
-            "ja" => "ja",
-            "ko" => "ko",
-            "zh" => "zh",
-            "es" => "es",
-            "fr" => "fr",
-            "de" => "de",
-            "pt" => "pt",
-            "ru" => "ru",
-            "ar" => "ar",
-            "hi" => "hi",
-            "id" => "id",
-            "ms" => "ms",
-            "th" => "th",
-            "vi" => "vi",
-            _ => DefaultTargetLanguageCode,
-        };
+            return "fil";
+        }
+
+        return string.IsNullOrWhiteSpace(code) ? DefaultTargetLanguageCode : code;
     }
 }

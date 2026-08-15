@@ -84,6 +84,31 @@ public sealed class GeminiLiveTranslateEngineTests
     }
 
     [Fact]
+    public async Task StartAsync_CebTargetCode_PassesThroughUntranslated()
+    {
+        // Cebuano (ceb) is NOT in Google's published Live Translate language table, but a real-wire
+        // probe (2026-08-15) confirmed the server ACCEPTS the code and replies setupComplete. The
+        // resolver must pass it through verbatim (no tl->fil style rewrite, no fallback to the
+        // default) so the App's Cebuano option reaches the server unchanged.
+        var channel = new FakeGeminiChannel { ReceiveReturnsNullOnEmpty = true };
+        var engine = CreateEngine(channel, o => o.TargetLanguage = "ceb");
+
+        try
+        {
+            await engine.StartAsync();
+
+            string first = channel.SentFrames[0];
+            Assert.Contains("\"targetLanguageCode\"", first);
+            Assert.Contains("\"ceb\"", first);
+        }
+        finally
+        {
+            await engine.StopAsync();
+            engine.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task StartAsync_ConnectFailure_RaisesTranslationFailed()
     {
         var channel = new FakeGeminiChannel
@@ -903,8 +928,8 @@ public sealed class GeminiLiveTranslateEngineTests
         Assert.Single(finals);
         Assert.Equal("Hindi pa tapos", finals[0].TranslatedText);
         Assert.Single(errors);
-        Assert.Equal(LiveTranslationErrorKind.ServerError, errors[0].Kind);
-        Assert.Contains("ended by server", errors[0].Message);
+        Assert.Equal(LiveTranslationErrorKind.SessionEnded, errors[0].Kind);
+        Assert.Contains("restart to resume", errors[0].Message);
     }
 
     // ----- sessionResumptionUpdate: engine must not fatal -----

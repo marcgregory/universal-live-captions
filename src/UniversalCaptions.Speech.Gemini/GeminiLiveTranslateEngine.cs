@@ -390,10 +390,14 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                         // has no signal that the receive loop exited via goAway — the engine would
                         // silently stop emitting partials/finals while still being attached, and
                         // the overlay would freeze on whatever translated text it had. This is the
-                        // same chokepoint every other failure routes through.
+                        // same chokepoint every other failure routes through. Classified as
+                        // SessionEnded (not ServerError) so the UI can say "session ended, restart
+                        // to resume" instead of implying a connection problem: a goAway here is the
+                        // provider's expected wall-clock session limit (e.g. long idle pauses), not
+                        // a failure.
                         await RaiseTranslationFailedAsync(new LiveTranslationError(
-                            LiveTranslationErrorKind.ServerError,
-                            "Live translation session ended by server.",
+                            LiveTranslationErrorKind.SessionEnded,
+                            "Gemini session ended. Toggle translation off/on or restart to resume.",
                             null)).ConfigureAwait(false);
                         return;
 

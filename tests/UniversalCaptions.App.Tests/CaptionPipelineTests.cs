@@ -1233,8 +1233,8 @@ public class CaptionPipelineTests
         var statuses = new ConcurrentQueue<PipelineStatus>();
         pipeline.StatusChanged += (_, s) => statuses.Enqueue(s);
         live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.ServerError,
-            "Live translation session ended by server.",
+            LiveTranslationErrorKind.SessionEnded,
+            "Gemini session ended. Toggle translation off/on or restart to resume.",
             null));
 
         // The pipeline clears the active translation line and surfaces an error status. The
@@ -1248,7 +1248,7 @@ public class CaptionPipelineTests
 
         var errorStatus = statuses.FirstOrDefault(s => s.Kind == PipelineStatusKind.Error);
         Assert.NotNull(errorStatus);
-        Assert.Contains("ended by server", errorStatus!.Message);
+        Assert.Contains("restart to resume", errorStatus!.Message);
 
         // The engine is detached but its disposal runs on a background task — wait for it before
         // teardown so the test does not race a fire-and-forget Task.Run.
