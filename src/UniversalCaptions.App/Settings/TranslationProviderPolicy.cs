@@ -77,4 +77,43 @@ public static class TranslationProviderPolicy
 
         return selected ?? TranslationProvider.Argos;
     }
+
+    /// <summary>
+    /// True when a source-language option may be selected for the given provider. Argos (offline) can
+    /// only translate from English with the bundled package closure, so Japanese/Tagalog sources are
+    /// disabled under it; Gemini auto-detects the source language and accepts any option. Auto
+    /// (detect, null code) and English stay available under every provider. The source dropdown keeps
+    /// every entry visible — disabled entries stay in the list so the user sees why — and this method
+    /// is the single testable decision (the WPF combo just binds <c>IsEnabled</c> to it).
+    /// </summary>
+    public static bool IsSourceLanguageEnabled(TranslationProvider? provider, string? sourceCode)
+    {
+        if (provider != TranslationProvider.Gemini)
+        {
+            return string.IsNullOrWhiteSpace(sourceCode)
+                || string.Equals(sourceCode, "en", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when a target-language option may be selected for the given provider. Gemini supports the
+    /// full BCP-47 target set (<see cref="UniversalCaptions.Speech.Gemini.GeminiLiveTranslateEngineOptions.ResolveTargetLanguageCode"/>);
+    /// Argos ships only the en->tl offline package, so every target beyond the pre-existing
+    /// en/ja/tl trio is disabled under it (the trio is kept enabled to avoid regressing the
+    /// dev-machine en_ja/en_tl packages). Like the source gating, every entry stays visible and this
+    /// method is the single testable decision.
+    /// </summary>
+    public static bool IsTargetLanguageEnabled(TranslationProvider? provider, string? targetCode)
+    {
+        if (provider != TranslationProvider.Gemini)
+        {
+            return string.Equals(targetCode, "en", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(targetCode, "ja", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(targetCode, "tl", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return true;
+    }
 }

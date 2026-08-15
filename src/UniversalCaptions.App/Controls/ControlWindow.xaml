@@ -54,7 +54,13 @@
                   Grid.Row="2"
                   Grid.Column="1"
                   Margin="10,4"
-                  SelectionChanged="OnLanguageChanged" />
+                  SelectionChanged="OnLanguageChanged">
+            <ComboBox.ItemContainerStyle>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                </Style>
+            </ComboBox.ItemContainerStyle>
+        </ComboBox>
 
         <TextBlock Grid.Row="3"
                    Text="Translation"
@@ -75,7 +81,13 @@
                   Grid.Column="1"
                   Margin="10,4"
                   IsEnabled="False"
-                  SelectionChanged="OnTargetLanguageChanged" />
+                  SelectionChanged="OnTargetLanguageChanged">
+            <ComboBox.ItemContainerStyle>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                </Style>
+            </ComboBox.ItemContainerStyle>
+        </ComboBox>
 
         <TextBlock Grid.Row="5"
                    Text="Translation provider"

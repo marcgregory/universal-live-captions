@@ -1072,6 +1072,40 @@ public class CaptionPipelineTests
     }
 
     [Fact]
+    public async Task Live_translation_failure_clears_the_live_session_flag_so_source_captions_show()
+    {
+        // When the live Gemini engine fails (e.g. a source language the API does not support),
+        // the overlay must leave target-only display mode and return to the source captions Whisper
+        // keeps producing. Without the flag re-sync the overlay renders nothing after a failure.
+        using var h = new Harness();
+        var live = new FakeLiveAudioTranslationEngine();
+        var errors = new List<LiveTranslationError>();
+        using var pipeline = new CaptionPipeline(
+            _ => h.Capture,
+            h.Processor,
+            _ => h.SpeechToText,
+            h.Captions,
+            liveTranslationFactory: _ => live);
+        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
+
+        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
+
+        live.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.ServerError,
+            "unsupported language",
+            null));
+
+        Assert.False(h.Captions.GetSnapshot().IsLiveTranslationSession);
+        Assert.Single(errors);
+        Assert.True(live.IsDisposed);
+        Assert.True(pipeline.IsRunning);
+        Assert.True(h.Capture.IsCapturing);
+
+        await pipeline.StopAsync();
+    }
+
+    [Fact]
     public async Task SetLiveTranslation_target_change_swaps_the_live_engine()
     {
         using var h = new Harness();

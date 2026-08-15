@@ -937,6 +937,12 @@ public sealed class CaptionPipeline : IDisposable
                 // Dispose is best-effort: a failing engine must not affect the offline pipeline.
             }
         });
+
+        // The live engine is gone (failure / startup-failure path): reflect that on the caption
+        // service so the overlay leaves target-only display mode and returns to the source captions
+        // Whisper keeps producing. Without this re-sync the flag stays set and the overlay renders
+        // nothing after a Gemini failure (e.g. a source language the API does not support).
+        SyncLiveTranslationSession();
     }
 
     private void OnPartialTranscript(object? sender, PartialTranscript transcript)

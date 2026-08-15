@@ -37,7 +37,7 @@ public partial class ControlWindow : Window
     private GeminiAvailability _geminiAvailability = GeminiAvailability.Unknown;
     private TranslationProvider? _appliedProvider;
 
-    private sealed record LanguageOption(string Label, string? Code);
+    private sealed record LanguageOption(string Label, string? Code, bool IsEnabled = true);
 
     private sealed record ProviderOption(string Label, TranslationProvider Value, bool IsEnabled);
 
@@ -54,8 +54,21 @@ public partial class ControlWindow : Window
     private static readonly LanguageOption[] TargetLanguages =
     [
         new("English (en)", "en"),
+        new("Filipino (tl)", "tl"),
         new("Japanese (ja)", "ja"),
-        new("Tagalog (tl)", "tl"),
+        new("Korean (ko)", "ko"),
+        new("Chinese (zh)", "zh"),
+        new("Spanish (es)", "es"),
+        new("French (fr)", "fr"),
+        new("German (de)", "de"),
+        new("Portuguese (pt)", "pt"),
+        new("Russian (ru)", "ru"),
+        new("Arabic (ar)", "ar"),
+        new("Hindi (hi)", "hi"),
+        new("Indonesian (id)", "id"),
+        new("Malay (ms)", "ms"),
+        new("Thai (th)", "th"),
+        new("Vietnamese (vi)", "vi"),
     ];
 
     /// <summary>
@@ -276,11 +289,85 @@ public partial class ControlWindow : Window
         {
             ProviderOption[] options = BuildProviderOptions();
             ProviderCombo.ItemsSource = options;
-            ProviderCombo.SelectedIndex = FindProviderIndex(requested, options);
+            int selected = FindProviderIndex(requested, options);
+            ProviderCombo.SelectedIndex = selected;
+            RefreshSourceLanguages(options[selected].Value);
+            RefreshTargetLanguages(options[selected].Value);
         }
         finally
         {
             _refreshingProvider = false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the source-language dropdown from the current provider. Every entry stays visible so the
+    /// user sees the full choice; entries the provider cannot translate from are disabled via the
+    /// combo's <c>IsEnabled</c> item binding (<see cref="TranslationProviderPolicy.IsSourceLanguageEnabled"/>).
+    /// </summary>
+    private static LanguageOption[] BuildSourceLanguageOptions(TranslationProvider provider)
+    {
+        return SourceLanguages
+            .Select(l => l with { IsEnabled = TranslationProviderPolicy.IsSourceLanguageEnabled(provider, l.Code) })
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Rebuilds the source-language dropdown for the effective provider. The current selection is
+    /// preserved when it is still usable; otherwise it falls back to Auto (detect) so a source that
+    /// the new provider cannot translate from never stays selected.
+    /// </summary>
+    private void RefreshSourceLanguages(TranslationProvider provider)
+    {
+        string? selected = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
+        LanguageOption[] options = BuildSourceLanguageOptions(provider);
+        LanguageCombo.ItemsSource = options;
+
+        LanguageOption? match = options.FirstOrDefault(o =>
+            string.Equals(o.Code, selected, StringComparison.OrdinalIgnoreCase));
+        if (match is not null && match.IsEnabled)
+        {
+            LanguageCombo.SelectedItem = match;
+        }
+        else
+        {
+            LanguageCombo.SelectedIndex = 0;
+        }
+    }
+
+    /// <summary>
+    /// Builds the target-language dropdown from the current provider. Every entry stays visible;
+    /// Gemini-only targets are disabled under Argos via the combo's <c>IsEnabled</c> item binding
+    /// (<see cref="TranslationProviderPolicy.IsTargetLanguageEnabled"/>).
+    /// </summary>
+    private static LanguageOption[] BuildTargetLanguageOptions(TranslationProvider provider)
+    {
+        return TargetLanguages
+            .Select(l => l with { IsEnabled = TranslationProviderPolicy.IsTargetLanguageEnabled(provider, l.Code) })
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Rebuilds the target-language dropdown for the effective provider. The current selection is
+    /// preserved when it is still usable; otherwise it falls back to the first enabled option so a
+    /// target the new provider cannot translate into never stays selected.
+    /// </summary>
+    private void RefreshTargetLanguages(TranslationProvider provider)
+    {
+        string? selected = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
+        LanguageOption[] options = BuildTargetLanguageOptions(provider);
+        TargetLanguageCombo.ItemsSource = options;
+
+        LanguageOption? match = options.FirstOrDefault(o =>
+            string.Equals(o.Code, selected, StringComparison.OrdinalIgnoreCase));
+        if (match is not null && match.IsEnabled)
+        {
+            TargetLanguageCombo.SelectedItem = match;
+        }
+        else
+        {
+            LanguageOption? firstEnabled = options.FirstOrDefault(o => o.IsEnabled);
+            TargetLanguageCombo.SelectedItem = firstEnabled ?? options[0];
         }
     }
 
@@ -575,6 +662,13 @@ public partial class ControlWindow : Window
         {
             return;
         }
+
+        // The source/target-language gating follows the MANUALLY selected provider, not just the
+        // availability-refresh path: Argos keeps English/Auto (and the en/ja/tl trio), Gemini
+        // enables every supported language.
+        TranslationProvider provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value ?? TranslationProvider.Argos;
+        RefreshSourceLanguages(provider);
+        RefreshTargetLanguages(provider);
 
         ApplyTranslationSettings();
         SaveSettings();

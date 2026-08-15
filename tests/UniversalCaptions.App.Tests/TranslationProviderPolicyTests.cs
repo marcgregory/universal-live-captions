@@ -92,4 +92,86 @@ public class TranslationProviderPolicyTests
         Assert.Equal(TranslationProvider.Argos, TranslationProviderPolicy.ResolveActiveProvider(null, GeminiAvailability.InvalidKey));
         Assert.Equal(TranslationProvider.Argos, TranslationProviderPolicy.ResolveActiveProvider(null, GeminiAvailability.Available));
     }
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("EN")]
+    [InlineData(null)]
+    [InlineData("")]
+    public void IsSourceLanguageEnabled_Argos_EnglishAndAuto_Enabled(string? sourceCode)
+    {
+        Assert.True(TranslationProviderPolicy.IsSourceLanguageEnabled(TranslationProvider.Argos, sourceCode));
+        Assert.True(TranslationProviderPolicy.IsSourceLanguageEnabled(null, sourceCode));
+    }
+
+    [Theory]
+    [InlineData("ja")]
+    [InlineData("tl")]
+    public void IsSourceLanguageEnabled_Argos_OtherSources_Disabled(string sourceCode)
+    {
+        Assert.False(TranslationProviderPolicy.IsSourceLanguageEnabled(TranslationProvider.Argos, sourceCode));
+        Assert.False(TranslationProviderPolicy.IsSourceLanguageEnabled(null, sourceCode));
+    }
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("ja")]
+    [InlineData("tl")]
+    [InlineData(null)]
+    public void IsSourceLanguageEnabled_Gemini_AllSources_Enabled(string? sourceCode)
+    {
+        Assert.True(TranslationProviderPolicy.IsSourceLanguageEnabled(TranslationProvider.Gemini, sourceCode));
+    }
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("ja")]
+    [InlineData("tl")]
+    public void IsTargetLanguageEnabled_Argos_EnJaTl_Enabled(string targetCode)
+    {
+        Assert.True(TranslationProviderPolicy.IsTargetLanguageEnabled(TranslationProvider.Argos, targetCode));
+        Assert.True(TranslationProviderPolicy.IsTargetLanguageEnabled(null, targetCode));
+    }
+
+    [Theory]
+    [InlineData("ko")]
+    [InlineData("zh")]
+    [InlineData("es")]
+    [InlineData("fr")]
+    [InlineData("de")]
+    [InlineData("pt")]
+    [InlineData("ru")]
+    [InlineData("ar")]
+    [InlineData("hi")]
+    [InlineData("id")]
+    [InlineData("ms")]
+    [InlineData("th")]
+    [InlineData("vi")]
+    public void IsTargetLanguageEnabled_Argos_GeminiOnlyTargets_Disabled(string targetCode)
+    {
+        Assert.False(TranslationProviderPolicy.IsTargetLanguageEnabled(TranslationProvider.Argos, targetCode));
+        Assert.False(TranslationProviderPolicy.IsTargetLanguageEnabled(null, targetCode));
+    }
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("ja")]
+    [InlineData("tl")]
+    [InlineData("ko")]
+    [InlineData("zh")]
+    [InlineData("es")]
+    [InlineData("fr")]
+    [InlineData("de")]
+    [InlineData("pt")]
+    [InlineData("ru")]
+    [InlineData("ar")]
+    [InlineData("hi")]
+    [InlineData("id")]
+    [InlineData("ms")]
+    [InlineData("th")]
+    [InlineData("vi")]
+    public void IsTargetLanguageEnabled_Gemini_AllTargets_Enabled(string targetCode)
+    {
+        Assert.True(TranslationProviderPolicy.IsTargetLanguageEnabled(TranslationProvider.Gemini, targetCode));
+    }
 }
