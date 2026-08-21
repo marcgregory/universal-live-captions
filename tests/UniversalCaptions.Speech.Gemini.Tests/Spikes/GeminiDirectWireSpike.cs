@@ -1285,6 +1285,9 @@ internal sealed class ProvenanceObservingChannel : IGeminiLiveTranslateChannel
     public Task SendTextAsync(string json, CancellationToken cancellationToken) => _inner.SendTextAsync(json, cancellationToken);
 
     /// <inheritdoc />
+    public bool IsClosed => _inner.IsClosed;
+
+    /// <inheritdoc />
     public async Task<string?> ReceiveTextAsync(CancellationToken cancellationToken)
     {
         string? frame = await _inner.ReceiveTextAsync(cancellationToken).ConfigureAwait(false);

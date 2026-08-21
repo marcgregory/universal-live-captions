@@ -330,7 +330,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                 catch (Exception ex)
                 {
                     await RaiseTranslationFailedAsync(new LiveTranslationError(
-                        LiveTranslationErrorKind.ConnectionFailed,
+                        LiveTranslationErrorKind.SessionEnded,
                         "Live translation send failed.",
                         ex)).ConfigureAwait(false);
                     return;
@@ -361,7 +361,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                 catch (Exception ex)
                 {
                     await RaiseTranslationFailedAsync(new LiveTranslationError(
-                        LiveTranslationErrorKind.ConnectionFailed,
+                        LiveTranslationErrorKind.SessionEnded,
                         "Live translation receive failed.",
                         ex)).ConfigureAwait(false);
                     return;
@@ -369,10 +369,20 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
 
                 if (frame is null)
                 {
-                    // The channel returned no data for this iteration — keep polling. Real closes
-                    // arrive as goAway / error frames, exceptions, or cancellation triggered by
-                    // StopAsync. Treating null as a clean close would prematurely tear the
-                    // session down the moment the server momentarily had nothing to send.
+                    // A null frame is the channel contract for a clean WebSocket close. Do not
+                    // spin forever: that leaves audio/STT running while the caption stream is dead.
+                    // Intentional StopAsync cancellation is normal shutdown; an unsolicited close
+                    // must surface as SessionEnded so the pipeline reconnects.
+                    if (_channel.IsClosed && !cancellationToken.IsCancellationRequested)
+                    {
+                        await RaiseTranslationFailedAsync(new LiveTranslationError(
+                            LiveTranslationErrorKind.SessionEnded,
+                            "Gemini Live connection closed by the server.",
+                            null)).ConfigureAwait(false);
+                        return;
+                    }
+
+                    // Test channels may use null for an empty queue; keep polling in that case.
                     continue;
                 }
 
@@ -599,6 +609,14 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
         /// </summary>
         public void HandleFragment(string incoming)
         {
+            lock (_commitGate)
+            {
+                HandleFragmentCore(incoming);
+            }
+        }
+
+        private void HandleFragmentCore(string incoming)
+        {
             // Genuine sentence boundary: the accumulator already ends with terminal punctuation and
             // the incoming fragment starts a DISJOINT new sentence (not a cumulative restatement
             // of the finished one). Commit the completed sentence immediately, then accumulate the
@@ -631,15 +649,17 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                 return;
             }
 
-            string? currentText = _text;
-            if (currentText is null || !EndsWithTerminalPunctuation(currentText))
-            {
-                CancelCommitTimer();
-                return;
-            }
-
             lock (_commitGate)
             {
+                string? currentText = _text;
+                if (currentText is null || !EndsWithTerminalPunctuation(currentText))
+                {
+                    _commitCts?.Cancel();
+                    _commitCts?.Dispose();
+                    _commitCts = null;
+                    _commitGeneration++;
+                    return;
+                }
                 _commitCts?.Cancel();
                 _commitCts?.Dispose();
                 _commitCts = new CancellationTokenSource();
@@ -687,6 +707,8 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
 
         public void FlushAsFinal()
         {
+            lock (_commitGate)
+            {
             if (!_hasContent)
             {
                 return;
@@ -725,6 +747,7 @@ public sealed class GeminiLiveTranslateEngine : ILiveAudioTranslationEngine
                         emittedAtUtc: committedAtUtc,
                         sequence: sequence,
                         committedAtUtc: committedAtUtc));
+            }
             }
         }
 

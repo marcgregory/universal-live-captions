@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-21 (Gemini-only pipeline â€” ADR-0011 implemented; local Whisper + Argos removed)
+Last updated: 2026-08-22 (Gemini-only pipeline â€” ADR-0011 implemented; local Whisper + Argos removed; v0.5.46 540k auto-reconnect overlay refresh CLOSED)
 
 ## Metadata
 
@@ -314,6 +314,11 @@ Status:           Validated baseline for the current release (one authoritative
 
 ## Current Focus
 
+**v0.5.46 â€” auto-reconnect overlay refresh (540k hide-on-reconnect regression, CLOSED 2026-08-22).** The pipeline's auto-reconnect cycle worked (goAway â†’ setupComplete) but the overlay kept the previous session's last words stuck until the user clicked "Show Captions" or stopped/started the app. Two coordinated fixes:
+- `CaptionPipeline.SessionResumed` event raised from `RestartLiveTranslationAsync` after the new engine is attached and `SyncLiveTranslationSession` has aligned the caption service; fires once per recoverable `SessionEnded`.
+- `IOverlayService.Refresh()` (synchronous `Dispatcher.Invoke(Render)`) plus `ControlWindow.OnPipelineSessionResumed` calling `_captions.ClearCaptionContent()` then `_overlay.Refresh()`, so the overlay clears the stale active line + history immediately and the new session's first partial renders without any manual click.
+**Validation:** full suite **532/532** (106 Audio + 69 Captions + 174 Speech.Gemini + 183 App), Release build 0 warnings / 0 errors. Two real-app reconnect cycles at 00:50:10 and 00:59:10 each show `SessionResumed â†’ ClearCaptionContent + Refresh â†’ Render(historyBlocks=0)` followed by the new session's first partial rendering correctly (trace at `%TEMP%\uc_540k_trace.log`; instrumentation removed post-verification). Operator note: the fix is currently delivered via the **Debug build**; Release packaging deferred to the next release gate. CHANGELOG v0.5.46.
+
 **Slice 11 â€” native-streaming segment-boundary tuning (COMPLETE 2026-08-05: decision recorded â€” keep 8 s).** Additive `sttnative` benchmark improvements (`timeBeginPeriod(1)` realtime-feed pacing fix â†’ valid ~1.1Ã— controlled pacing; mid-sentence-split metric in gate table + CSV) + controlled sweep at max-segment 8/10/12 s (small int8, tl, hangover 0.7 s fixed) on the actual video audio vs the `fil-orig` reference. Results: WER 32.6%/33.2%/30.0%, cadence 13.3/10.8/9.1 FINALs/120 s, splits 31%/42%/45%, 0 partials; latency/backlog bounded at all three caps (~5 s behind segment end). **Longer segments do NOT reduce mid-sentence splits; they cost responsiveness and add end-of-audio cap hallucinations (10 s `Pag-pag-pagâ€¦`, 12 s truncated `tunog`); the 12 s WER gain is a boundary artifact.** **Decision: keep `MaxSegmentDuration = 8 s` â€” no production or knob-default change** (real-App 8 s evidence from Slice 10 stands). Worker protocol / ggml-base / windowed engine untouched. 357/357 tests, Release build 0 warnings/0 errors, format clean. Scoped in `docs/CHANGE_IMPACT_ANALYSIS.md` Entry 12; evidence in `BENCHMARK_REPORT.md`/`TEST_REPORT.md` (Slice 11), CHANGELOG v0.5.20.
 
 **All MVP slices (0â€œ6) remain complete.** **Argos pre-warm landed 2026-08-02** (v0.5.9): background pre-warm warms one shared Argos process/model off the real-caption path, so the first caption drops from ~23â€œ30 s cold start to ~3.8â€œ6.85 s (warm translation ~0.46 s), verified live through the real App (Cases A + B: single process spawn + single model init, no duplicate init, no lost first caption; 260/260 tests). **Slice 7 â€” caption overlay layout & stable incremental rendering (2026-08-02)**: a layout probe confirmed the caption `TextBlock` already uses the full ~522 px viewport width correctly (short lines stay one line; long text wraps only on width exhaustion â€” the reported "whole text re-flows" is not a width bug), and the render path now does scope-stable incremental rendering (a Partial only rewrites the live block's text in place; history blocks reused by identity, never rebuilt) with bottom scroll re-anchoring limited to when a new block is inserted and content overflows.
@@ -351,11 +356,7 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**Gemini-only pipeline release (v0.5.44):** the real-wire `inputTranscription` gate is **CLOSED
-(PASS, 2026-08-21)** — see Current Sprint and TEST_REPORT. Remaining before tag cut: a real-app
-smoke on the Release artifact (loopback ? captions appear ? translation toggle ON/OFF mid-session ?
-target-language switch recycles the session ? goAway recovery), then `packaging/build-package.ps1
--Version 0.5.44` + `inspect-package.ps1` verification and the GitHub release.
+**v0.5.46 release gate:** the Debug build is verified PASS for the 540k auto-reconnect overlay refresh (trace in `%TEMP%\uc_540k_trace.log`, instrumentation removed post-verification). Remaining: a real-app smoke on the Release artifact (loopback → captions appear → translation toggle ON/OFF mid-session → target-language switch recycles the session → goAway recovery with overlay refresh), then `packaging/build-package.ps1 -Version 0.5.46` + `inspect-package.ps1` verification and the GitHub release. v0.5.44's `inputTranscription` release gate remains CLOSED (PASS, 2026-08-21) — see Current Sprint and TEST_REPORT.
 
 Prior milestone for the record â€” **corpus-driven phrase-guard validation â€” CLOSED 2026-08-14
 (decision: INSUFFICIENT EVIDENCE â€” do not ship).** See Current Sprint for the measured

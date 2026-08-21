@@ -256,6 +256,7 @@ public partial class ControlWindow : Window
         _pipeline.LatencyUpdated += OnLatencyUpdated;
         _pipeline.EndToEndLatencyUpdated += OnEndToEndLatencyUpdated;
         _pipeline.LiveTranslationErrorUpdated += OnLiveTranslationError;
+        _pipeline.SessionResumed += OnPipelineSessionResumed;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -392,6 +393,7 @@ public partial class ControlWindow : Window
         _pipeline.LatencyUpdated -= OnLatencyUpdated;
         _pipeline.EndToEndLatencyUpdated -= OnEndToEndLatencyUpdated;
         _pipeline.LiveTranslationErrorUpdated -= OnLiveTranslationError;
+        _pipeline.SessionResumed -= OnPipelineSessionResumed;
         _ = Task.Run(() => _pipeline.StopAsync());
         // Flush any pending coalesced save so the user's final state survives shutdown (TD-005).
         _settingsStore.Save(ReadCurrentSettings());
@@ -640,16 +642,41 @@ public partial class ControlWindow : Window
         };
     }
 
+    /// <summary>
+    /// Pipeline status handler. Drives only the status text, indicator color, and the Start/Stop
+    /// button enablement — it does NOT hide the overlay on its own. The overlay's visibility is
+    /// decided by:
+    /// <list type="bullet">
+    ///   <item>user actions: <see cref="OnStartClicked"/> shows it on a successful Start (or a
+    ///   successful reconnect), <see cref="StopPipelineAsync"/> hides it on user-initiated stop;</item>
+    ///   <item>live-translation errors: <see cref="OnLiveTranslationError"/> hides the overlay for
+    ///   non-recoverable kinds (<see cref="LiveTranslationErrorKind.SessionRejected"/>,
+    ///   <see cref="LiveTranslationErrorKind.QuotaExceeded"/>, <see cref="LiveTranslationErrorKind.Timeout"/>,
+    ///   or any other) so the user is not stranded on a stale caption while a definitive problem is
+    ///   surfaced; recoverable <see cref="LiveTranslationErrorKind.SessionEnded"/> is a no-op because
+    ///   the pipeline will reconnect automatically and a new <see cref="PipelineStatusKind.Capturing"/>
+    ///   status from the reconnect (or the next Start) shows the overlay again.</item>
+    /// </list>
+    /// Hiding the overlay on any non-Capturing status caused the 540k "window hides on goAway" bug:
+    /// a server-side session cap (a recoverable SessionEnded, not a definitive failure) used to
+    /// collapse the window and leave the user staring at nothing while the audio/STT counter kept
+    /// running. The status text + indicator are enough to communicate state to the user without
+    /// clearing the visible caption.
+    /// </summary>
     private void OnPipelineStatus(object? sender, PipelineStatus status)
     {
         Dispatcher.InvokeAsync(() =>
         {
             StatusText.Text = status.Message;
             SetIndicator(status.Kind);
-            if (status.Kind != PipelineStatusKind.Capturing)
+            if (status.Kind == PipelineStatusKind.Capturing)
             {
-                _overlay.Hide();
+                // A new Capturing status arrives both from a fresh Start and from a successful
+                // RestartLiveTranslationAsync (the recoverable reconnect path). Show the overlay
+                // so the user sees captions reappear as soon as a session is up.
+                _overlay.Show();
             }
+
             if (!_isStarting && !_isStopping)
             {
                 StartButton.IsEnabled = status.Kind != PipelineStatusKind.Capturing;
@@ -823,6 +850,17 @@ public partial class ControlWindow : Window
             StatusText.Text = DescribeLiveTranslationError(error);
             SetIndicator(PipelineStatusKind.Error);
 
+            // SessionEnded is recoverable: the pipeline auto-reconnects (RestartLiveTranslationAsync)
+            // and a new PipelineStatusKind.Capturing will arrive once it does. Hiding the overlay
+            // here would collapse the window on every server-side goAway and leave the user staring
+            // at nothing while the audio/STT counter kept running — the 540k bug. For every other
+            // kind the engine cannot recover from (rejected key, quota, timeout, unknown), hide
+            // the overlay so the user is not stranded on a stale caption.
+            if (error.Kind != LiveTranslationErrorKind.SessionEnded)
+            {
+                _overlay.Hide();
+            }
+
             bool definitiveKeyProblem = error.Kind == LiveTranslationErrorKind.SessionRejected
                 || error.Message.Contains("API key", StringComparison.OrdinalIgnoreCase);
             if (definitiveKeyProblem)
@@ -831,6 +869,24 @@ public partial class ControlWindow : Window
                 // (missing vs malformed vs invalid key) rather than guessing from the message.
                 _ = RefreshGeminiAvailabilityLiveAsync();
             }
+        });
+    }
+
+    /// <summary>
+    /// Handles <see cref="CaptionPipeline.SessionResumed"/>: the pipeline has finished
+    /// <see cref="CaptionPipeline.RestartLiveTranslationAsync"/> and a fresh Gemini Live session
+    /// is now attached. The caption service still holds the previous session's stale active
+    /// line + history; the overlay's render-guard may suppress updates while translation is
+    /// enabled and no new translated partial has arrived yet. Clear the caption content and
+    /// force the overlay to repaint so the new session's first partial is visible without the
+    /// user pressing "Show Captions" or restarting the app (540k bug).
+    /// </summary>
+    private void OnPipelineSessionResumed(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            _captions.ClearCaptionContent();
+            _overlay.Refresh();
         });
     }
 

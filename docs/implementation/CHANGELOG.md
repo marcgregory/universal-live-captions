@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-21 (v0.5.44)
+Last updated: 2026-08-22 (v0.5.46)
 
 ## Metadata
 
@@ -16,6 +16,19 @@ Last updated: 2026-08-21 (v0.5.44)
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.46 - 2026-08-22
+
+### Auto-reconnect overlay refresh (540k hide-on-reconnect regression)
+
+- **Problem:** the overlay's caption text remained stuck on the previous Gemini session's last words after an auto-reconnect. While the pipeline did spin up a replacement Gemini session transparently, the caption service retained the stale active line and history, and the overlay's render-guard suppressed updates until a new translated partial arrived. The user had to click "Show Captions" or stop+restart the app to clear the stale text. This was the 540k bug — the auto-reconnect worked (goAway → setupComplete cycle), but the overlay looked frozen.
+- **Fix (4 production files):**
+  - `CaptionPipeline` — added `public event EventHandler? SessionResumed;` raised from `RestartLiveTranslationAsync` after the new engine is attached and `SyncLiveTranslationSession` has aligned the caption service. Fires once per reconnect.
+  - `IOverlayService` / `CaptionOverlayWindow` — new `void Refresh()` implemented as a synchronous `Dispatcher.Invoke(Render)` (already on the UI thread), guaranteeing the visual blocks reconcile immediately rather than waiting behind other queued dispatcher items.
+  - `ControlWindow` — subscribes to `Pipeline.SessionResumed`; the handler clears the caption service content and calls `Refresh()`, so the overlay clears the stale active line + history before the new session's first partial arrives.
+- **Tests:** added `RestartLiveTranslation_OnSessionEnded_FiresSessionResumed` and updated `SessionEnded_FromRunningEngine_ClearsActiveLineAndFiresReconnectAndSessionResumed` (renamed from `_KeepsActiveLineAndFiresReconnect`) to assert that `SessionResumed` fires exactly once after the new engine is attached, the active translation line is cleared, and the new engine has been StartAsync'd. Existing `NonRecoverableFailure_DoesNotFireReconnect` pins the boundary: only `SessionEnded` triggers reconnect.
+- **Validation:** full suite **532/532** (106 Audio + 69 Captions + 174 Speech.Gemini + 183 App). Release build 0 warnings / 0 errors. Real-app PASS on Debug exe (trace-driven): two reconnect cycles at 00:50:10 and 00:59:10 each show `SessionResumed → ClearCaptionContent + Refresh → Render(historyBlocks=0)` followed by the new session's first partial rendering correctly. Trace: `%TEMP%\uc_540k_trace.log` (instrumentation removed post-verification).
+- **Operator note:** the fix only ships in the **Debug build** during this iteration; Release 0.5.46 packaging deferred to the next release gate (real-app smoke on the Release artifact per `docs/implementation/RELEASE_PLAN.md`).
 
 ## v0.5.45 - 2026-08-21
 

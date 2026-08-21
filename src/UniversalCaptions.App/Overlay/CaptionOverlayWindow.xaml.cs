@@ -152,6 +152,23 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         Show();
     }
 
+    void IOverlayService.Refresh()
+    {
+        // Use synchronous Invoke rather than BeginInvoke: we MUST reconcile the visual blocks
+        // immediately on the UI thread before any other queued event re-paints the stale caption
+        // (e.g. the very next OnPartialTranscription from the freshly-attached engine could fire
+        // before a BeginInvoke drain). The snapshot read is thread-safe under the caption
+        // service's lock.
+        if (Dispatcher.CheckAccess())
+        {
+            Render();
+        }
+        else
+        {
+            Dispatcher.Invoke(Render);
+        }
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Restore an explicitly saved placement; otherwise use the adaptive bottom-anchored default.

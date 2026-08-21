@@ -31,4 +31,13 @@ public interface IOverlayService
     /// <param name="left">The overlay's left edge in screen coordinates.</param>
     /// <param name="top">The overlay's top edge in screen coordinates.</param>
     void ShowAt(double left, double top);
+
+    /// <summary>
+    /// Forces the overlay to re-read the current caption snapshot and reconcile its visual blocks.
+    /// Idempotent and side-effect-free: if the snapshot is empty, stale text is cleared; if a new
+    /// partial is in flight, it repaints normally. Used by the control window after an
+    /// auto-reconnect to guarantee the dispatcher picks up the cleared caption state immediately,
+    /// rather than waiting for the next event from the new session (540k bug).
+    /// </summary>
+    void Refresh();
 }

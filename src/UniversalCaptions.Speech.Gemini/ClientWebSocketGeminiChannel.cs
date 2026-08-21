@@ -75,6 +75,8 @@ internal sealed class ClientWebSocketGeminiChannel : IGeminiLiveTranslateChannel
     }
 
     /// <inheritdoc />
+    public bool IsClosed => _socket.State is WebSocketState.CloseReceived or WebSocketState.Closed or WebSocketState.Aborted;
+
     public async Task<string?> ReceiveTextAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

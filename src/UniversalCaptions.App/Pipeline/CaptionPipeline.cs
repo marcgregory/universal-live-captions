@@ -151,6 +151,17 @@ public sealed class CaptionPipeline : IDisposable
     /// </summary>
     public event EventHandler<LiveTranslationError>? LiveTranslationErrorUpdated;
 
+    /// <summary>
+    /// Raised after <see cref="RestartLiveTranslationAsync"/> successfully attaches a fresh Gemini
+    /// Live session following a recoverable <see cref="LiveTranslationErrorKind.SessionEnded"/>.
+    /// Fires once per reconnect, AFTER the new engine has been subscribed and
+    /// <see cref="SyncLiveTranslationSession"/> has aligned the caption service with the running
+    /// session. Subscribers (the control window) use this signal to clear the stale caption
+    /// display state from the caption service and force the overlay to repaint so the new
+    /// session's first partial is visible — without a manual "Show Captions" click.
+    /// </summary>
+    public event EventHandler? SessionResumed;
+
     /// <summary>True while a capture session is running.</summary>
     public bool IsRunning => _capture?.IsCapturing == true;
     /// <summary>True when a Gemini Live session is attached to the running capture.</summary>
@@ -221,6 +232,15 @@ public sealed class CaptionPipeline : IDisposable
             SubscribeLiveEvents(candidate);
             SyncLiveTranslationSession();
             RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
+
+            // Signal the UI that a fresh session is up. Subscribers (the control window) react by
+            // clearing the caption service's stale display state and forcing the overlay to
+            // repaint so the new session's first partial is visible — without the user pressing
+            // "Show Captions" or restarting the app (540k bug). Raised only after the new engine
+            // is attached AND the caption service is in sync, so any caption reset performed by
+            // the subscriber will be fed by the new engine, not the dead one.
+            SessionResumed?.Invoke(this, EventArgs.Empty);
+
             candidate = null;
         }
         finally
@@ -959,7 +979,13 @@ public sealed class CaptionPipeline : IDisposable
     /// </remarks>
     private void OnLiveTranslationFailed(object? sender, LiveTranslationError error)
     {
-        _captions.ClearLiveTranslationActiveLine();
+        // A server session end is recoverable. Keep the last active caption visible while the
+        // replacement Gemini session is connecting; clearing it here makes the overlay hide and
+        // look like append has stopped.
+        if (error.Kind != LiveTranslationErrorKind.SessionEnded)
+        {
+            _captions.ClearLiveTranslationActiveLine();
+        }
         DetachAndDisposeLiveTranslation();
         RaiseStatus(new PipelineStatus(
             PipelineStatusKind.Error,

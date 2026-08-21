@@ -41,6 +41,9 @@ public interface IGeminiLiveTranslateChannel : IAsyncDisposable
     /// </remarks>
     Task<string?> ReceiveTextAsync(CancellationToken cancellationToken);
 
+    /// <summary>True when the underlying channel has been closed or aborted.</summary>
+    bool IsClosed { get; }
+
     /// <summary>
     /// Closes the WebSocket with NormalClosure and the supplied reason. Idempotent.
     /// </summary>

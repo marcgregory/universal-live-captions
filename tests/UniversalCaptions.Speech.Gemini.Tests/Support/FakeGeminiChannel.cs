@@ -117,6 +117,8 @@ internal sealed class FakeGeminiChannel : IGeminiLiveTranslateChannel
     }
 
     /// <inheritdoc />
+    public bool IsClosed => false;
+
     public Task<string?> ReceiveTextAsync(CancellationToken cancellationToken)
     {
         ReceiveCount++;
