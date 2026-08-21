@@ -14,6 +14,99 @@ Last updated: 2026-08-06
 
 ---
 
+## Entry 17 - Gemini-Only Pipeline: Remove Local Whisper STT + Argos Translation
+
+Date: 2026-08-21
+
+> **Implementation status (2026-08-21): IN PROGRESS.** ADR-0011 approved by the user. Gemini Live
+> becomes the single STT + translation engine; `UniversalCaptions.Speech`, `UniversalCaptions.Translation`,
+> and `UniversalCaptions.Benchmarks` are deleted with their test projects. Open verification gate:
+> real-wire proof that `inputTranscription` frames stream back on `gemini-3.5-live-translate-preview`
+> (the 2026-08-09 A/B run proved the setup field is accepted and translation-neutral, not that
+> transcription texts are observed).
+
+### 1. Change Summary
+
+```text
+Change Title: Gemini-only pipeline (remove local Whisper STT + Argos translation)
+Change Type:        Architecture change / Feature / Removal
+Requirement Source: User decision 2026-08-21 ("tanggalin ang Argos… wala na ang local-first,
+                    Gemini na lang lahat") + structured follow-up answers (Gemini also for STT;
+                    provider dropdown removed; full removal depth)
+Priority:           High
+Estimated Effort:   Large (multi-project refactor + docs sweep)
+```
+
+### 2. Affected Modules
+
+- [x] `UniversalCaptions.Core` — delete `ITranslationEngine`, `ISpeechToTextEngine`, related error/result types; extend `ILiveAudioTranslationEngine` with transcription events; keep `SpeechTranscript`, `LiveTranslationError`
+- [x] `UniversalCaptions.Speech.Gemini` — setup frame gains top-level `inputAudioTranscription`; protocol parses `serverContent.inputTranscription`; engine raises source-transcription events (second accumulator + commit timer)
+- [x] `UniversalCaptions.Captions` — `CaptionService` loses the caption-line text-translation machinery (`ITranslationEngine` path); keeps source ingress + live relay + epoch guards
+- [x] `UniversalCaptions.App` — pipeline loses the STT leg; DI drops Argos/Whisper/factories; ControlWindow drops provider combo + Argos pre-warm; settings schema v3 (Provider removed); `TranslationProviderPolicy`, `SpeechEngineFactory`, `InstallPathResolver` deleted
+- [x] Deleted: `UniversalCaptions.Speech`, `UniversalCaptions.Translation`, `UniversalCaptions.Benchmarks`, `tests/UniversalCaptions.Speech.Tests`, `tests/UniversalCaptions.Translation.Tests`
+- [x] Packaging — build/inspect scripts, launcher.cmd, .iss reduced to the .NET publish output
+
+### 3. Affected APIs
+
+- [x] `ILiveAudioTranslationEngine` — additive: `PartialTranscriptionAvailable` / `FinalTranscriptionAvailable` events (+ event payload records)
+- [x] Removed: `ITranslationEngine`, `ISpeechToTextEngine`, `TranslationResult`, `TranslationError*`, `SpeechRecognitionError`, `CaptionService.SetCaptionLineTranslation`, `CaptionPipeline` STT factory parameter, `UserSettings.Provider`
+
+**API changes required:** Breaking (internal app; no external consumers)
+
+### 4. Database Changes
+
+Not applicable.
+
+### 5. Security and Privacy Implications
+
+- [x] Capture behavior change — capture itself unchanged (WASAPI loopback only; no microphone).
+- [x] Audio/transcript handling change — **captured system audio now always streams to Google's Gemini API while a session runs** (previously only when translation was enabled). No raw-audio persistence anywhere (unchanged). Disclosed in README/SECURITY_PLAN per Constitution amendment (ADR-0011).
+- [x] New external communication — same endpoint as before; now mandatory rather than optional.
+- [x] Sensitive data handling — API key stays in Windows Credential Manager (ADR-0009 unchanged); Argos/Whisper worker env plumbing removed.
+- [x] Security review required: Yes (privacy-policy amendment) — recorded in ADR-0011 + SECURITY_PLAN update.
+
+### 6. Test Updates Required
+
+- [x] Unit tests — Gemini.Tests: input-transcription protocol/engine pins; App.Tests: pipeline without STT leg, toggle semantics (engine always running), settings v3; Captions.Tests: remove caption-line machinery matrices, keep relay/source tests; delete Speech.Tests + Translation.Tests projects
+- [x] Integration tests — spike-based real-wire verification (inputTranscription observation gate)
+- [x] Manual/device verification — real loopback session with Gemini-only captions recorded in TEST_REPORT
+
+### 7. Documentation Updates Required
+
+- [x] `ARCHITECTURE.md`, `TECH_STACK.md`, `REPOSITORY_STANDARDS.md`, `SECURITY_PLAN.md`, `PRD.md`/`PROJECT_SCOPE.md` (translation framing), `DEPLOYMENT.md`, `DEVELOPER_SETUP.md`
+- [x] ADR required: Yes — ADR-0011 (this change); ADR-0006 superseded
+- [x] `CHANGELOG.md`, `PROJECT_STATUS.md`, `TEST_REPORT.md`, `ROADMAP.md`, `TECHNICAL_DEBT.md` (TD-010/011/012/013 obsolete), `CLAUDE.md`
+
+### 8. Dependencies and Risks
+
+- [ ] Blocked by: none.
+- [ ] Blocking: release gate — real-wire `inputTranscription` verification.
+- [ ] Risks identified: (1) Live Translate may accept `inputAudioTranscription` but never emit transcription texts → source captions impossible on this surface (fallback would be a different Gemini model/surface — new investigation); (2) first-caption latency regresses to Gemini-bound ~6 s; (3) offline use impossible without a key; (4) large test-matrix churn.
+- [x] Mitigation plan: deterministic fakes pin all new behavior; spike run verifies the wire before any release claim; failure paths surface actionable key/network errors (existing machinery).
+
+### 9. Assumptions
+
+| # | Assumption | Impact if Wrong | Source |
+|---|---|---|---|
+| 1 | The Live Translate service emits `serverContent.inputTranscription.text` when top-level `inputAudioTranscription` is configured. | Source captions never appear; would require switching surfaces/models (new spike + ADR). | Protocol comment anticipating the field; general Live API docs; NOT yet wire-proven (open gate). |
+| 2 | Running the session with translation "off" (display-suppressed) is acceptable product behavior given translate-only service semantics. | User rejects always-streaming → revert to hybrid architecture. | ADR-0011 Decision 4 (user-approved direction). |
+| 3 | `TagalogNaturalizer` has no production caller (benchmark-only) — safe to delete with Translation. | None found in audit. | Dependency audit 2026-08-21. |
+
+### 10. Open Questions
+
+| # | Question | Asked Of | Status |
+|---|---|---|---|
+| 1 | Does `inputTranscription` actually stream back on the real wire? | Spike run (API key from Credential Manager) | Open — verification gate |
+
+### Impact Analysis Decision
+
+**Decision:** Proceed (user-approved; ADR-0011).
+
+**Analysis performed by:** Engineering
+**Date:** 2026-08-21
+
+---
+
 ## Entry 16 - CPU Optimization: Cap Faster-Whisper Decode Threads at 4 (UC_NATIVE_THREADS)
 
 Date: 2026-08-06

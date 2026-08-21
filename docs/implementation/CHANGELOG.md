@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-13 (v0.5.39)
+Last updated: 2026-08-21 (v0.5.43)
 
 ## Metadata
 
@@ -16,6 +16,21 @@ Last updated: 2026-08-13 (v0.5.39)
 ---
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
+
+## v0.5.43 - 2026-08-21
+
+### Gemini-only pipeline (ADR-0011): local Whisper and Argos Translate removed; Gemini Live is the single STT + translation engine
+
+- **Decision:** [ADR-0011](../adr/ADR-0011-gemini-only-pipeline.md) — the app now runs one Gemini Live session per capture that produces **both** the source transcription (`inputAudioTranscription`) and the translation (`outputAudioTranscription`) in a single pass. The entire local-model stack is gone: `UniversalCaptions.Speech` (Whisper engines + faster-whisper Python worker), `UniversalCaptions.Translation` (Argos child process), `UniversalCaptions.Benchmarks`, their test projects, all bundled models/Python runtime/Argos packages, and `launcher.cmd`. The install shrinks to a ~145 MB trimmed self-contained publish (measured 2026-08-21: 145.2 MiB, 261 files; installer 48.8 MB, portable ZIP 64.5 MB) with no Python, no models, no env-var knobs.
+- **Contract:** new `ILiveAudioTranslationEngine` in `UniversalCaptions.Core.Translation` with additive events `PartialTranscriptionAvailable`/`FinalTranscriptionAvailable` alongside the existing translation events; `ServerContent(Text, IsPartial, TurnComplete, InputText, InputIsPartial)` carries both surfaces independently. The setup frame always sends top-level `"inputAudioTranscription": {}` (real-wire-proven accepted 2026-08-09 A/B run; whether transcription texts stream back remains a release-gate verification — see RISK_REGISTER R-007).
+- **Pipeline:** `CaptionPipeline.Start(deviceId, sourceLanguage, targetLanguage, translationEnabled)`; the Gemini session runs whenever capture runs; the translation toggle gates translation-origin caption events without touching the session; changing target language recycles the engine. `LiveTranslationEngineFactory` reads the API key only from Windows Credential Manager (`UniversalCaptions:GeminiApiKey`); the legacy `UC_GEMINI_API_KEY` env var is ignored by the production App.
+- **Captions:** `CaptionService` rewritten as a pure relay/state machine (source ingress, dedup/overlap, CleanText bracket stripping, toggle scrubbing, stale-session guards); `CaptionLineUpdated` raised on publishes/commits; E2E latency stamping restored on translation lines (`TranslationStartedAtUtc` = capture timestamp, `TranslationCompletedAtUtc` = apply time) feeding `EndToEndLatencyUpdated`.
+- **Settings:** schema v3 — `TranslationProvider` enum + `Provider` field removed; tolerant loader ignores stale fields.
+- **Tests:** full solution **528/528** (106 Audio + 69 Captions + 174 Speech.Gemini + 179 App). Removed suites: Speech.Tests, Translation.Tests. Release 0 warnings / 0 errors, `dotnet format --verify-no-changes` clean.
+- **RELEASE GATE CLOSED (2026-08-21):** real-wire `inputTranscription` verification PASS — `tools/GeminiDirectWireSpike --ab` against the live API: variant B (setup + top-level `inputAudioTranscription`) received 7–8 `serverContent.inputTranscription` frames per utterance with real English source text; variant A (field not sent) also received them, i.e. the surface streams by default for this model. Both variants proven, no key leakage. Evidence: `artifacts/spike-result/ab-result.json`, TEST_REPORT.
+- **Packaging:** `packaging/build-package.ps1` stages publish → trim → manifest → portable ZIP → Inno Setup (no Python/model/Argos staging); `packaging/inspect-package.ps1` asserts flat layout and absence of legacy trees; `launcher.cmd` deleted; installer points directly at `UniversalCaptions.App.exe`.
+- **Final smoke:** v0.5.43 installer/portable artifacts passed the manual release checklist on 2026-08-21: startup, WASAPI loopback capture, source + translation captions, Translate OFF/ON, target-language session recycle, clean Stop, and history retention.
+- **Docs:** constitution privacy policy amended (cloud disclosure), SECURITY_PLAN/ARCHITECTURE/TECH_STACK/REPOSITORY_STANDARDS/DEVELOPER_SETUP/DEPLOYMENT/PRD/PROJECT_SCOPE/RISK_REGISTER updated to the Gemini-only direction.
 
 ## v0.5.39 - 2026-08-13
 

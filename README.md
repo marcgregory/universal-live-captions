@@ -1,25 +1,27 @@
 # Universal Live Captions
 
-Chrome-Live-Caption-like live captions for **any** Windows application. Captures system audio via WASAPI loopback (no virtual audio cable required), recognizes speech locally, and renders real-time captions in an always-on-top overlay.
+Chrome-Live-Caption-like live captions for **any** Windows application. Captures system audio via WASAPI loopback (no virtual audio cable required), streams it to a Gemini Live session that produces both the transcription and the translation, and renders real-time captions in an always-on-top overlay.
 
 ## Install (Windows 10 64-bit, recommended)
 
 1. Download `UniversalCaptions-Setup-*.exe`.
 2. Run it and follow the installer.
 3. Launch UniversalCaptions from the Start Menu.
-4. Press **START**.
+4. Add your free Gemini API key in the Control Window (stored in Windows Credential Manager).
+5. Press **START**.
 
-That's it. The installer bundles the .NET runtime, the Python runtime, the speech-recognition model, and the local translation packages. **No Python installation. No .NET installation. No internet connection required at runtime.**
+That's it. The installer bundles the .NET runtime — no Python, no models, no .NET installation. **An internet connection and a free Gemini API key are required at runtime** (speech recognition and translation run in a Gemini Live session).
 
 ## Portable (no installer)
 
-Prefer no installer? Download `UniversalCaptions-*-win-x64-full.zip`, extract it anywhere, and run `launcher.cmd`. The portable and installed versions contain the same offline speech-recognition and translation components.
+Prefer no installer? Download `UniversalCaptions-*-win-x64.zip`, extract it anywhere, and run `UniversalCaptions.App.exe`. The portable and installed versions contain the same app (~90 MB).
 
 ## Privacy
 
 - No microphone capture.
-- No raw audio is saved to disk.
-- Speech recognition and translation run locally. Nothing leaves the machine.
+- No raw audio or transcripts are saved to disk.
+- Audio is streamed **only** to Google's Gemini API while captions run — never recorded, never sent anywhere else.
+- Your API key lives only in Windows Credential Manager on your PC.
 
 ## Documentation
 
@@ -27,14 +29,14 @@ Prefer no installer? Download `UniversalCaptions-*-win-x64-full.zip`, extract it
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, boundaries, data flow, state, and privacy.
 - [docs/SECURITY_PLAN.md](docs/SECURITY_PLAN.md) — threat model, privacy model, security controls.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — packaging, release process, and distribution artifacts.
-- [docs/adr/](docs/adr/) — consequential architecture decisions (ADRs 0001–0009).
+- [docs/adr/](docs/adr/) — consequential architecture decisions (ADRs 0001–0011; ADR-0011 governs the Gemini-only pipeline).
 - [docs/reports/TEST_REPORT.md](docs/reports/TEST_REPORT.md) — test execution evidence.
-- [docs/reports/BENCHMARK_REPORT.md](docs/reports/BENCHMARK_REPORT.md) — STT and translation benchmark results.
+- [docs/reports/BENCHMARK_REPORT.md](docs/reports/BENCHMARK_REPORT.md) — historical STT and translation benchmark results.
 - [docs/reports/INSTALLER_DISCOVERY.md](docs/reports/INSTALLER_DISCOVERY.md) — installer / distribution discovery and decisions.
 
 ## Developer documentation
 
-Building from source, running tests, environment-variable knobs, the `dotnet build` / `dotnet run` / `dotnet test` / `dotnet publish` quickstart, and developer troubleshooting live in **[docs/DEVELOPER_SETUP.md](docs/DEVELOPER_SETUP.md)**.
+Building from source, the Gemini API key setup for development, the `dotnet build` / `dotnet run` / `dotnet test` / `dotnet publish` quickstart, and developer troubleshooting live in **[docs/DEVELOPER_SETUP.md](docs/DEVELOPER_SETUP.md)**.
 
 Other implementation references:
 

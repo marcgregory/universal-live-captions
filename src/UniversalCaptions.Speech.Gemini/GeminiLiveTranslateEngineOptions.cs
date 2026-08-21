@@ -73,16 +73,6 @@ public sealed class GeminiLiveTranslateEngineOptions
     /// </summary>
     public TimeSpan CommitIdleTimeout { get; set; } = TimeSpan.FromSeconds(1.5);
 
-    /// <summary>
-    /// Optional system-instruction nudge. STATUS (2026-08-08, Google's Live Translate docs):
-    /// REJECTED by the server — "Pure low-latency translation; no support for tools or
-    /// instructions." The property is retained on the options object so existing call-sites
-    /// compile, but <see cref="GeminiLiveTranslateProtocol.BuildSetupFrame"/> does NOT include
-    /// it in the setup frame. A future product change can re-introduce it if/when Google
-    /// accepts system instructions on this surface.
-    /// </summary>
-    public string? SystemInstruction { get; set; }
-
     /// <summary>WebSocket endpoint URI. Defaults to the documented Gemini Live Translate URL.</summary>
     public string Endpoint { get; set; } = DefaultEndpoint;
 

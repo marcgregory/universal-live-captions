@@ -63,7 +63,7 @@ public sealed class GeminiAvailabilityEvaluator
     /// <summary>
     /// Authoritative availability: the local gate first, then a live validation round-trip when a
     /// key is present. A store failure degrades to <see cref="GeminiAvailability.MissingKey"/> so a
-    /// broken credential store is treated the same as "no key" (Gemini unavailable, Argos usable).
+    /// broken credential store is treated the same as "no key" (captions cannot start).
     /// </summary>
     public async Task<GeminiAvailability> EvaluateLiveAsync(CancellationToken cancellationToken = default)
     {
@@ -113,7 +113,7 @@ public sealed class GeminiAvailabilityEvaluator
         catch (Exception)
         {
             // The evaluator never throws: a failing credential store degrades to "no key" so the
-            // offline/Argos path keeps working (mirrors the factory's ADR-0009 invariant).
+            // start stays blocked with an actionable message (mirrors the factory's ADR-0009 invariant).
             return null;
         }
     }

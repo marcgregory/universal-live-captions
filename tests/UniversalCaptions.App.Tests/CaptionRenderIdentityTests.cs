@@ -37,7 +37,6 @@ public class CaptionRenderIdentityTests
         public void Stop() { }
         public void Reset() { }
         public void SetTranslationEnabled(bool enabled, string? targetLanguage = null) { }
-        public void SetCaptionLineTranslation(bool enabled) { }
         public void SetLiveTranslationSession(bool active) { }
         public void ClearCaptionContent() { }
         public void ProcessPartial(PartialTranscript transcript) { }
@@ -47,7 +46,6 @@ public class CaptionRenderIdentityTests
         public void ClearLiveTranslationActiveLine() { }
         public void ClearTranslationHistory() { }
         public void ResetTranslatedContent() { }
-        public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void Dispose() { }
     }
 

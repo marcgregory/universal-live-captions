@@ -16,10 +16,10 @@ public sealed class LiveTranslationErrorMessagingTests
     {
         var message = ControlWindow.DescribeLiveTranslationError(new LiveTranslationError(
             LiveTranslationErrorKind.SessionEnded,
-            "Gemini session ended. Toggle translation off/on or restart to resume.",
+            "Gemini session ended.",
             null));
 
-        Assert.Contains("restart to resume", message);
+        Assert.Contains("Restart captions to resume", message);
         Assert.DoesNotContain("unavailable", message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Check your connection", message, StringComparison.OrdinalIgnoreCase);
     }
@@ -33,7 +33,7 @@ public sealed class LiveTranslationErrorMessagingTests
             null));
 
         Assert.Contains("Update the key", message);
-        Assert.Contains("switch to Argos", message);
+        Assert.DoesNotContain("Argos", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

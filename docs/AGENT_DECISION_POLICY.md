@@ -82,7 +82,7 @@ The agent may proceed with a best guess but must flag it for user review at the 
 
 ### Minor Technology Choices
 - Exact NuGet package when multiple fit the approved stack (e.g., which DI container, which test double library)
-- Which whisper.cpp distribution/binding to wrap behind `ISpeechToTextEngine`
+- Which speech provider to wrap behind the live-engine abstraction (ADR-0011 settled this: Gemini Live; a change requires a new ADR)
 
 ### Default Values
 - VAD thresholds, audio buffer sizes, meter update rate
@@ -102,9 +102,8 @@ The agent MUST stop and ask the user before deciding any of the following:
 
 ### Architecture
 - Changing the approved native stack (.NET 8, WPF, NAudio) from [TECH_STACK.md](TECH_STACK.md)
-- Adding a new speech recognition provider or switching the first engine away from local Whisper
-- Introducing a database, web service, or cloud dependency
-- Selecting the Whisper model size for the default STT engine (deferred pending latency benchmarking per ADR-0003)
+- Adding a new speech recognition/translation provider or switching away from the Gemini-only pipeline (ADR-0011)
+- Introducing a database, web service, or additional cloud dependency
 - Choosing a new major framework or UI technology
 
 ### Infrastructure / Distribution

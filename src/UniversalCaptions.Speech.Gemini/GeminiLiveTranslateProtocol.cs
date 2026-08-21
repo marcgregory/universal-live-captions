@@ -50,13 +50,24 @@ internal static class GeminiLiveTranslateProtocol
     /// </param>
     /// <returns>The JSON document to send as the first frame of the session.</returns>
     /// <remarks>
+    /// <para>
     /// STATUS (2026-08-08, verified against Google's
     /// <see href="https://ai.google.dev/gemini-api/docs/live-api/live-translate"/> docs):
     /// Live Translate is "audio restricted" and rejects <c>systemInstruction</c> outright — the
     /// docs describe it as "translation only. Pure low-latency translation; no support for tools
     /// or instructions." We intentionally do NOT expose a system-instruction parameter on this
-    /// method. Output modality is fixed to <c>AUDIO</c>; the text transcript arrives on the
+    /// method. Output modality is fixed to <c>AUDIO</c>; the translated text arrives on the
     /// <c>outputAudioTranscription</c> side-channel parsed in <see cref="TryBuildServerContent"/>.
+    /// </para>
+    /// <para>
+    /// ADR-0011: Gemini is the pipeline's ONLY speech engine, so the setup frame also requests
+    /// top-level <c>inputAudioTranscription</c> — the source-language transcript of the input
+    /// audio, parsed from <c>serverContent.inputTranscription.text</c>. The top-level placement is
+    /// real-wire-proven (2026-08-09 A/B run: the field is accepted at the setup top level and is
+    /// translation-neutral; nesting it inside <c>generationConfig</c> is rejected by the server —
+    /// see docs/spikes/GEMINI_MODEL_DISCOVERY.md Round 3). Whether the server actually streams
+    /// <c>inputTranscription</c> texts back remains a release-gate verification.
+    /// </para>
     /// </remarks>
     internal static string BuildSetupFrame(string model, string targetLanguageCode, bool echoTargetLanguage = false)
     {
@@ -94,10 +105,13 @@ internal static class GeminiLiveTranslateProtocol
             writer.WriteEndObject();
 
             // inputAudioTranscription is the matching top-level field for transcribing the input
-            // audio back to us. The App pipeline doesn't need it (Whisper STT owns the source
-            // transcript), so we omit it by default. If a future product change drops Whisper
-            // from the pipeline and needs Gemini to also transcribe the input audio, this is the
-            // top-level field to add — and the same path-restriction caveat applies.
+            // audio back to us — the pipeline's ONLY source-caption surface since ADR-0011 removed
+            // the local Whisper STT. Same path restriction as outputAudioTranscription: top-level
+            // sibling of model + generationConfig (the nested generationConfig form is rejected;
+            // the 2026-08-09 A/B run proved the top-level form is accepted and translation-neutral).
+            writer.WriteStartObject("inputAudioTranscription");
+            writer.WriteEndObject();
+
             writer.WriteEndObject(); // setup
             writer.WriteEndObject(); // root
         }
@@ -340,7 +354,24 @@ internal static class GeminiLiveTranslateProtocol
             }
         }
 
-        content = new GeminiServerMessage.ServerContent(partialText, partial, turnComplete);
+        // inputTranscription is the source-language transcript of the input audio — the pipeline's
+        // ONLY source-caption surface since ADR-0011 removed the local Whisper STT. Same shape as
+        // outputTranscription ({ text: string }) and same frame-level `partial` flag contract.
+        string? inputText = null;
+        bool inputPartial = false;
+        if (serverContent.TryGetProperty("inputTranscription", out JsonElement inputTranscription)
+            && inputTranscription.ValueKind == JsonValueKind.Object)
+        {
+            inputPartial = serverContent.TryGetProperty("partial", out JsonElement partialElement)
+                           && partialElement.ValueKind == JsonValueKind.True;
+
+            if (inputTranscription.TryGetProperty("text", out JsonElement inputTextElement) && inputTextElement.ValueKind == JsonValueKind.String)
+            {
+                inputText = inputTextElement.GetString();
+            }
+        }
+
+        content = new GeminiServerMessage.ServerContent(partialText, partial, turnComplete, inputText, inputPartial);
         return true;
     }
 

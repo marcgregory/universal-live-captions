@@ -65,9 +65,9 @@ public static class CaptionDisplayPolicy
         ArgumentNullException.ThrowIfNull(snapshot);
 
         // The common translation state/UX layer is the source of truth: TranslationEnabled +
-        // TargetLanguage reflect the user's Translate toggle for every provider (Argos and Gemini
-        // alike), so the badge and the source-vs-translation display key off it — never off line
-        // origins. Origins only decide WHICH lines are the display in a live-translation session.
+        // TargetLanguage reflect the user's Translate toggle, so the badge and the
+        // source-vs-translation display key off it — never off line origins. Origins only decide
+        // WHICH lines are the display in a live-translation session.
         bool translationOn = snapshot.TranslationEnabled && !string.IsNullOrWhiteSpace(snapshot.TargetLanguage);
 
         // Build the full display list. The overlay is a fixed-height ScrollViewer that
@@ -75,15 +75,13 @@ public static class CaptionDisplayPolicy
         // shows only the last 2-3 lines, exactly like Chrome's Live Caption.
         //
         // Live-translation session (Gemini): the live engine owns display, so the overlay is
-        // Tagalog-only — source-STT finals (Whisper) are hidden once the session produces any
+        // target-language-only — source transcription finals are hidden once the session produces any
         // translation content; their Gemini translation is the display. The mode is DRIVEN BY THE
         // ACTUAL SESSION STATE (CaptionSnapshot.IsLiveTranslationSession, set by the pipeline when a
-        // live engine is active), never inferred from history content: a provider change must not
-        // flash the previous provider's untranslated English source just because stale translation
-        // content was cleared. The Argos caption-line path never sets the flag, so it cannot
-        // mis-fire there. When translation is toggled OFF the live engine is stopped and the flag
-        // clears, so the overlay returns to the source captions even though old translation-origin
-        // history remains.
+        // live engine is active), never inferred from history content: an engine swap must not
+        // flash the previous session's untranslated source just because stale translation
+        // content was cleared. When translation is toggled OFF the translation-origin events are
+        // gated and the scrub clears old content, so the overlay returns to the source captions.
         bool liveTranslationSession = translationOn && snapshot.IsLiveTranslationSession;
 
         var allHistory = new List<CaptionDisplayLine>(snapshot.History.Count);
@@ -114,10 +112,10 @@ public static class CaptionDisplayPolicy
 
         IReadOnlyList<CaptionDisplayLine> history = allHistory;
 
-        // The active line. In a live-translation session (Gemini) the overlay is Tagalog-only: the
-        // translation-origin line is the display, and while no translation is in progress the Whisper
-        // source line must NOT flash in English — so it is never used as a fallback. When translation
-        // is off, or in the Argos caption-line path, the source line is the display.
+        // The active line. In a live-translation session (Gemini) the overlay is target-language-only:
+        // the translation-origin line is the display, and while no translation is in progress the
+        // source line must NOT flash in the source language — so it is never used as a fallback.
+        // When translation is off, the source line is the display.
         CaptionLine? active = liveTranslationSession ? snapshot.ActiveTranslationLine : snapshot.ActiveLine;
 
         CaptionDisplayLine? display = null;

@@ -19,7 +19,7 @@ public enum CaptionLineState
 /// </summary>
 public enum LineOrigin
 {
-    /// <summary>The line was produced by an <c>ISpeechToTextEngine</c> recognising the source audio.</summary>
+    /// <summary>The line was produced by transcribing the source audio.</summary>
     SourceStt,
 
     /// <summary>The line was produced by an <c>ILiveAudioTranslationEngine</c> emitting target-language text.</summary>
@@ -51,7 +51,7 @@ public enum CaptionTranslationStatus
 /// </summary>
 /// <remarks>
 /// A line is either <see cref="CaptionLineState.Active"/> (in-progress, fed by partials) or
-/// <see cref="CaptionLineState.Final"/> (committed, fed by a Whisper final and retained in
+/// <see cref="CaptionLineState.Final"/> (committed, fed by a transcription final and retained in
 /// <see cref="CaptionState.History"/>). Translation never replaces the source text: a failure is
 /// represented by <see cref="CaptionTranslationStatus.Failed"/> with the original text intact.
 /// </remarks>
@@ -183,10 +183,9 @@ public sealed class CaptionLine
     /// <see cref="TranslatedText"/>, <see cref="TranslationStatus"/> (reset to
     /// <see cref="CaptionTranslationStatus.NotRequested"/>), <see cref="TranslationErrorMessage"/> and
     /// both translation timestamps are cleared. Used when a runtime reconfiguration (target change,
-    /// translation toggle-off, provider change) ends a translation session and the overlay must return
-    /// to pure source captions WITHOUT losing the English ground truth — this is what keeps the
-    /// reported "Argos output mixes Japanese with English" impossible: the Japanese text is removed,
-    /// the source line survives as English.
+    /// translation toggle-off) ends a translation session and the overlay must return
+    /// to pure source captions WITHOUT losing the source ground truth — the translated text is
+    /// removed, the source line survives.
     /// </summary>
     public CaptionLine WithoutTranslation() => new(
         Text, SourceLanguage, Sequence, CapturedAtUtc, State, CommittedAtUtc,

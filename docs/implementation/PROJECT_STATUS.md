@@ -1,6 +1,6 @@
 # Universal Live Captions Project Status
 
-Last updated: 2026-08-14 (corpus-driven phrase-guard validation CLOSED — decision: insufficient evidence, do not ship)
+Last updated: 2026-08-21 (Gemini-only pipeline — ADR-0011 implemented; local Whisper + Argos removed)
 
 ## Metadata
 
@@ -18,6 +18,28 @@ Last updated: 2026-08-14 (corpus-driven phrase-guard validation CLOSED — decis
 This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
+
+**Gemini-only pipeline — IMPLEMENTED 2026-08-21 (ADR-0011; v0.5.43).** Local Whisper
+(`UniversalCaptions.Speech`) and Argos Translate (`UniversalCaptions.Translation`) are **removed**
+from the solution along with `UniversalCaptions.Benchmarks`, their test projects, all bundled
+models/Python runtime/Argos packages, and `launcher.cmd`. One Gemini Live session per capture now
+produces **both** source transcription (`inputAudioTranscription`) and translation
+(`outputAudioTranscription`) in a single pass. Pipeline: `Start(deviceId, sourceLanguage,
+targetLanguage, translationEnabled)`; the session runs whenever capture runs; the Translate toggle
+gates caption events without touching the session; target-language change recycles the engine.
+API key comes only from Windows Credential Manager (`UniversalCaptions:GeminiApiKey`); settings
+schema v3 dropped the provider concept. Install: ~145 MB trimmed self-contained publish (measured 2026-08-21), no Python,
+no models, no env-var knobs. **Full suite 528/528** (106 Audio + 69 Captions + 174 Speech.Gemini +
+179 App), Release 0 warnings / 0 errors, `dotnet format` clean. **RELEASE GATE CLOSED
+(2026-08-21): real-wire `inputTranscription` verification PASS** � `tools/GeminiDirectWireSpike --ab`
+against the live API: variant B (setup + top-level `inputAudioTranscription`) received 7�8
+`serverContent.inputTranscription` frames per utterance with real English source text, and variant A
+(field not sent) also received them � the surface streams by default for this model. Evidence:
+`artifacts/spike-result/ab-result.json`, TEST_REPORT. Remaining before tag cut: real-app smoke on the
+Release artifact (loopback ? captions ? translation toggle ? goAway recovery). Docs updated to the
+new direction: constitution �10 amended, SECURITY_PLAN, ARCHITECTURE, TECH_STACK,
+REPOSITORY_STANDARDS, DEVELOPER_SETUP, DEPLOYMENT, PRD, PROJECT_SCOPE, RISK_REGISTER, CHANGELOG
+v0.5.43.
 
 **Corpus-driven phrase-guard validation — CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE — do not
 ship; no production change; v0.5.40 gate untouched; no v0.5.41).** Second, corpus-driven validation
@@ -317,11 +339,11 @@ the real hotplug acceptance test can be run; no change to ADR-0007 / model selec
 
 ## Architecture Status
 
-Approved: .NET 8 + WPF + NAudio + local Whisper behind streaming `ISpeechToTextEngine` (ADRs 0001“0005) + Argos Translate behind `ITranslationEngine` (ADR-0006, refined: contracts in Core, `UniversalCaptions.Translation` owns the engine + process seam; pair/protocol selection resolved by Slice 3 benchmark). Pipeline layers per `ARCHITECTURE.md`.
+Approved: .NET 8 + WPF + NAudio + **Gemini Live as the single STT + translation engine behind `ILiveAudioTranslationEngine` (ADR-0011, 2026-08-21)**. Local Whisper (ADRs 0003/0005) and Argos Translate (ADR-0006) are removed from the solution; those ADRs remain as historical records superseded by ADR-0011 for the shipped architecture. Pipeline layers per `ARCHITECTURE.md`.
 
 ## Platform Status
 
-Windows 10 target (build 17763+). Development environment: Windows with .NET SDK 8/10. NAudio 2.2.1 restored. Whisper.net 1.9.1 + Whisper.net.Runtime (CPU). No VB-CABLE. Whisper models cached in git-ignored `artifacts/models/` (tiny/base/small). Argos 1.11.0 in a dedicated Python 3.11 venv + `en/ja/tl` language packages under `artifacts/argos/` (git-ignored; dev machine venv created under the temp dir with the short 8.3 path to avoid Windows MAX_PATH limits during torch install).
+Windows 10 target (build 17763+). Development environment: Windows with .NET SDK 8/10. NAudio 2.2.1 restored. No VB-CABLE. No local model binaries or Python runtimes anywhere in the stack (ADR-0011); the only runtime dependency beyond .NET is the Gemini Live API + a user-supplied free API key stored in Windows Credential Manager.
 
 ## Current Blockers
 
@@ -329,8 +351,15 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**Corpus-driven phrase-guard validation — CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE — do not
-ship).** See Current Sprint for the measured reduction−over-join table and the established conclusions
+**Gemini-only pipeline release (v0.5.43):** the real-wire `inputTranscription` gate is **CLOSED
+(PASS, 2026-08-21)** � see Current Sprint and TEST_REPORT. Remaining before tag cut: a real-app
+smoke on the Release artifact (loopback ? captions appear ? translation toggle ON/OFF mid-session ?
+target-language switch recycles the session ? goAway recovery), then `packaging/build-package.ps1
+-Version 0.5.43` + `inspect-package.ps1` verification and the GitHub release.
+
+Prior milestone for the record — **corpus-driven phrase-guard validation — CLOSED 2026-08-14
+(decision: INSUFFICIENT EVIDENCE — do not ship).** See Current Sprint for the measured
+reduction−over-join table and the established conclusions
 (bare-word allowlist = reject; English equivalents = no net benefit; phrase guard = technically reduces
 observed Cat 2 failures; same-surface ambiguity = irreducible with lexical info alone; frequency-weighted
 real-world cost = unknown). **Production gate unchanged; no v0.5.41; the 49 matrix tests unchanged.**
@@ -402,4 +431,6 @@ hotplug acceptance test can be run.
 
 ## Last Build
 
-2026-08-14 — `dotnet build UniversalCaptions.slnx` succeeded, 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **651/651** (106 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 119 Speech.Gemini), `dotnet format` clean. **v0.5.40 investigation COMPLETE (2026-08-14):** 20-run real-Gemini segmentation study — root cause identified (lowercase-only continuation guard misses capitalized continuations), **no production change**, next gate = segmentation-guard unit-test matrix. See BENCHMARK_REPORT.md (Gemini Streaming-Caption Segmentation Study), `gemini_seg_study\` (untracked). Tracer (`GeminiSegmentTrace`) removed after study. Prior (2026-08-13): v0.5.39 goAway fix — 645/645. **Real-app goAway regression PASS (2026-08-13) — v0.5.39 Gemini live-session lifecycle fix** on the Release app + WASAPI loopback + Gemini en→tl: natural goAway at ~9 min → Control Window status "Live translation unavailable: Live translation session ended by server."; overlay stable after goAway (engine detached); OFF→ON toggle resumed a new Gemini session producing translated captions; status recovered to "Capturing system audio." (6/6 checks). See CHANGELOG v0.5.39, `regression-v0539-goaway.ps1`/`regression_v0539_goaway.log` (untracked). Prior (2026-08-13): v0.5.38 stable/unstable partial rendering smoke PASS — two-tone evidence captured live via `UC_NATIVE_PARTIAL_WINDOW=8`; verified sequence first-partial all-green → extension white head + green tail → head-revision re-green → FINAL all-white → Stop green 0. See CHANGELOG v0.5.38, RELEASE_PLAN §3.7, TEST_REPORT (2026-08-13). Prior (2026-08-13): v0.5.37 mixed-language history scrub smoke PASS — see CHANGELOG v0.5.37, RELEASE_PLAN §3.6, TEST_REPORT (2026-08-13). Prior (2026-08-12): runtime Gemini-toggle latency verification (CHANGELOG v0.5.35, measurement only — no code change). Prior (2026-08-12): v0.5.33 translation parity 22/22 (Argos 11/11 + Gemini 11/11) — see CHANGELOG v0.5.33, TEST_REPORT (2026-08-12), `v0533_parity_acceptance.log` (untracked). Prior (2026-08-06): Entry 16 `UC_NATIVE_THREADS` decode cap (Threads=4), Entry 15 overlay live-line, Entry 14 default promotion (ADR-0008) — see CHANGELOG v0.5.22–v0.5.25, TEST_REPORT (Entry 15/16 + final acceptance), BENCHMARK_REPORT (Entry 16 gate).
+2026-08-21 � `dotnet build UniversalCaptions.slnx` succeeded (Debug + Release), 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **528/528** (106 Audio + 69 Captions + 174 Speech.Gemini + 179 App), `dotnet format --verify-no-changes` clean. **Gemini-only pipeline (ADR-0011) implemented:** local Whisper + Argos + Benchmarks projects removed; `ILiveAudioTranslationEngine` single-session STT+translation; packaging stripped to a ~145 MB flat publish; docs updated. See CHANGELOG v0.5.43.
+
+Prior (2026-08-14): 651/651 on the pre-ADR-0011 suite (incl. since-removed Speech/Translation projects); v0.5.40 segmentation investigation COMPLETE � root cause identified, no production change. Prior (2026-08-13): v0.5.39 goAway fix 645/645 + real-app regression PASS; v0.5.38 two-tone partial rendering smoke PASS; v0.5.37 mixed-language history scrub smoke PASS. Prior (2026-08-12): runtime Gemini-toggle latency verification (measurement only); v0.5.33 translation parity 22/22. Details: CHANGELOG.md entries v0.5.33�v0.5.40.

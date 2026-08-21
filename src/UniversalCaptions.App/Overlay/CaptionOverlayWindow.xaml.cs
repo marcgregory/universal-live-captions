@@ -23,7 +23,7 @@ namespace UniversalCaptions.App.Overlay;
 public partial class CaptionOverlayWindow : Window, IOverlayService
 {
     private readonly ICaptionService _captions;
-    private readonly string _sourceLanguage;
+    private string _sourceLanguage;
     private readonly ISettingsStore _settingsStore;
     private readonly UserSettings _settings;
     private readonly EventHandler<CaptionLine> _lineChangedHandler;
@@ -46,7 +46,7 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
 
     /// <summary>
     /// The subtle cyan used for the unstable tail of the live partial line (v0.5.38): words
-    /// Whisper has not yet confirmed are tinted cyan (matching the landing-page accent #67e8f9)
+    /// the engine has not yet confirmed are tinted cyan (matching the landing-page accent #67e8f9)
     /// until the next partial re-recognizes them or a FINAL freezes the line into history. Kept
     /// deliberately muted so the stable white head stays the visual dominant. Frozen so any thread
     /// can read it (tests run each case on its own STA thread).
@@ -132,6 +132,11 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             _clickThrough = value;
             ApplyClickThrough();
         }
+    }
+
+    void IOverlayService.SetSourceLanguage(string? sourceLanguage)
+    {
+        _sourceLanguage = string.IsNullOrWhiteSpace(sourceLanguage) ? "AUTO" : sourceLanguage.Trim().ToUpperInvariant();
     }
 
     void IOverlayService.Show() => Show();
@@ -448,10 +453,13 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
     /// </summary>
     private void ScrollToBottomIfNeeded()
     {
-        if (CaptionScroller.ScrollableHeight > 0)
+        Dispatcher.BeginInvoke(() =>
         {
-            CaptionScroller.ScrollToBottom();
-        }
+            if (CaptionScroller.ScrollableHeight > 0)
+            {
+                CaptionScroller.ScrollToBottom();
+            }
+        }, DispatcherPriority.Loaded);
     }
 
     private void OnCollapseToggled(object sender, RoutedEventArgs e)
@@ -484,8 +492,9 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
         if (_expanded)
         {
             // Expanded: fixed-height box (~5-6 lines), matching Chrome Live Caption.
-            CaptionScroller.Height = 160;
-            CaptionScroller.OpacityMask = _topFadeMask;
+            CaptionScroller.Height = 200;
+            // Keep the first line fully readable; the old top fade made text look clipped.
+            CaptionScroller.OpacityMask = null;
             CollapseChevron.Text = "\uE70E"; // chevron up — click will collapse
             CollapseButton.ToolTip = "Collapse";
         }
@@ -499,8 +508,8 @@ public partial class CaptionOverlayWindow : Window, IOverlayService
             CollapseButton.ToolTip = "Expand";
         }
 
-        // After resizing, scroll to the bottom so the newest caption is visible in either state.
-        CaptionScroller.ScrollToBottom();
+        // Scroll after the layout pass so wrapped lines and the bottom padding are measured first.
+        Dispatcher.BeginInvoke(CaptionScroller.ScrollToBottom, DispatcherPriority.Loaded);
     }
 
     /// <summary>

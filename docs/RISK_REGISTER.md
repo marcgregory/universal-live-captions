@@ -47,25 +47,25 @@ Last updated: 2026-07-31
 
 ---
 
-### Risk R-002: Whisper accuracy/latency does not meet the < 1 s target
+### Risk R-002: Gemini availability/quota does not meet the live-caption bar
 
 | Attribute | Value |
 |---|---|
 | Category | Technical |
-| Description | Model size, CPU performance, and audio chunking determine perceived latency and accuracy; unmeasured until Slice 2/6 |
+| Description | Captions depend on the Gemini Live API: network outages, free-tier quota exhaustion, or API changes stop captions; unmeasured at scale |
 | Probability | Possible (3) |
 | Impact | Moderate (3) |
 | Risk Score | **9** — Medium |
 | Owner | Engineering |
 | Status | Mitigating |
 
-**Mitigation:** Defer model selection until benchmarking (per approved direction); benchmark candidate models on the actual target hardware; abstraction allows engine/model swap without pipeline changes.
+**Mitigation:** Classified session errors with user-readable guidance (auth/quota/network); automatic reconnection where safe; abstraction allows engine swap without pipeline changes (ADR-0011).
 
-**Contingency:** Use a smaller model with faster partial hypotheses; adjust chunking/VAD; document measured latency as the accepted value.
+**Contingency:** Document quota limits; surface "wait and retry" guidance; engine seam allows a future local fallback if ever approved.
 
-**Triggers:** Slice 2 or Slice 6 benchmark shows > 1 s perceived latency.
+**Triggers:** Session failures during normal use; quota errors in manual testing.
 
-**Review Date:** 2026-08-31
+**Review Date:** 2026-09-30
 
 ---
 
@@ -103,7 +103,7 @@ Last updated: 2026-07-31
 | Owner | Engineering |
 | Status | Mitigating |
 
-**Mitigation:** Always-visible capture indicator; explicit start/stop; no persistence; local-only processing; privacy model documented in [SECURITY_PLAN.md](SECURITY_PLAN.md) and [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md).
+**Mitigation:** Always-visible capture indicator; explicit start/stop; no persistence; single disclosed network destination (Gemini endpoint); privacy model documented in [SECURITY_PLAN.md](SECURITY_PLAN.md) and [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md).
 
 **Contingency:** Add first-run privacy disclosure screen and OS-level permission documentation.
 
@@ -157,25 +157,25 @@ Last updated: 2026-07-31
 
 ---
 
-### Risk R-007: Argos translation latency/quality does not meet the target
+### Risk R-007: Gemini translation quality does not meet the target
 
 | Attribute | Value |
 |---|---|
 | Category | Technical |
-| Description | Python-based Argos process startup, per-pair model installs, and pivoting through an intermediate language add latency and may hurt quality; unmeasured until Slice 3/6 |
-| Probability | Possible (3) |
+| Description | Same-session translation may lag the source transcript or produce unnatural phrasing for specific language pairs. The real-wire `inputTranscription` gate was **CLOSED PASS 2026-08-21**: variant B received 7–8 `serverContent.inputTranscription` frames per utterance with real English source text; variant A (field not sent) also received them — the surface streams by default for this model (`artifacts/spike-result/ab-result.json`) |
+| Probability | Unlikely (2) |
 | Impact | Moderate (3) |
-| Risk Score | **9** — Medium |
+| Risk Score | **6** — Medium |
 | Owner | Engineering |
-| Status | Mitigating |
+| Status | Mitigating (transcription-surface portion resolved; translation-quality spot-checks continue) |
 
-**Mitigation:** Isolate Argos behind a local process with a simple line protocol; keep the process warm across caption sessions; defer model/pair selection until benchmarking (per ADR-0006); abstraction allows engine swap without pipeline changes.
+**Mitigation:** Real-wire spike runs recorded in `docs/spikes/GEMINI_MODEL_DISCOVERY.md` plus the 2026-08-21 A/B gate run (`tools/GeminiDirectWireSpike --ab`, evidence in TEST_REPORT); end-to-end latency instrumentation (`EndToEndLatencyUpdated`); prompt/system-instruction tuning in the setup frame.
 
-**Contingency:** Prefer direct pairs over pivoting; cache warm Argos processes; document measured latency/quality as the accepted values.
+**Contingency:** Adjust session instructions; fall back to source-only captions while keeping the toggle; engine seam allows a future alternative provider.
 
-**Triggers:** Slice 3 or Slice 6 benchmark shows translation latency or quality below the acceptable bar for sentence-length captions.
+**Triggers:** Spot-checks show unacceptable translation fidelity or missing transcription surface on the real wire.
 
-**Review Date:** 2026-08-31
+**Review Date:** 2026-09-30
 
 ---
 
@@ -192,7 +192,7 @@ Last updated: 2026-07-31
 
 | Strategy | When to Use | Used For |
 |---|---|---|
-| **Avoid** | High probability and high impact | R-004 (privacy: local-only, no persistence) |
+| **Avoid** | High probability and high impact | R-004 (privacy: disclosure, no persistence) |
 | **Mitigate** | Moderate to high risk, feasible to reduce | R-001, R-002, R-003, R-006, R-007 |
 | **Accept** | Low probability or low impact | — |
 | **Transfer** | When transfer is cost-effective | — |

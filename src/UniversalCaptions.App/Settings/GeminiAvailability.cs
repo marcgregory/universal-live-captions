@@ -1,9 +1,9 @@
 namespace UniversalCaptions.App.Settings;
 
 /// <summary>
-/// The runtime availability of the Gemini translation provider. The control window reflects this in
-/// the translation-provider dropdown: Gemini is only selectable when it is usable, and a definitive
-/// key problem (missing / malformed / server-rejected) disables the option and falls back to Argos.
+/// The runtime availability of the Gemini engine. The control window reflects this in the API-key
+/// panel: captions can only start when a usable key is stored, and a definitive
+/// key problem (missing / malformed / server-rejected) keeps the start blocked until the key is fixed.
 /// Transient states (<see cref="NetworkError"/>, <see cref="QuotaExceeded"/>, <see cref="Unknown"/>)
 /// keep Gemini selectable so a temporary outage does not lock the user out of their configured key.
 /// </summary>

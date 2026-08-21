@@ -2,20 +2,15 @@
   <Folder Name="/src/">
     <Project Path="src/UniversalCaptions.App/UniversalCaptions.App.csproj" />
     <Project Path="src/UniversalCaptions.Audio/UniversalCaptions.Audio.csproj" />
-    <Project Path="src/UniversalCaptions.Benchmarks/UniversalCaptions.Benchmarks.csproj" />
     <Project Path="src/UniversalCaptions.Captions/UniversalCaptions.Captions.csproj" />
     <Project Path="src/UniversalCaptions.Core/UniversalCaptions.Core.csproj" />
     <Project Path="src/UniversalCaptions.Diagnostics/UniversalCaptions.Diagnostics.csproj" />
-    <Project Path="src/UniversalCaptions.Speech/UniversalCaptions.Speech.csproj" />
     <Project Path="src/UniversalCaptions.Speech.Gemini/UniversalCaptions.Speech.Gemini.csproj" />
-    <Project Path="src/UniversalCaptions.Translation/UniversalCaptions.Translation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/UniversalCaptions.App.Tests/UniversalCaptions.App.Tests.csproj" />
     <Project Path="tests/UniversalCaptions.Audio.Tests/UniversalCaptions.Audio.Tests.csproj" />
     <Project Path="tests/UniversalCaptions.Captions.Tests/UniversalCaptions.Captions.Tests.csproj" />
-    <Project Path="tests/UniversalCaptions.Speech.Tests/UniversalCaptions.Speech.Tests.csproj" />
     <Project Path="tests/UniversalCaptions.Speech.Gemini.Tests/UniversalCaptions.Speech.Gemini.Tests.csproj" />
-    <Project Path="tests/UniversalCaptions.Translation.Tests/UniversalCaptions.Translation.Tests.csproj" />
   </Folder>
 </Solution>

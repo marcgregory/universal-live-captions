@@ -1,6 +1,6 @@
 {
-  "StartedAtUtc": "2026-08-09T04:33:25.6646617Z",
-  "FinishedAtUtc": "2026-08-09T04:34:44.4702479Z",
+  "StartedAtUtc": "2026-08-21T09:03:46.7804267Z",
+  "FinishedAtUtc": "2026-08-21T09:05:12.0558843Z",
   "KeyFingerprint": "AQ.Ab8RN",
   "Model": "models/gemini-3.5-live-translate-preview",
   "TargetLanguage": "tl",
@@ -9,61 +9,93 @@
       "Index": 1,
       "File": "OSR_us_000_0010_8k.wav",
       "SampleRate": 8000,
-      "DurationMs": 33623,
+      "DurationMs": 33626,
       "AudioBytes": 320000,
       "ChunkBytes": 3200,
       "VariantA": {
         "VariantLabel": "A",
         "IncludeInputTranscription": false,
-        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
         "SetupCompleteObserved": true,
         "TurnCompleteObserved": false,
         "AudioFramesSent": 100,
         "AudioBytesSent": 320000,
-        "FirstOutputMs": 4153,
-        "FirstOutputText": "Ang bangkang birch",
-        "FinalOutputMs": 11607,
+        "FirstOutputMs": 4231,
+        "FirstOutputText": "Pero ang bangkang",
+        "FinalOutputMs": 11697,
         "FinalText": " lang malaman ang lalim",
         "Outputs": [
           {
-            "Text": "Ang bangkang birch",
+            "Text": "Pero ang bangkang",
             "IsPartial": false,
-            "Ms": 4153
+            "Ms": 4231
           },
           {
-            "Text": " ay dumausdos sa makinis",
+            "Text": " birch ay dumausdos",
             "IsPartial": false,
-            "Ms": 4850
+            "Ms": 4935
           },
           {
-            "Text": " na tabla.",
+            "Text": " sa makinis na",
             "IsPartial": false,
-            "Ms": 5858
+            "Ms": 5909
           },
           {
-            "Text": " Idikit ang",
+            "Text": " tabla papunta",
             "IsPartial": false,
-            "Ms": 7107
+            "Ms": 7167
           },
           {
-            "Text": " papel sa madilim",
+            "Text": " sa madilim na asul",
             "IsPartial": false,
-            "Ms": 8111
+            "Ms": 8257
           },
           {
-            "Text": " na asul na background.",
+            "Text": " na background.",
             "IsPartial": false,
-            "Ms": 9355
+            "Ms": 9239
           },
           {
             "Text": " Madali",
             "IsPartial": false,
-            "Ms": 10352
+            "Ms": 10414
           },
           {
             "Text": " lang malaman ang lalim",
             "IsPartial": false,
-            "Ms": 11607
+            "Ms": 11697
+          }
+        ],
+        "InputTranscriptions": [
+          {
+            "Text": "But Birch canoe slid on the",
+            "IsPartial": false,
+            "Ms": 3994
+          },
+          {
+            "Text": " smooth planks.",
+            "IsPartial": false,
+            "Ms": 4863
+          },
+          {
+            "Text": " through the sheet to the",
+            "IsPartial": false,
+            "Ms": 6905
+          },
+          {
+            "Text": " dark blue background.",
+            "IsPartial": false,
+            "Ms": 7959
+          },
+          {
+            "Text": " It is easy",
+            "IsPartial": false,
+            "Ms": 10125
+          },
+          {
+            "Text": " to tell the depth of a",
+            "IsPartial": false,
+            "Ms": 11287
           }
         ],
         "Provenance": {
@@ -81,7 +113,7 @@
           "PartialFrames": 0,
           "SetupCompleteFrames": 1,
           "GoAwayFrames": 0,
-          "SessionResumptionFrames": 7,
+          "SessionResumptionFrames": 5,
           "ErrorFrames": 0,
           "UnknownFrames": 0,
           "UnknownFingerprints": [],
@@ -96,149 +128,92 @@
       "VariantB": {
         "VariantLabel": "B",
         "IncludeInputTranscription": true,
-        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
         "SetupCompleteObserved": true,
         "TurnCompleteObserved": false,
         "AudioFramesSent": 100,
         "AudioBytesSent": 320000,
-        "FirstOutputMs": 4138,
-        "FirstOutputText": "Ang bangkang birch",
-        "FinalOutputMs": 11333,
-        "FinalText": " lang malaman ang lalim",
+        "FirstOutputMs": 4074,
+        "FirstOutputText": "Pero ang bangkang",
+        "FinalOutputMs": 11639,
+        "FinalText": " Madaling",
         "Outputs": [
           {
-            "Text": "Ang bangkang birch",
+            "Text": "Pero ang bangkang",
             "IsPartial": false,
-            "Ms": 4138
+            "Ms": 4074
           },
           {
-            "Text": " ay dumausdos sa makinis",
+            "Text": " birch ay dumausdos",
             "IsPartial": false,
-            "Ms": 4833
+            "Ms": 4687
           },
           {
-            "Text": " na tabla.",
+            "Text": " sa makinis na tabla.",
             "IsPartial": false,
-            "Ms": 5826
+            "Ms": 6051
           },
           {
-            "Text": " Idikit ang",
+            "Text": " sa pamamagitan",
             "IsPartial": false,
-            "Ms": 6824
+            "Ms": 6963
           },
           {
-            "Text": " papel sa madilim",
+            "Text": " ng sapin papunta",
             "IsPartial": false,
-            "Ms": 8085
+            "Ms": 8278
           },
           {
-            "Text": " na asul na background.",
+            "Text": " sa madilim na asul",
             "IsPartial": false,
-            "Ms": 9088
+            "Ms": 9197
           },
           {
-            "Text": " Madali",
+            "Text": " na background.",
             "IsPartial": false,
-            "Ms": 10078
+            "Ms": 10183
           },
           {
-            "Text": " lang malaman ang lalim",
+            "Text": " Madaling",
             "IsPartial": false,
-            "Ms": 11333
+            "Ms": 11639
           }
         ],
-        "Provenance": {
-          "ServerContentFrames": 70,
-          "GeminiAudioFrames": 38,
-          "ServerContentFramesWithAudio": 38,
-          "GeminiAudioBytes": 456000,
-          "AudioMimeTypes": [
-            "audio/pcm;rate=24000"
-          ],
-          "OutputTranscriptionFrames": 8,
-          "GeminiOutputTranscription": " lang malaman ang lalim",
-          "ModelTurnTextParts": 0,
-          "TurnCompleteFrames": 0,
-          "PartialFrames": 0,
-          "SetupCompleteFrames": 1,
-          "GoAwayFrames": 0,
-          "SessionResumptionFrames": 6,
-          "ErrorFrames": 0,
-          "UnknownFrames": 0,
-          "UnknownFingerprints": [],
-          "MalformedFrames": 0,
-          "ArgosCalls": 0,
-          "ArgosOutput": "NONE",
-          "ProvenanceVerified": true,
-          "FinalTextMatchesOutputTranscription": true
-        },
-        "Errors": []
-      },
-      "OutputSequenceEquals": true,
-      "FinalTextsMatch": true,
-      "VariantAHasOutput": true,
-      "FinalSequenceEquals": true,
-      "Errors": []
-    },
-    {
-      "Index": 2,
-      "File": "english_practice_40s.wav",
-      "SampleRate": 22050,
-      "DurationMs": 26420,
-      "AudioBytes": 320000,
-      "ChunkBytes": 3200,
-      "VariantA": {
-        "VariantLabel": "A",
-        "IncludeInputTranscription": false,
-        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
-        "SetupCompleteObserved": true,
-        "TurnCompleteObserved": false,
-        "AudioFramesSent": 100,
-        "AudioBytesSent": 320000,
-        "FirstOutputMs": 3744,
-        "FirstOutputText": "Kamusta at maligayang",
-        "FinalOutputMs": 10958,
-        "FinalText": " Ano",
-        "Outputs": [
+        "InputTranscriptions": [
           {
-            "Text": "Kamusta at maligayang",
+            "Text": "But Birch canoe slid on the",
             "IsPartial": false,
-            "Ms": 3744
+            "Ms": 3804
           },
           {
-            "Text": " pagdating sa unang",
+            "Text": " smooth planks.",
             "IsPartial": false,
-            "Ms": 4571
+            "Ms": 4617
           },
           {
-            "Text": " pulong ng ating",
+            "Text": " through the sheet to the",
             "IsPartial": false,
-            "Ms": 5448
+            "Ms": 6917
           },
           {
-            "Text": " conversational Tagalog",
+            "Text": " dark blue",
             "IsPartial": false,
-            "Ms": 6462
+            "Ms": 7864
           },
           {
-            "Text": " practice group.",
+            "Text": " background.",
             "IsPartial": false,
-            "Ms": 7478
+            "Ms": 8964
           },
           {
-            "Text": " Ang pangalan",
+            "Text": " It is easy",
             "IsPartial": false,
-            "Ms": 8709
+            "Ms": 9984
           },
           {
-            "Text": " ko ay Maria.",
+            "Text": " to tell the depth of a",
             "IsPartial": false,
-            "Ms": 9730
-          },
-          {
-            "Text": " Ano",
-            "IsPartial": false,
-            "Ms": 10958
+            "Ms": 11203
           }
         ],
         "Provenance": {
@@ -250,7 +225,7 @@
             "audio/pcm;rate=24000"
           ],
           "OutputTranscriptionFrames": 8,
-          "GeminiOutputTranscription": " Ano",
+          "GeminiOutputTranscription": " Madaling",
           "ModelTurnTextParts": 0,
           "TurnCompleteFrames": 0,
           "PartialFrames": 0,
@@ -268,58 +243,113 @@
         },
         "Errors": []
       },
-      "VariantB": {
-        "VariantLabel": "B",
-        "IncludeInputTranscription": true,
+      "OutputSequenceEquals": false,
+      "FinalTextsMatch": false,
+      "VariantAHasOutput": true,
+      "FinalSequenceEquals": false,
+      "Errors": []
+    },
+    {
+      "Index": 2,
+      "File": "english_practice_40s.wav",
+      "SampleRate": 22050,
+      "DurationMs": 26424,
+      "AudioBytes": 320000,
+      "ChunkBytes": 3200,
+      "VariantA": {
+        "VariantLabel": "A",
+        "IncludeInputTranscription": false,
         "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
         "SetupCompleteObserved": true,
         "TurnCompleteObserved": false,
         "AudioFramesSent": 100,
         "AudioBytesSent": 320000,
-        "FirstOutputMs": 3698,
+        "FirstOutputMs": 3697,
         "FirstOutputText": "Kamusta at maligayang",
-        "FinalOutputMs": 10899,
+        "FinalOutputMs": 10939,
         "FinalText": " Ano",
         "Outputs": [
           {
             "Text": "Kamusta at maligayang",
             "IsPartial": false,
-            "Ms": 3698
+            "Ms": 3697
           },
           {
             "Text": " pagdating sa unang",
             "IsPartial": false,
-            "Ms": 4403
+            "Ms": 4534
           },
           {
             "Text": " pulong ng ating",
             "IsPartial": false,
-            "Ms": 5403
+            "Ms": 5654
           },
           {
             "Text": " conversational Tagalog",
             "IsPartial": false,
-            "Ms": 6655
+            "Ms": 6666
           },
           {
             "Text": " practice group.",
             "IsPartial": false,
-            "Ms": 7657
+            "Ms": 7736
           },
           {
             "Text": " Ang pangalan",
             "IsPartial": false,
-            "Ms": 8897
+            "Ms": 8738
           },
           {
             "Text": " ko ay Maria.",
             "IsPartial": false,
-            "Ms": 9910
+            "Ms": 10036
           },
           {
             "Text": " Ano",
             "IsPartial": false,
-            "Ms": 10899
+            "Ms": 10939
+          }
+        ],
+        "InputTranscriptions": [
+          {
+            "Text": "Hello and welcome to the first",
+            "IsPartial": false,
+            "Ms": 3527
+          },
+          {
+            "Text": " meeting of our",
+            "IsPartial": false,
+            "Ms": 4245
+          },
+          {
+            "Text": " conversational",
+            "IsPartial": false,
+            "Ms": 5287
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 6527
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 7532
+          },
+          {
+            "Text": " My name",
+            "IsPartial": false,
+            "Ms": 8597
+          },
+          {
+            "Text": " is Maria.",
+            "IsPartial": false,
+            "Ms": 9636
+          },
+          {
+            "Text": " What",
+            "IsPartial": false,
+            "Ms": 10761
           }
         ],
         "Provenance": {
@@ -347,9 +377,130 @@
           "ProvenanceVerified": true,
           "FinalTextMatchesOutputTranscription": true
         },
-        "Errors": [
-          "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
-        ]
+        "Errors": []
+      },
+      "VariantB": {
+        "VariantLabel": "B",
+        "IncludeInputTranscription": true,
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupCompleteObserved": true,
+        "TurnCompleteObserved": false,
+        "AudioFramesSent": 100,
+        "AudioBytesSent": 320000,
+        "FirstOutputMs": 3651,
+        "FirstOutputText": "Kamusta at maligayang",
+        "FinalOutputMs": 11014,
+        "FinalText": " Ano",
+        "Outputs": [
+          {
+            "Text": "Kamusta at maligayang",
+            "IsPartial": false,
+            "Ms": 3651
+          },
+          {
+            "Text": " pagdating sa unang",
+            "IsPartial": false,
+            "Ms": 4516
+          },
+          {
+            "Text": " pulong ng ating",
+            "IsPartial": false,
+            "Ms": 5507
+          },
+          {
+            "Text": " conversational Tagalog",
+            "IsPartial": false,
+            "Ms": 6584
+          },
+          {
+            "Text": " practice group.",
+            "IsPartial": false,
+            "Ms": 7765
+          },
+          {
+            "Text": " Ang pangalan",
+            "IsPartial": false,
+            "Ms": 8827
+          },
+          {
+            "Text": " ko ay Maria.",
+            "IsPartial": false,
+            "Ms": 10027
+          },
+          {
+            "Text": " Ano",
+            "IsPartial": false,
+            "Ms": 11014
+          }
+        ],
+        "InputTranscriptions": [
+          {
+            "Text": "Hello and welcome to the first",
+            "IsPartial": false,
+            "Ms": 3368
+          },
+          {
+            "Text": " meeting of our",
+            "IsPartial": false,
+            "Ms": 4158
+          },
+          {
+            "Text": " conversational",
+            "IsPartial": false,
+            "Ms": 5268
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 6432
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 7515
+          },
+          {
+            "Text": " My name",
+            "IsPartial": false,
+            "Ms": 8539
+          },
+          {
+            "Text": " is Maria.",
+            "IsPartial": false,
+            "Ms": 9749
+          },
+          {
+            "Text": " What",
+            "IsPartial": false,
+            "Ms": 10809
+          }
+        ],
+        "Provenance": {
+          "ServerContentFrames": 72,
+          "GeminiAudioFrames": 40,
+          "ServerContentFramesWithAudio": 40,
+          "GeminiAudioBytes": 480000,
+          "AudioMimeTypes": [
+            "audio/pcm;rate=24000"
+          ],
+          "OutputTranscriptionFrames": 8,
+          "GeminiOutputTranscription": " Ano",
+          "ModelTurnTextParts": 0,
+          "TurnCompleteFrames": 0,
+          "PartialFrames": 0,
+          "SetupCompleteFrames": 1,
+          "GoAwayFrames": 0,
+          "SessionResumptionFrames": 5,
+          "ErrorFrames": 0,
+          "UnknownFrames": 0,
+          "UnknownFingerprints": [],
+          "MalformedFrames": 0,
+          "ArgosCalls": 0,
+          "ArgosOutput": "NONE",
+          "ProvenanceVerified": true,
+          "FinalTextMatchesOutputTranscription": true
+        },
+        "Errors": []
       },
       "OutputSequenceEquals": true,
       "FinalTextsMatch": true,
@@ -367,55 +518,97 @@
       "VariantA": {
         "VariantLabel": "A",
         "IncludeInputTranscription": false,
-        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{}}}",
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
         "SetupCompleteObserved": true,
         "TurnCompleteObserved": false,
         "AudioFramesSent": 100,
         "AudioBytesSent": 320000,
-        "FirstOutputMs": 3619,
+        "FirstOutputMs": 3659,
         "FirstOutputText": "Kamusta at maligayang",
-        "FinalOutputMs": 10822,
+        "FinalOutputMs": 10854,
         "FinalText": " Ano",
         "Outputs": [
           {
             "Text": "Kamusta at maligayang",
             "IsPartial": false,
-            "Ms": 3619
+            "Ms": 3659
           },
           {
             "Text": " pagdating sa unang",
             "IsPartial": false,
-            "Ms": 4322
+            "Ms": 4462
           },
           {
             "Text": " pulong ng ating",
             "IsPartial": false,
-            "Ms": 5567
+            "Ms": 5364
           },
           {
             "Text": " conversational Tagalog",
             "IsPartial": false,
-            "Ms": 6573
+            "Ms": 6721
           },
           {
             "Text": " practice group.",
             "IsPartial": false,
-            "Ms": 7566
+            "Ms": 7687
           },
           {
             "Text": " Ang pangalan",
             "IsPartial": false,
-            "Ms": 8815
+            "Ms": 8863
           },
           {
             "Text": " ko ay Maria.",
             "IsPartial": false,
-            "Ms": 9823
+            "Ms": 9957
           },
           {
             "Text": " Ano",
             "IsPartial": false,
-            "Ms": 10822
+            "Ms": 10854
+          }
+        ],
+        "InputTranscriptions": [
+          {
+            "Text": "Hello and welcome to the first",
+            "IsPartial": false,
+            "Ms": 3562
+          },
+          {
+            "Text": " meeting of our",
+            "IsPartial": false,
+            "Ms": 4204
+          },
+          {
+            "Text": " conversational",
+            "IsPartial": false,
+            "Ms": 5245
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 6349
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 7452
+          },
+          {
+            "Text": " My name",
+            "IsPartial": false,
+            "Ms": 8540
+          },
+          {
+            "Text": " is Maria.",
+            "IsPartial": false,
+            "Ms": 9588
+          },
+          {
+            "Text": " What",
+            "IsPartial": false,
+            "Ms": 10644
           }
         ],
         "Provenance": {
@@ -450,55 +643,97 @@
       "VariantB": {
         "VariantLabel": "B",
         "IncludeInputTranscription": true,
-        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
+        "SetupJson": "{\u0022setup\u0022:{\u0022model\u0022:\u0022models/gemini-3.5-live-translate-preview\u0022,\u0022generationConfig\u0022:{\u0022responseModalities\u0022:[\u0022AUDIO\u0022],\u0022translationConfig\u0022:{\u0022targetLanguageCode\u0022:\u0022fil\u0022,\u0022echoTargetLanguage\u0022:false}},\u0022outputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{},\u0022inputAudioTranscription\u0022:{}}}",
         "SetupCompleteObserved": true,
         "TurnCompleteObserved": false,
         "AudioFramesSent": 100,
         "AudioBytesSent": 320000,
-        "FirstOutputMs": 3643,
+        "FirstOutputMs": 3644,
         "FirstOutputText": "Kamusta at maligayang",
-        "FinalOutputMs": 10841,
+        "FinalOutputMs": 10763,
         "FinalText": " Ano",
         "Outputs": [
           {
             "Text": "Kamusta at maligayang",
             "IsPartial": false,
-            "Ms": 3643
+            "Ms": 3644
           },
           {
             "Text": " pagdating sa unang",
             "IsPartial": false,
-            "Ms": 4336
+            "Ms": 4288
           },
           {
             "Text": " pulong ng ating",
             "IsPartial": false,
-            "Ms": 5351
+            "Ms": 5516
           },
           {
             "Text": " conversational Tagalog",
             "IsPartial": false,
-            "Ms": 6594
+            "Ms": 6518
           },
           {
             "Text": " practice group.",
             "IsPartial": false,
-            "Ms": 7600
+            "Ms": 7518
           },
           {
             "Text": " Ang pangalan",
             "IsPartial": false,
-            "Ms": 8589
+            "Ms": 8769
           },
           {
             "Text": " ko ay Maria.",
             "IsPartial": false,
-            "Ms": 9846
+            "Ms": 9782
           },
           {
             "Text": " Ano",
             "IsPartial": false,
-            "Ms": 10841
+            "Ms": 10763
+          }
+        ],
+        "InputTranscriptions": [
+          {
+            "Text": "Hello and welcome to the first",
+            "IsPartial": false,
+            "Ms": 3391
+          },
+          {
+            "Text": " meeting of our",
+            "IsPartial": false,
+            "Ms": 4134
+          },
+          {
+            "Text": " conversational",
+            "IsPartial": false,
+            "Ms": 5190
+          },
+          {
+            "Text": " Tagalog practice",
+            "IsPartial": false,
+            "Ms": 6395
+          },
+          {
+            "Text": " group.",
+            "IsPartial": false,
+            "Ms": 7351
+          },
+          {
+            "Text": " My name",
+            "IsPartial": false,
+            "Ms": 8455
+          },
+          {
+            "Text": " is Maria.",
+            "IsPartial": false,
+            "Ms": 9672
+          },
+          {
+            "Text": " What",
+            "IsPartial": false,
+            "Ms": 10592
           }
         ],
         "Provenance": {
@@ -526,9 +761,7 @@
           "ProvenanceVerified": true,
           "FinalTextMatchesOutputTranscription": true
         },
-        "Errors": [
-          "WebSocketException: The remote party closed the WebSocket connection without completing the close handshake."
-        ]
+        "Errors": []
       },
       "OutputSequenceEquals": true,
       "FinalTextsMatch": true,
@@ -543,7 +776,8 @@
   "AudioBytesSentA": 960000,
   "AudioBytesSentB": 960000,
   "BothVariantsProven": true,
-  "AllSequencesMatch": true,
-  "AllFinalTextsMatch": true,
+  "AllSequencesMatch": false,
+  "AllFinalTextsMatch": false,
+  "InputTranscriptionObservedB": true,
   "ApiKeyLeakageDetected": false
 }

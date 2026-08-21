@@ -100,19 +100,9 @@ internal static class TempaudioLatencyProbe
             _dispatched++;
             if (_dispatched == 1)
             {
-                Log("T4", "first audio chunk dispatched to STT/Whisper");
+                Log("T4", "first audio chunk dispatched to the Gemini session");
             }
         }
-    }
-
-    public static void RecordWhisperFirstDecode()
-    {
-        if (!IsEnabled())
-        {
-            return;
-        }
-
-        Log("T5", "Whisper first decode pass begins");
     }
 
     public static void RecordPartial()
@@ -122,7 +112,7 @@ internal static class TempaudioLatencyProbe
             return;
         }
 
-        Log("T6", "first Whisper Partial result");
+        Log("T6", "first Gemini partial transcription");
     }
 
     public static void RecordFinal()
@@ -132,7 +122,7 @@ internal static class TempaudioLatencyProbe
             return;
         }
 
-        Log("T7", "first Whisper Final (committed) result");
+        Log("T7", "first Gemini final transcription (committed)");
     }
 
     private static void Log(string tag, string what)

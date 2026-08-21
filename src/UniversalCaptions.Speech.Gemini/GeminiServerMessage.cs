@@ -17,11 +17,17 @@ internal abstract record GeminiServerMessage
     public sealed record SetupComplete : GeminiServerMessage;
 
     /// <summary>
-    /// A <c>serverContent</c> frame: carries either translated text (with <see cref="IsPartial"/>),
-    /// a turn-completion marker, or both. <see cref="Text"/> may be <c>null</c> when the server
-    /// emits a turn-complete without a final text token.
+    /// A <c>serverContent</c> frame: carries source-language input-transcription text
+    /// (<see cref="InputText"/>), translated output text (<see cref="Text"/>), a turn-completion
+    /// marker, or any combination. Either text may be <c>null</c> when the server emits a
+    /// turn-complete without a final token on that surface.
     /// </summary>
-    public sealed record ServerContent(string? Text, bool IsPartial, bool TurnComplete) : GeminiServerMessage;
+    public sealed record ServerContent(
+        string? Text,
+        bool IsPartial,
+        bool TurnComplete,
+        string? InputText = null,
+        bool InputIsPartial = false) : GeminiServerMessage;
 
     /// <summary>The server is about to close the session (time/usage limit).</summary>
     public sealed record GoAway : GeminiServerMessage;

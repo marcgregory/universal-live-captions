@@ -1,7 +1,7 @@
 namespace UniversalCaptions.Core.Speech;
 
 /// <summary>
-/// A recognition result produced by an <see cref="ISpeechToTextEngine"/>.
+/// A recognition result produced by the speech pipeline (a live transcription of the source audio).
 /// </summary>
 public abstract class SpeechTranscript
 {

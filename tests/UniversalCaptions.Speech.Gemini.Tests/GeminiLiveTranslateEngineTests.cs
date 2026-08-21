@@ -68,9 +68,10 @@ public sealed class GeminiLiveTranslateEngineTests
             // outputAudioTranscription is at the setup top level (sibling of model +
             // generationConfig), NOT nested inside generationConfig — the real server rejects
             // the nested placement with `Unknown name "outputAudioTranscription" at
-            // 'setup.generation_config'` (2026-08-08 spike).
+            // 'setup.generation_config'` (2026-08-08 spike). ADR-0011 adds the input side-channel
+            // at the same top level (accepted by the real server, 2026-08-09 spike A/B run).
             Assert.Contains("\"outputAudioTranscription\"", first);
-            Assert.DoesNotContain("\"inputAudioTranscription\"", first);
+            Assert.Contains("\"inputAudioTranscription\"", first);
             Assert.Contains("\"translationConfig\"", first);
             Assert.Contains("\"targetLanguageCode\"", first);
             Assert.Contains(ResolvedTargetCode, first);

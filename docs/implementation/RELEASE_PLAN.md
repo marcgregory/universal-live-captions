@@ -1,6 +1,6 @@
-# Universal Live Captions Release Plan — v0.5.39
+# Universal Live Captions Release Plan — v0.5.43
 
-Last updated: 2026-08-13
+Last updated: 2026-08-21
 
 > **This document is the authoritative release-readiness checklist.** Per
 > [`docs/ARTIFACT_REGISTRY.md`](../ARTIFACT_REGISTRY.md), the *Release decision* concern is
@@ -16,14 +16,21 @@ Last updated: 2026-08-13
 | Scope | Everything that must be true before v0.5.39 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | Active — v0.5.39 close-out 2026-08-13 (awaiting tag cut) |
+| Status | **Release-ready — v0.5.43 smoke test PASS 2026-08-21; tag and GitHub release close-out** |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: READY — v0.5.39 close-out 2026-08-13 (awaiting tag cut and GitHub release).**
+**Decision: RELEASE GATE CLOSED — v0.5.43 (Gemini-only pipeline, ADR-0011) implemented 2026-08-21; real-wire verification and final real-app smoke PASS.**
+
+The v0.5.43 closure removes local Whisper + Argos and makes Gemini Live the single STT +
+translation engine (~145 MB install). **Gate 1 (blocking) PASSED 2026-08-21:** real-wire
+verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
+`serverContent.inputTranscription` frames per utterance with real English source text; variant A
+(field not sent) also received them (surface streams by default). Evidence:
+`artifacts/spike-result/ab-result.json`, TEST_REPORT. The final installed Release-artifact smoke test also passed: loopback capture, source + translation captions, translation toggle, target-language session recycle, clean Stop, and history retention.
 
 | Release | Tag | GitHub Release | Artifacts |
 |---|---|---|---|
@@ -32,11 +39,11 @@ Last updated: 2026-08-13
 | **v0.5.37** — Mixed-language history scrub on Translate OFF + target change | `v0.5.37` (commit `8b5dd53`) | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
 | **v0.5.38** — Stable/unstable partial rendering | `v0.5.38` (commit `95f5049`) | [releases/tag/v0.5.38](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.38) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
 | **v0.5.39** — Gemini goAway session-lifecycle fix (**Latest**) | `v0.5.39` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.39.exe` + `UniversalCaptions-0.5.39-win-x64-full.zip` |
+| **v0.5.43** — Gemini-only pipeline (ADR-0011) | `v0.5.43` (tag/release close-out) | (to be created) | `UniversalCaptions-Setup-0.5.43.exe` + `UniversalCaptions-0.5.43-win-x64-full.zip` |
 
-- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33. The public release history is `v0.5.31 → v0.5.33 → v0.5.34 → v0.5.37 → v0.5.38 → v0.5.39`.
+- **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33.
 - **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix spike worktree (proved the fix; not published — the validated production fix ships as v0.5.39).
-- Both artifacts for each release ship the **same staged closure** (single `Stage` tree → both outputs), per `packaging/build-package.ps1` v0.5.31+.
-- Landing page (`landing/`) needs to be updated to v0.5.39 once the tag is cut.
+- **v0.5.40–v0.5.42 were not published**: v0.5.40 = segmentation investigation + matrix (measurement only), then the corpus-driven phrase-guard validation closed with "do not ship"; ADR-0011 work landed directly as v0.5.43.
 
 ---
 
@@ -44,41 +51,21 @@ Last updated: 2026-08-13
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.39** (see §1) |
-| Release date | **2026-08-13** (close-out; tag cut pending) |
-| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.39 - 2026-08-13` |
-| Source-tree anchors | v0.5.39 = commit `5ae30bc` (Gemini goAway session-lifecycle fix) |
-| Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6.7.3, per-user, no admin, no UAC) |
-| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.38.exe` |
-| Installer launcher | `packaging/launcher.cmd` (process-scoped env only — no global pollution) |
+| Version | **v0.5.43** (see §1) |
+| Release date | **2026-08-21 (release gate closed)** |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.43 - 2026-08-21` |
+| Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6, per-user, no admin, no UAC) |
+| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.43.exe` |
+| Launcher | **none** — the app is a flat publish; installer/portable both point at `UniversalCaptions.App.exe` directly (`launcher.cmd` deleted by ADR-0011) |
 | Install location | `%LocalAppData%\UniversalCaptions\` (per-user, `asInvoker` manifest preserved from v0.5.26) |
-| Installed size (target) | ~1,634 MB (matches v0.5.26 measurement — see [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §2 size summary) |
-| Setup.exe size (target) | ~795.5 MB lzma2/ultra (matches v0.5.26 measurement) |
-| Settings store | `%LocalAppData%\UniversalCaptions\settings.json` (TD-005, unchanged from v0.5.26) |
+| Installed size (target) | ~145 MB trimmed self-contained publish (ADR-0011; measured 2026-08-21: 145.2 MiB / 261 files; down from ~1,634 MB) |
+| Settings store | `%LocalAppData%\UniversalCaptions\settings.json` (schema v3 — provider concept removed) |
 
-### Bundled contents (target, identical to v0.5.26 baseline)
+### Bundled contents (target)
 
-- App — self-contained .NET 8 win-x64 publish (`-r win-x64`, framework-dependent satellites trimmed) → ~147 MB at `<install>\`.
-- Shared Python runtime — uv standalone cpython-3.11 (relocatable) at `<install>\py\python.exe` → ~740 MB (torch 494 MB included; torch is required because `argostranslate/sbd.py` unconditionally `import stanza`, which imports torch at module load — verified at packaging per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §2).
-- Faster-whisper **small** int8 model — bundled snapshot at `<install>\models\faster-whisper-small\` (worker `--model` points at the install-relative directory; HF cache bypassed entirely).
-- `ggml-base.bin` fallback model — bundled at `<install>\models\ggml-base.bin` (used only when user sets `UC_STT_ENGINE=ggml-base`).
-- Argos `en→tl` packages — pruned closure, **79.1 MB** at `<install>\argos-packages\` (the only pair the production default needs).
-- `UniversalCaptions.App.exe`, `Server\faster_whisper_worker.py`, `Server\argos_translate_server.py`, runtime DLLs at `<install>\`.
-
-### Env-knob wiring (target, identical to v0.5.26 baseline)
-
-| Env knob | Install-time value | Effect |
-|---|---|---|
-| `UC_FW_PYTHON` | `<install>\py\python.exe` | faster-whisper worker python |
-| `UC_ARGOS_PYTHON` | `<install>\py\python.exe` | Argos server python (same shared runtime) |
-| `UC_FW_MODEL` | `<install>\models\faster-whisper-small\` | Offline model dir; flows to worker `--model` |
-| `UC_STT_MODEL_PATH` | `<install>\models\ggml-base.bin` | Used only by the opt-in `ggml-base` fallback engine |
-| `ARGOS_PACKAGES_DIR` | `<install>\argos-packages\` | Bundled pruned `en→tl` packages; user profile stays clean |
-| `HF_HOME` + `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` | `<install>\models\hf\` (empty) | Defense in depth — dir-path model bypasses HF entirely |
-| `PYTHONDONTWRITEBYTECODE` | `1` | No `__pycache__` writes at runtime → uninstall is fully clean |
-| `UC_STT_ENGINE` | unset | Production default applies: `fasterwhisper-native` + live partials, `UC_NATIVE_THREADS=4`, 8 s segment cap frozen |
-
-(Per [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md) §3–§4. Production-code changes from v0.5.25 onward are documented in [CHANGELOG.md](CHANGELOG.md) and the `UC_FW_MODEL` additive production seam was the only approved touch-point per Entry 17. The staged closure is unchanged between v0.5.31 and v0.5.34.)
+- App — self-contained .NET 8 win-x64 publish, trimmed → ~145 MB at `<install>\` (measured 2026-08-21).
+- No Python runtime, no Whisper models, no Argos packages (ADR-0011).
+- Runtime requirements: internet access to `generativelanguage.googleapis.com` + a free Gemini API key stored in Windows Credential Manager (`UniversalCaptions:GeminiApiKey`).
 
 ---
 
@@ -224,12 +211,12 @@ The two discriminating observables that prove the fix:
 |---|---|
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
-| Positioning (four angles, all live on the page) | (1) Offline-first / privacy (trust strip + #why) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Optional Gemini for higher-quality realtime translation (#gemini card — **OPTIONAL CLOUD UPGRADE**, shipped since v0.5.33; see §6) |
-| Version tag | `v0.5.39` (matches the latest release; landing update pending tag cut) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-Setup-0.5.39.exe` — see §5 |
+| Positioning (updated 2026-08-21 for ADR-0011) | (1) Gemini Live speech recognition + translation as THE engine (trust strip + #gemini) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Privacy honesty: no microphone, key in Credential Manager, audio only to Google while captions run (#why, FAQ). All offline/local claims removed. |
+| Version tag | `v0.5.43` (download links point at the v0.5.43 release; links activate once the tag is cut) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-Setup-0.5.43.exe` — see §5 |
 
-The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.39
-download link becomes active once the v0.5.39 GitHub release is created.
+The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.43
+download link becomes active once the v0.5.43 GitHub release is created.
 
 ---
 
@@ -237,31 +224,28 @@ download link becomes active once the v0.5.39 GitHub release is created.
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-Setup-0.5.39.exe` |
-| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.39/UniversalCaptions-0.5.39-win-x64-full.zip` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-Setup-0.5.43.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-0.5.43-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.39 release tag**, not at the
+The primary CTA points at the **specific v0.5.43 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
 match the artifact that ships.
 
 ---
 
-## 6. Gemini Optional-Mode Status
+## 6. Gemini Engine Status
 
-**Status: shipped (v0.5.33), available as an opt-in cloud upgrade.**
+**Status: THE engine (ADR-0011, v0.5.43) — no longer optional.**
 
-The App's default path remains fully offline: `WASAPI → Whisper
-(fasterwhisper-native + live partials) → Argos OPUS-MT en→tl → Naturalizer →
-Caption overlay`. Users can additionally opt in to Gemini Live translation
-(`gemini-3.5-live-translate-preview`) by adding their own Gemini API key in the
-control window (Windows Credential Manager, ADR-0009) and selecting **"Gemini
-(cloud)"** as the translation provider. Runtime toggle + target-language changes
-apply live while captions run; Argos and Gemini now behave identically from the
-user's perspective (v0.5.33 parity, §3.5). While Gemini mode is active,
-translation audio leaves the machine to Google's API; offline local translation
-remains the default and requires no account.
+There is one pipeline: `WASAPI loopback → Gemini Live session (inputAudioTranscription +
+outputAudioTranscription in a single pass) → Caption overlay`. The former offline default
+(Whisper + Argos) was removed; there is no provider selection and no offline mode. The session
+runs whenever capture runs; the Translate toggle gates translation-origin caption events without
+touching the session; target-language changes recycle the engine. Audio streams to Google's API
+only while captions run; the API key lives in Windows Credential Manager (ADR-0009).
+**Release gate closed:** real-wire verification and final real-app smoke test passed (RISK_REGISTER R-007 resolved).
 
 ---
 

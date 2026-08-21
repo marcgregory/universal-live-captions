@@ -37,7 +37,6 @@ public class SettingsStoreTests : IDisposable
             Language = "ja",
             TranslationEnabled = true,
             TargetLanguage = "tl",
-            Provider = TranslationProvider.Gemini,
             Opacity = 0.8,
             FontSize = 24.0,
             ClickThrough = true,
@@ -87,20 +86,20 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_OldV1SchemaWithoutProviderField_DefaultsToArgos()
+    public void Load_V2SchemaWithProviderField_IgnoresTheStaleField()
     {
-        // v0.5.30 added UserSettings.Provider (TranslationProvider enum). A settings.json written by
-        // v0.5.29 (or earlier) does NOT contain a Provider field; the load must degrade gracefully
-        // to the documented default (Argos). System.Text.Json ignores unknown fields by default, so
-        // this test pins the v1→v2 migration path.
+        // ADR-0011 (schema v3) removed the TranslationProvider concept entirely. A settings.json
+        // written by a v2 build still carries `"Provider": 1`; the load must ignore the stale field
+        // and keep every known field intact.
         string path = Path.Combine(_directory, "settings.json");
         Directory.CreateDirectory(_directory);
-        File.WriteAllText(path, @"{ ""Version"": 1, ""DeviceId"": ""legacy-device"", ""Language"": ""en"" }");
+        File.WriteAllText(path,
+            @"{ ""Version"": 2, ""DeviceId"": ""legacy-device"", ""Language"": ""en"", ""Provider"": 1 }");
 
         UserSettings loaded = _store.Load();
 
         Assert.Equal("legacy-device", loaded.DeviceId);
-        Assert.Null(loaded.Provider);
+        Assert.Equal("en", loaded.Language);
     }
 
     [Fact]
@@ -129,8 +128,8 @@ public class SettingsStoreTests : IDisposable
 
         // The serialized saves always land a complete, parseable file holding one of the written
         // values — never a torn/interleaved one. The persisted Version is the current schema
-        // version (UserSettings.CurrentVersion, bumped to 2 in v0.5.30 when the Provider field
-        // was added).
+        // version (UserSettings.CurrentVersion, bumped to 3 in the ADR-0011 Gemini-only change
+        // when the Provider field was removed).
         UserSettings loaded = _store.Load();
         Assert.Contains(loaded.DeviceId, ids);
         Assert.Equal(UserSettings.CurrentVersion, loaded.Version);

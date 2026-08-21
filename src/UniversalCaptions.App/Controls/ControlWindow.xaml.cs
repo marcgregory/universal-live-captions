@@ -8,7 +8,6 @@ using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Capture;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Translation;
-using UniversalCaptions.Translation;
 
 namespace UniversalCaptions.App.Controls;
 
@@ -17,14 +16,14 @@ namespace UniversalCaptions.App.Controls;
 /// and its target, starts/stops captions, shows status and latency, and applies overlay appearance
 /// settings (FR-8/FR-9/FR-10/FR-14). It only calls the Core contracts and the pipeline; WPF event
 /// handlers marshal pipeline events onto the dispatcher. Persisted settings (TD-005) are applied on
-/// load and saved on change.
+/// load and saved on change. ADR-0011: Gemini is the only speech engine — there is no provider
+/// dropdown; the Gemini API-key panel is the primary gate.
 /// </summary>
 public partial class ControlWindow : Window
 {
     private readonly CaptionPipeline _pipeline;
     private readonly IOverlayService _overlay;
     private readonly ICaptionService _captions;
-    private readonly ArgosTranslationEngine _translationEngine;
     private readonly string _captionSourceLanguage;
     private readonly ISettingsStore _settingsStore;
     private readonly UserSettings _settings;
@@ -33,30 +32,111 @@ public partial class ControlWindow : Window
 
     private bool _initializing = true;
     private bool _savePending;
-    private bool _refreshingProvider;
+    private bool _isStarting;
+    private bool _isStopping;
     private GeminiAvailability _geminiAvailability = GeminiAvailability.Unknown;
-    private TranslationProvider? _appliedProvider;
 
     private sealed record LanguageOption(string Label, string? Code, bool IsEnabled = true);
-
-    private sealed record ProviderOption(string Label, TranslationProvider Value, bool IsEnabled);
 
     private const string GeminiKeyTarget = "UniversalCaptions:GeminiApiKey";
 
     private static readonly LanguageOption[] SourceLanguages =
     [
         new("Auto (detect)", null),
+        new("Afrikaans (af)", "af"),
+        new("Akan (ak)", "ak"),
+        new("Albanian (sq)", "sq"),
+        new("Amharic (am)", "am"),
+        new("Arabic (ar)", "ar"),
+        new("Armenian (hy)", "hy"),
+        new("Assamese (as)", "as"),
+        new("Azerbaijani (az)", "az"),
+        new("Basque (eu)", "eu"),
+        new("Belarusian (be)", "be"),
+        new("Bengali (bn)", "bn"),
+        new("Bosnian (bs)", "bs"),
+        new("Bulgarian (bg)", "bg"),
+        new("Burmese (my)", "my"),
+        new("Catalan (ca)", "ca"),
+        new("Cebuano (ceb)", "ceb"),
+        new("Chinese (zh)", "zh"),
+        new("Croatian (hr)", "hr"),
+        new("Czech (cs)", "cs"),
+        new("Danish (da)", "da"),
+        new("Dutch (nl)", "nl"),
         new("English (en)", "en"),
+        new("Estonian (et)", "et"),
+        new("Faroese (fo)", "fo"),
+        new("Filipino / Tagalog (fil)", "fil"),
+        new("Finnish (fi)", "fi"),
+        new("French (fr)", "fr"),
+        new("Galician (gl)", "gl"),
+        new("Georgian (ka)", "ka"),
+        new("German (de)", "de"),
+        new("Greek (el)", "el"),
+        new("Gujarati (gu)", "gu"),
+        new("Hausa (ha)", "ha"),
+        new("Hebrew (iw)", "iw"),
+        new("Hindi (hi)", "hi"),
+        new("Hungarian (hu)", "hu"),
+        new("Icelandic (is)", "is"),
+        new("Indonesian (id)", "id"),
+        new("Italian (it)", "it"),
         new("Japanese (ja)", "ja"),
-        new("Tagalog (tl)", "tl"),
+        new("Javanese (jv)", "jv"),
+        new("Kannada (kn)", "kn"),
+        new("Kazakh (kk)", "kk"),
+        new("Khmer (km)", "km"),
+        new("Korean (ko)", "ko"),
+        new("Lao (lo)", "lo"),
+        new("Latvian (lv)", "lv"),
+        new("Lithuanian (lt)", "lt"),
+        new("Macedonian (mk)", "mk"),
+        new("Malay (ms)", "ms"),
+        new("Malayalam (ml)", "ml"),
+        new("Maltese (mt)", "mt"),
+        new("Maori (mi)", "mi"),
+        new("Marathi (mr)", "mr"),
+        new("Mongolian (mn)", "mn"),
+        new("Nepali (ne)", "ne"),
+        new("Norwegian (no)", "no"),
+        new("Odia (or)", "or"),
+        new("Oromo (om)", "om"),
+        new("Pashto (ps)", "ps"),
+        new("Persian (fa)", "fa"),
+        new("Polish (pl)", "pl"),
+        new("Portuguese (pt)", "pt"),
+        new("Punjabi (pa)", "pa"),
+        new("Quechua (qu)", "qu"),
+        new("Romanian (ro)", "ro"),
+        new("Romansh (rm)", "rm"),
+        new("Russian (ru)", "ru"),
+        new("Serbian (sr)", "sr"),
+        new("Sindhi (sd)", "sd"),
+        new("Sinhala (si)", "si"),
+        new("Slovak (sk)", "sk"),
+        new("Slovenian (sl)", "sl"),
+        new("Somali (so)", "so"),
+        new("Southern Sotho (st)", "st"),
+        new("Spanish (es)", "es"),
+        new("Swahili (sw)", "sw"),
+        new("Swedish (sv)", "sv"),
+        new("Tajik (tg)", "tg"),
+        new("Tamil (ta)", "ta"),
+        new("Telugu (te)", "te"),
+        new("Thai (th)", "th"),
+        new("Turkish (tr)", "tr"),
+        new("Ukrainian (uk)", "uk"),
+        new("Urdu (ur)", "ur"),
+        new("Uzbek (uz)", "uz"),
+        new("Vietnamese (vi)", "vi"),
     ];
 
     /// <summary>
     /// Target languages exposed for live translation, matching Google's official Gemini Live
     /// Translate supported-language table (verified 2026-08-15 at
     /// https://ai.google.dev/gemini-api/docs/live-api/live-translate). Every code is a BCP-47 tag
-    /// accepted verbatim by the API; the provider gates which entries are selectable
-    /// (<see cref="TranslationProviderPolicy.IsTargetLanguageEnabled"/>).
+    /// accepted verbatim by the API.
     /// </summary>
     private static readonly LanguageOption[] TargetLanguages =
     [
@@ -71,18 +151,17 @@ public partial class ControlWindow : Window
         new("Belarusian (be)", "be"),
         new("Bengali (bn)", "bn"),
         new("Bulgarian (bg)", "bg"),
-        new("Burmese (my)", "my"),
+        new("Burmese (Myanmar) (my)", "my"),
         new("Catalan (ca)", "ca"),
-        new("Cebuano (ceb)", "ceb"),
-        new("Chinese Simplified (zh-Hans)", "zh-Hans"),
-        new("Chinese Traditional (zh-Hant)", "zh-Hant"),
+        new("Chinese (Simplified) (zh-Hans)", "zh-Hans"),
+        new("Chinese (Traditional) (zh-Hant)", "zh-Hant"),
         new("Croatian (hr)", "hr"),
         new("Czech (cs)", "cs"),
         new("Danish (da)", "da"),
         new("Dutch (nl)", "nl"),
         new("English (en)", "en"),
         new("Estonian (et)", "et"),
-        new("Filipino (tl)", "tl"),
+        new("Filipino / Tagalog (fil)", "fil"),
         new("Finnish (fi)", "fi"),
         new("French (fr)", "fr"),
         new("Galician (gl)", "gl"),
@@ -116,8 +195,8 @@ public partial class ControlWindow : Window
         new("Norwegian (no)", "no"),
         new("Persian (fa)", "fa"),
         new("Polish (pl)", "pl"),
-        new("Portuguese Brazil (pt-BR)", "pt-BR"),
-        new("Portuguese Portugal (pt-PT)", "pt-PT"),
+        new("Portuguese (Brazil) (pt-BR)", "pt-BR"),
+        new("Portuguese (Portugal) (pt-PT)", "pt-PT"),
         new("Punjabi (pa)", "pa"),
         new("Romanian (ro)", "ro"),
         new("Russian (ru)", "ru"),
@@ -154,15 +233,14 @@ public partial class ControlWindow : Window
     /// The Windows Credential Manager seam used by the Gemini API-key flow (ADR-0009).
     /// </param>
     /// <param name="geminiEvaluator">
-    /// Evaluates whether the Gemini provider is usable (key present + syntactically valid + live
-    /// validation), driving the provider dropdown's Gemini availability state.
+    /// Evaluates whether the stored Gemini key is usable (present + syntactically valid + live
+    /// validation), driving the key panel's status text.
     /// </param>
-    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ArgosTranslationEngine translationEngine, ISettingsStore settingsStore, UserSettings settings, ICredentialStore credentialStore, GeminiAvailabilityEvaluator geminiEvaluator)
+    public ControlWindow(CaptionPipeline pipeline, IOverlayService overlay, ICaptionService captions, CaptionServiceOptions captionOptions, ISettingsStore settingsStore, UserSettings settings, ICredentialStore credentialStore, GeminiAvailabilityEvaluator geminiEvaluator)
     {
         _pipeline = pipeline;
         _overlay = overlay;
         _captions = captions;
-        _translationEngine = translationEngine ?? throw new ArgumentNullException(nameof(translationEngine));
         _captionSourceLanguage = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions))).SourceLanguage;
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -220,27 +298,10 @@ public partial class ControlWindow : Window
 
             TranslationToggle.IsChecked = translationEnabled;
 
-            // Startup pre-warm: OnLoaded sets the toggle above while _initializing, so
-            // OnTranslationToggled returns early and would otherwise never fire the Argos pre-warm
-            // until the user toggles translation again. With translation persisted enabled, boot the
-            // engine in the background now so the first real caption reuses a warm process instead
-            // of paying the cold Argos import + lazy model-load inline (the ~19 s first-caption).
-            // The pre-warm is skipped when Gemini owns translation: Argos must not start at all in a
-            // Gemini session (TranslationProviderPolicy).
-            if (translationEnabled && TranslationProviderPolicy.UsesCaptionLineTranslation(_settings.Provider))
-            {
-                string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
-                if (!string.IsNullOrWhiteSpace(target))
-                {
-                    _ = PreheatInBackgroundAsync(target!);
-                }
-            }
-
-            // The provider dropdown reflects ACTUAL runtime availability: the local syntax gate runs
-            // synchronously (no network), then a live validation round-trip refines the state in the
-            // background so an invalid/expired key disables Gemini as soon as the check completes.
+            // The key panel reflects ACTUAL runtime availability: the local syntax gate runs
+            // synchronously (no network), then a live validation round-trip refines the status text
+            // in the background so an invalid/expired key is flagged as soon as the check completes.
             _geminiAvailability = _geminiEvaluator.Evaluate();
-            RefreshProviderCombo(_settings.Provider ?? TranslationProvider.Argos);
             UpdateGeminiKeyPanelState();
             _ = RefreshGeminiAvailabilityLiveAsync();
 
@@ -272,6 +333,7 @@ public partial class ControlWindow : Window
 
     private static int FindLanguageIndex(string? code)
     {
+        code = NormalizeLegacyFilipinoCode(code);
         if (code is null)
         {
             return 0;
@@ -290,6 +352,7 @@ public partial class ControlWindow : Window
 
     private static int FindTargetIndex(string? code)
     {
+        code = NormalizeLegacyFilipinoCode(code);
         if (code is null)
         {
             return 0;
@@ -306,139 +369,9 @@ public partial class ControlWindow : Window
         return 0;
     }
 
-    /// <summary>
-    /// Finds the dropdown index for <paramref name="value"/> among the current provider options,
-    /// preferring the exact value only when its option is enabled. A disabled requested provider
-    /// (Gemini unavailable) falls back to the Argos option so the combo never selects an unusable
-    /// provider.
-    /// </summary>
-    private static int FindProviderIndex(TranslationProvider value, ProviderOption[] options)
+    private static string? NormalizeLegacyFilipinoCode(string? code)
     {
-        int fallback = 0;
-        for (int i = 0; i < options.Length; i++)
-        {
-            if (options[i].Value == TranslationProvider.Argos)
-            {
-                fallback = i;
-            }
-
-            if (options[i].Value == value && options[i].IsEnabled)
-            {
-                return i;
-            }
-        }
-
-        return fallback;
-    }
-
-    /// <summary>
-    /// Builds the provider dropdown options from the current Gemini availability: Argos is always
-    /// selectable (offline, credential-free); Gemini is selectable only when
-    /// <see cref="TranslationProviderPolicy.IsProviderSelectable"/> says it can work.
-    /// </summary>
-    private ProviderOption[] BuildProviderOptions()
-    {
-        return
-        [
-            new("Argos (offline)", TranslationProvider.Argos, true),
-            new("Gemini (cloud)", TranslationProvider.Gemini,
-                TranslationProviderPolicy.IsProviderSelectable(TranslationProvider.Gemini, _geminiAvailability)),
-        ];
-    }
-
-    /// <summary>
-    /// Rebuilds the provider dropdown from the current <see cref="_geminiAvailability"/>. The combo
-    /// is populated with the freshly built options and the effective provider is selected (requested
-    /// value when selectable, otherwise the Argos fallback). Runs under <see cref="_refreshingProvider"/>
-    /// so the programmatic selection does not trigger <see cref="OnProviderChanged"/>'s apply/save.
-    /// </summary>
-    private void RefreshProviderCombo(TranslationProvider requested)
-    {
-        _refreshingProvider = true;
-        try
-        {
-            ProviderOption[] options = BuildProviderOptions();
-            ProviderCombo.ItemsSource = options;
-            int selected = FindProviderIndex(requested, options);
-            ProviderCombo.SelectedIndex = selected;
-            RefreshSourceLanguages(options[selected].Value);
-            RefreshTargetLanguages(options[selected].Value);
-        }
-        finally
-        {
-            _refreshingProvider = false;
-        }
-    }
-
-    /// <summary>
-    /// Builds the source-language dropdown from the current provider. Every entry stays visible so the
-    /// user sees the full choice; entries the provider cannot translate from are disabled via the
-    /// combo's <c>IsEnabled</c> item binding (<see cref="TranslationProviderPolicy.IsSourceLanguageEnabled"/>).
-    /// </summary>
-    private static LanguageOption[] BuildSourceLanguageOptions(TranslationProvider provider)
-    {
-        return SourceLanguages
-            .Select(l => l with { IsEnabled = TranslationProviderPolicy.IsSourceLanguageEnabled(provider, l.Code) })
-            .ToArray();
-    }
-
-    /// <summary>
-    /// Rebuilds the source-language dropdown for the effective provider. The current selection is
-    /// preserved when it is still usable; otherwise it falls back to Auto (detect) so a source that
-    /// the new provider cannot translate from never stays selected.
-    /// </summary>
-    private void RefreshSourceLanguages(TranslationProvider provider)
-    {
-        string? selected = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
-        LanguageOption[] options = BuildSourceLanguageOptions(provider);
-        LanguageCombo.ItemsSource = options;
-
-        LanguageOption? match = options.FirstOrDefault(o =>
-            string.Equals(o.Code, selected, StringComparison.OrdinalIgnoreCase));
-        if (match is not null && match.IsEnabled)
-        {
-            LanguageCombo.SelectedItem = match;
-        }
-        else
-        {
-            LanguageCombo.SelectedIndex = 0;
-        }
-    }
-
-    /// <summary>
-    /// Builds the target-language dropdown from the current provider. Every entry stays visible;
-    /// Gemini-only targets are disabled under Argos via the combo's <c>IsEnabled</c> item binding
-    /// (<see cref="TranslationProviderPolicy.IsTargetLanguageEnabled"/>).
-    /// </summary>
-    private static LanguageOption[] BuildTargetLanguageOptions(TranslationProvider provider)
-    {
-        return TargetLanguages
-            .Select(l => l with { IsEnabled = TranslationProviderPolicy.IsTargetLanguageEnabled(provider, l.Code) })
-            .ToArray();
-    }
-
-    /// <summary>
-    /// Rebuilds the target-language dropdown for the effective provider. The current selection is
-    /// preserved when it is still usable; otherwise it falls back to the first enabled option so a
-    /// target the new provider cannot translate into never stays selected.
-    /// </summary>
-    private void RefreshTargetLanguages(TranslationProvider provider)
-    {
-        string? selected = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
-        LanguageOption[] options = BuildTargetLanguageOptions(provider);
-        TargetLanguageCombo.ItemsSource = options;
-
-        LanguageOption? match = options.FirstOrDefault(o =>
-            string.Equals(o.Code, selected, StringComparison.OrdinalIgnoreCase));
-        if (match is not null && match.IsEnabled)
-        {
-            TargetLanguageCombo.SelectedItem = match;
-        }
-        else
-        {
-            LanguageOption? firstEnabled = options.FirstOrDefault(o => o.IsEnabled);
-            TargetLanguageCombo.SelectedItem = firstEnabled ?? options[0];
-        }
+        return string.Equals(code, "tl", StringComparison.OrdinalIgnoreCase) ? "fil" : code;
     }
 
     private static int FindDeviceIndex(IReadOnlyList<LoopbackDevice> devices, string id)
@@ -460,53 +393,106 @@ public partial class ControlWindow : Window
         _pipeline.LatencyUpdated -= OnLatencyUpdated;
         _pipeline.EndToEndLatencyUpdated -= OnEndToEndLatencyUpdated;
         _pipeline.LiveTranslationErrorUpdated -= OnLiveTranslationError;
-        StopPipeline();
+        _ = Task.Run(() => _pipeline.StopAsync());
         // Flush any pending coalesced save so the user's final state survives shutdown (TD-005).
         _settingsStore.Save(ReadCurrentSettings());
     }
 
-    private void OnStartClicked(object sender, RoutedEventArgs e)
+    private async void OnStartClicked(object sender, RoutedEventArgs e)
     {
+        if (_isStarting || _isStopping || _pipeline.IsRunning)
+        {
+            return;
+        }
+
         string? deviceId = (AudioSourceCombo.SelectedItem as LoopbackDevice)?.Id;
-        string? language = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
-
-        // Reset the caption service to clear previous session's history/text from the overlay
-        _captions.Reset();
-        // Re-apply the translation settings (as Reset disables them by default)
-        ApplyTranslationSettings();
-
-        // The live-translation provider + languages for this session. The provider was previously
-        // dead-ended in UserSettings (saved but never read by the engine factory); it now flows to
-        // the pipeline so the UI selection actually constructs the Gemini engine. Translation off →
-        // no provider → no live engine. Argos → UsesLiveAudioEngine is false, so no live engine is
-        // requested and the offline caption-line path handles translation.
-        TranslationProvider? selectedProvider = (ProviderCombo.SelectedItem as ProviderOption)?.Value;
-        TranslationProvider? liveProvider = TranslationToggle.IsChecked == true
-            ? TranslationProviderPolicy.UsesLiveAudioEngine(selectedProvider) ? selectedProvider : null
-            : null;
         string? source = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
         string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
+        _overlay.SetSourceLanguage(source);
+        bool translationEnabled = TranslationToggle.IsChecked == true;
 
-        _pipeline.Start(deviceId, language, liveProvider, source, target);
-        _overlay.Show();
+        _isStarting = true;
+        // Keep the button visually active while loading; the guard above prevents double-starts.
+        StartButton.IsEnabled = true;
+        StartButton.IsHitTestVisible = false;
+        StartButton.Background = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+        StartButton.Foreground = Brushes.White;
+        StartProgress.Foreground = Brushes.White;
+        StopButton.IsEnabled = false;
+        StartButtonText.Text = "Starting captions...";
+        StartProgress.Visibility = Visibility.Visible;
+        StatusText.Text = "Starting captions...";
+        SetIndicator(PipelineStatusKind.Stopped);
+
+        // Let WPF paint the loading state before the synchronous startup handshake begins.
+        await Dispatcher.InvokeAsync(
+            () => { },
+            System.Windows.Threading.DispatcherPriority.Render);
+
+        try
+        {
+            // Reset the caption service to clear previous session's history/text from the overlay.
+            _captions.Reset();
+
+            // CaptionPipeline performs the Gemini handshake synchronously. Keep that work off the
+            // dispatcher so the loading state remains visible and the control window stays responsive.
+            await Task.Run(() => _pipeline.Start(deviceId, source, target, translationEnabled));
+
+            if (_pipeline.IsRunning)
+            {
+                _overlay.Show();
+            }
+        }
+        finally
+        {
+            _isStarting = false;
+            StartProgress.Visibility = Visibility.Collapsed;
+            StartButtonText.Text = "Start Captions";
+            StartButton.ClearValue(Control.BackgroundProperty);
+            StartButton.ClearValue(Control.ForegroundProperty);
+            StartProgress.ClearValue(ProgressBar.ForegroundProperty);
+            StartButton.IsEnabled = !_pipeline.IsRunning;
+            StopButton.IsEnabled = _pipeline.IsRunning;
+        }
     }
 
     private void OnShowCaptionsClicked(object sender, RoutedEventArgs e) => _overlay.Show();
 
-    private void OnStopClicked(object sender, RoutedEventArgs e)
+    private async void OnStopClicked(object sender, RoutedEventArgs e)
     {
-        StopPipeline();
+        await StopPipelineAsync();
     }
 
     /// <summary>
-    /// Stops captions off the UI thread. The pipeline returns immediately and tears the session
-    /// down on a background task, but the stop must still not run on the UI thread so the WPF
-    /// dispatcher is never held up during teardown (ARCHITECTURE: UI thread never blocks on the
-    /// audio pipeline). The app waits for teardown in <c>App.OnExit</c> via <c>CaptionPipeline.Dispose</c>.
+    /// Completes the pipeline teardown before re-enabling Start. CaptionPipeline.Stop() intentionally
+    /// returns before disposal finishes, so restarting from its immediate Stopped event can race the
+    /// old audio/Gemini resources.
     /// </summary>
-    private void StopPipeline()
+    private async Task StopPipelineAsync()
     {
-        _ = Task.Run(() => _pipeline.Stop());
+        if (_isStopping)
+        {
+            return;
+        }
+
+        _isStopping = true;
+        StartButton.IsEnabled = false;
+        StartButton.IsHitTestVisible = false;
+        StopButton.IsEnabled = false;
+        StatusText.Text = "Stopping captions...";
+        _overlay.Hide();
+
+        try
+        {
+            await Task.Run(() => _pipeline.StopAsync());
+        }
+        finally
+        {
+            _isStopping = false;
+            StartButton.IsHitTestVisible = true;
+            StartButton.IsEnabled = !_pipeline.IsRunning;
+            StopButton.IsEnabled = _pipeline.IsRunning;
+        }
     }
 
     private void OnAudioSourceChanged(object sender, SelectionChangedEventArgs e) => SaveSettings();
@@ -538,7 +524,6 @@ public partial class ControlWindow : Window
     {
         bool enabled = TranslationToggle.IsChecked == true;
         string? target = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code;
-        TranslationProvider? provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value;
 
         if (enabled)
         {
@@ -554,64 +539,16 @@ public partial class ControlWindow : Window
             }
         }
 
-        // Runtime provider change (translation stays ON): only the provider changes — the user's
-        // selected source and target languages must remain exactly as chosen. The previous provider's
-        // TRANSLATED content is reverted (history + active lines) while the English source history
-        // survives (source is persistent ground truth; only translation state is disposable and
-        // session-scoped), so the overlay never mixes Gemini and Argos output and never flashes the
-        // previous provider's stale translated text under the new provider. The target-language
-        // change reset lives in CaptionService.SetTranslationEnabled below; this one covers the
-        // provider axis. Toggling translation OFF is NOT a provider change — it returns to source
-        // captions and must keep the source STT history, so no reset here.
-        if (enabled && _appliedProvider != provider)
-        {
-            _captions.ResetTranslatedContent();
-        }
-
-        if (enabled)
-        {
-            _appliedProvider = provider;
-        }
-
-        // The common translation state/UX layer: the Translate checkbox + target dropdown behave the
-        // same for every provider. TranslationEnabled/TargetLanguage reflect the user's intent; only
-        // the translation MECHANISM below is provider-specific.
+        // The common translation state/UX layer: the Translate checkbox + target dropdown update the
+        // caption service's display state immediately (history scrubbing included).
         _captions.SetTranslationEnabled(enabled, target);
-        _captions.SetCaptionLineTranslation(TranslationProviderPolicy.UsesCaptionLineTranslation(provider));
 
-        // Kick the Argos pre-warm in the background so the cold-start is not paid on the first real
-        // caption. Fire-and-forget on a background task: the UI stays responsive, and the engine's
-        // shared warm-up task is awaited by real translations if the user starts speaking first.
-        // Only the Argos caption-line path needs Argos — Gemini owns translation (TranslationProviderPolicy).
-        if (enabled && TranslationProviderPolicy.UsesCaptionLineTranslation(provider) && !string.IsNullOrWhiteSpace(target))
-        {
-            _ = PreheatInBackgroundAsync(target!);
-        }
-
-        // Runtime reconfiguration: when a session is live, toggling translation on/off or changing the
-        // target must take effect immediately (Argos UI/UX parity). The pipeline owns the live engine —
-        // a null provider (translation off) stops it so captions return to source; Gemini is recreated
-        // with the new target (the target is part of the engine's session setup). No-op when stopped.
-        TranslationProvider? liveProvider = enabled && TranslationProviderPolicy.UsesLiveAudioEngine(provider) ? provider : null;
-        string? source = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
-        _pipeline.SetLiveTranslation(liveProvider, source, target);
-    }
-
-    /// <summary>
-    /// Starts the Argos pre-warm off the UI thread. The engine shares one initialization with real
-    /// translations and swallows/report errors, so a pre-warm failure is never user-visible and the
-    /// lazy translation path remains the fallback.
-    /// </summary>
-    private async Task PreheatInBackgroundAsync(string target)
-    {
-        try
-        {
-            await _translationEngine.TriggerPreWarmAsync(_captionSourceLanguage, target).ConfigureAwait(false);
-        }
-        catch (Exception exc)
-        {
-            System.Diagnostics.Trace.WriteLine($"[UniversalCaptions] Argos pre-warm background error: {exc}");
-        }
+        // Runtime reconfiguration: when a session is live, toggling translation suppresses/restores
+        // translated lines WITHOUT touching the Gemini session (it is also the transcription source);
+        // changing the target recycles the engine (the target is part of the session setup).
+        // No-op when stopped — Start applies its own configuration.
+        _pipeline.SetTranslationEnabled(enabled);
+        _pipeline.SetTargetLanguage(target);
     }
 
     private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -666,7 +603,6 @@ public partial class ControlWindow : Window
             Language = (LanguageCombo.SelectedItem as LanguageOption)?.Code,
             TranslationEnabled = TranslationToggle.IsChecked,
             TargetLanguage = (TargetLanguageCombo.SelectedItem as LanguageOption)?.Code,
-            Provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value,
             Opacity = OpacitySlider.Value,
             FontSize = FontSizeSlider.Value,
             ClickThrough = ClickThroughToggle.IsChecked,
@@ -679,7 +615,14 @@ public partial class ControlWindow : Window
         {
             StatusText.Text = status.Message;
             SetIndicator(status.Kind);
-            StartButton.IsEnabled = status.Kind != PipelineStatusKind.Capturing;
+            if (status.Kind != PipelineStatusKind.Capturing)
+            {
+                _overlay.Hide();
+            }
+            if (!_isStarting && !_isStopping)
+            {
+                StartButton.IsEnabled = status.Kind != PipelineStatusKind.Capturing;
+            }
             StopButton.IsEnabled = status.Kind == PipelineStatusKind.Capturing;
         });
     }
@@ -720,39 +663,11 @@ public partial class ControlWindow : Window
     }
 
     /// <summary>
-    /// Reacts to a change in the translation provider combo. The new provider takes effect
-    /// IMMEDIATELY (no restart): <see cref="ApplyTranslationSettings"/> reconfigures the caption
-    /// service's translation path and the pipeline's live engine so a Gemini↔Argos switch applies to
-    /// the running session. Does NOT mutate any active Gemini session's credential (ADR-0009 §Trade-offs).
-    /// </summary>
-    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateGeminiKeyPanelState();
-        if (_initializing || _refreshingProvider)
-        {
-            return;
-        }
-
-        // The source/target-language gating follows the MANUALLY selected provider, not just the
-        // availability-refresh path: Argos keeps English/Auto (and the en/ja/tl trio), Gemini
-        // enables every supported language.
-        TranslationProvider provider = (ProviderCombo.SelectedItem as ProviderOption)?.Value ?? TranslationProvider.Argos;
-        RefreshSourceLanguages(provider);
-        RefreshTargetLanguages(provider);
-
-        ApplyTranslationSettings();
-        SaveSettings();
-    }
-
-    /// <summary>
-    /// Reflects the current provider + credential presence in the Gemini key panel's controls and
-    /// status text. Called from <see cref="OnLoaded"/>, <see cref="OnProviderChanged"/>, and the
-    /// Add/Update/Remove handlers. Pure UI refresh — does not read or write the credential itself.
-    /// </summary>
-    /// <summary>
-    /// Immutable description of what the Gemini key panel should show for a given provider selection,
-    /// credential presence, and availability verdict. Kept free of UI controls so the accessibility
-    /// rules (a broken key must never lock the user out of fixing it) are unit-testable.
+    /// Immutable description of what the Gemini key panel should show for a given credential
+    /// presence and availability verdict. Kept free of UI controls so the accessibility rules (a
+    /// broken key must never lock the user out of fixing it) are unit-testable. The
+    /// <paramref name="isGemini"/> parameter is retained for test compatibility; ADR-0011 removed the
+    /// provider dropdown, so the App always passes <c>true</c> — Gemini is the only speech engine.
     /// </summary>
     internal sealed record GeminiKeyPanelState(
         bool IsEnabled,
@@ -765,10 +680,9 @@ public partial class ControlWindow : Window
 
     /// <summary>
     /// Computes the Gemini key panel state. The panel must stay reachable whenever the key needs
-    /// attention — even when Gemini is not selectable in the provider dropdown. Otherwise a
-    /// malformed/invalid key permanently locks the user out of fixing it: the dropdown falls back to
-    /// Argos, so Gemini can never be selected, and the panel (holding Add/Update/Remove) would be
-    /// disabled forever.
+    /// attention — otherwise a malformed/invalid key permanently locks the user out of fixing it:
+    /// captions cannot start without a usable key, and the panel (holding Add/Update/Remove) would
+    /// be disabled forever.
     /// </summary>
     internal static GeminiKeyPanelState ComputeGeminiKeyPanelState(
         bool isGemini, bool hasKey, GeminiAvailability availability)
@@ -804,9 +718,8 @@ public partial class ControlWindow : Window
 
     private void UpdateGeminiKeyPanelState()
     {
-        bool isGemini = (ProviderCombo.SelectedItem as ProviderOption)?.Value == TranslationProvider.Gemini;
         bool hasKey = _credentialStore.HasCredential(GeminiKeyTarget);
-        GeminiKeyPanelState state = ComputeGeminiKeyPanelState(isGemini, hasKey, _geminiAvailability);
+        GeminiKeyPanelState state = ComputeGeminiKeyPanelState(isGemini: true, hasKey, _geminiAvailability);
 
         GeminiKeyPanel.IsEnabled = state.IsEnabled;
         GeminiKeyStatusText.Text = state.StatusText;
@@ -822,7 +735,7 @@ public partial class ControlWindow : Window
 
     /// <summary>
     /// Human-readable Gemini availability for the key-panel status text. The string is the concise
-    /// summary; the actionable guidance lives in the provider/status messages.
+    /// summary; the actionable guidance lives in the status messages.
     /// </summary>
     private static string DescribeGeminiAvailability(GeminiAvailability availability)
     {
@@ -840,7 +753,7 @@ public partial class ControlWindow : Window
 
     /// <summary>
     /// Runs the authoritative live Gemini availability check in the background and applies the
-    /// result to the dropdown. Off-thread on purpose: the network round-trip must never block the
+    /// result to the key panel. Off-thread on purpose: the network round-trip must never block the
     /// UI thread. The result is marshalled onto the dispatcher before any UI mutation.
     /// </summary>
     private async Task RefreshGeminiAvailabilityLiveAsync()
@@ -862,42 +775,15 @@ public partial class ControlWindow : Window
                 return;
             }
 
-            ApplyGeminiAvailability(availability);
+            _geminiAvailability = availability;
+            UpdateGeminiKeyPanelState();
         });
-    }
-
-    /// <summary>
-    /// Applies a (re)computed Gemini availability to the dropdown. When Gemini is selected and the
-    /// new state makes it unusable, the provider automatically falls back to Argos and the runtime
-    /// translation path is reconfigured without restarting the session. The provider dropdown's
-    /// Gemini option is disabled whenever the availability is a definitive key problem
-    /// (<see cref="TranslationProviderPolicy.IsProviderSelectable"/>).
-    /// </summary>
-    private void ApplyGeminiAvailability(GeminiAvailability availability)
-    {
-        bool wasGemini = (ProviderCombo.SelectedItem as ProviderOption)?.Value == TranslationProvider.Gemini;
-        _geminiAvailability = availability;
-        RefreshProviderCombo((ProviderCombo.SelectedItem as ProviderOption)?.Value ?? TranslationProvider.Argos);
-        bool nowGemini = (ProviderCombo.SelectedItem as ProviderOption)?.Value == TranslationProvider.Gemini;
-        UpdateGeminiKeyPanelState();
-
-        // Automatic fallback: Gemini was selected but is no longer usable. Re-applying the effective
-        // provider (Argos) reconfigures the running session immediately — the caption-line path takes
-        // over and source captions keep flowing. The user is told why.
-        if (wasGemini && !nowGemini)
-        {
-            ApplyTranslationSettings();
-            SaveSettings();
-            StatusText.Text = DescribeGeminiFailure(availability, fallbackApplied: true);
-            SetIndicator(PipelineStatusKind.Error);
-        }
     }
 
     /// <summary>
     /// Handles a classified live-translation failure from the pipeline (invalid key, quota, network,
     /// server). The status line gets an actionable message; a definitive key problem additionally
-    /// triggers the availability re-evaluation so Gemini is disabled and the session falls back to
-    /// Argos. Source captions are unaffected (the pipeline isolates live-translation failures).
+    /// triggers the availability re-evaluation so the key panel reflects the server's verdict.
     /// </summary>
     private void OnLiveTranslationError(object? sender, LiveTranslationError error)
     {
@@ -910,7 +796,7 @@ public partial class ControlWindow : Window
                 || error.Message.Contains("API key", StringComparison.OrdinalIgnoreCase);
             if (definitiveKeyProblem)
             {
-                // Re-run the authoritative check so the dropdown reflects the server's verdict
+                // Re-run the authoritative check so the key panel reflects the server's verdict
                 // (missing vs malformed vs invalid key) rather than guessing from the message.
                 _ = RefreshGeminiAvailabilityLiveAsync();
             }
@@ -925,37 +811,16 @@ public partial class ControlWindow : Window
         return error.Kind switch
         {
             LiveTranslationErrorKind.SessionRejected =>
-                "Gemini is unavailable: " + error.Message + " Update the key in the Control Window, or switch to Argos.",
+                "Gemini is unavailable: " + error.Message + " Update the key in the Control Window.",
             LiveTranslationErrorKind.QuotaExceeded =>
-                "Gemini quota/rate limit reached. Wait and retry, or switch to Argos.",
+                "Gemini quota/rate limit reached. Wait and retry.",
             LiveTranslationErrorKind.Timeout =>
-                "Gemini timed out. Check your connection, or switch to Argos.",
+                "Gemini timed out. Check your connection and restart.",
             LiveTranslationErrorKind.SessionEnded =>
-                "Gemini session ended. Toggle translation off/on or restart to resume.",
+                "Gemini session ended. Restart captions to resume.",
             _ =>
-                "Gemini is unavailable: " + error.Message + " Check your connection, or switch to Argos.",
+                "Gemini is unavailable: " + error.Message + " Check your connection and restart.",
         };
-    }
-
-    /// <summary>
-    /// User message explaining why Gemini was disabled in the provider dropdown and that the session
-    /// automatically fell back to Argos.
-    /// </summary>
-    private static string DescribeGeminiFailure(GeminiAvailability availability, bool fallbackApplied)
-    {
-        string reason = availability switch
-        {
-            GeminiAvailability.MissingKey => "no Gemini API key is stored",
-            GeminiAvailability.MalformedKey => "the stored Gemini key is malformed",
-            GeminiAvailability.InvalidKey => "the Gemini API key was rejected",
-            GeminiAvailability.QuotaExceeded => "the Gemini quota was exceeded",
-            GeminiAvailability.NetworkError => "Gemini could not be reached",
-            _ => "Gemini is unavailable",
-        };
-
-        return fallbackApplied
-            ? $"Switched to Argos — {reason}. Add or update the Gemini key to re-enable."
-            : reason;
     }
 
     private void OnAddGeminiKeyClicked(object sender, RoutedEventArgs e) => PromptForGeminiKey();
@@ -1008,7 +873,7 @@ public partial class ControlWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
         };
-        instructions.Text = "Paste your Gemini API key. It is stored in Windows Credential Manager and read only when you start a Gemini session. The key is never displayed back to you.";
+        instructions.Text = "Paste your Gemini API key. It is stored in Windows Credential Manager and read only when you start a caption session. The key is never displayed back to you.";
         panel.Children.Add(instructions);
 
         PasswordBox passwordBox = new() { Margin = new Thickness(0, 0, 0, 10) };
@@ -1088,28 +953,20 @@ public partial class ControlWindow : Window
 
     /// <summary>
     /// Re-evaluates Gemini availability after the credential changed (added / updated / removed) and
-    /// refreshes the provider dropdown + key panel. When a session is running, the current provider
-    /// selection is re-applied so a provider made selectable (key added) or made unusable (key
-    /// removed) takes effect immediately without restarting.
+    /// refreshes the key panel. Running sessions are unaffected (the next Start re-reads the key).
     /// </summary>
     private void OnGeminiCredentialChanged()
     {
         _geminiAvailability = _geminiEvaluator.Evaluate();
-        RefreshProviderCombo((ProviderCombo.SelectedItem as ProviderOption)?.Value ?? TranslationProvider.Argos);
         UpdateGeminiKeyPanelState();
         _ = RefreshGeminiAvailabilityLiveAsync();
-        if (!_initializing)
-        {
-            ApplyTranslationSettings();
-            SaveSettings();
-        }
     }
 
     private void OnRemoveGeminiKeyClicked(object sender, RoutedEventArgs e)
     {
         MessageBoxResult confirm = MessageBox.Show(
             this,
-            "Remove the Gemini API key from Windows Credential Manager? Active Gemini sessions are not affected (the next Start will re-read).",
+            "Remove the Gemini API key from Windows Credential Manager? Active sessions are not affected (the next Start will re-read).",
             "Remove Gemini API key",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,

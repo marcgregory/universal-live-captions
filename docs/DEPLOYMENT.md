@@ -1,6 +1,6 @@
 # Universal Live Captions Deployment
 
-Last updated: 2026-08-10
+Last updated: 2026-08-21
 
 ## Metadata
 
@@ -11,13 +11,13 @@ Last updated: 2026-08-10
 | Audience | Engineering |
 | Owner | Engineering |
 | Status | Active |
-| Related Documents | [ARCHITECTURE.md](ARCHITECTURE.md), [RELEASE_PLAN.md](implementation/RELEASE_PLAN.md), [SECURITY_PLAN.md](SECURITY_PLAN.md) |
+| Related Documents | [ARCHITECTURE.md](ARCHITECTURE.md), [RELEASE_PLAN.md](implementation/RELEASE_PLAN.md), [SECURITY_PLAN.md](SECURITY_PLAN.md), [ADR-0011](adr/ADR-0011-gemini-only-pipeline.md) |
 
 ---
 
 ## Target
 
-Native Windows 10 (build 17763 / 1809+) desktop application distributed as a Windows application. No server, no database, no cloud infrastructure.
+Native Windows 10 (build 17763 / 1809+) desktop application distributed as a Windows application. No server, no database, no cloud infrastructure owned by the app. The app consumes Google's Gemini Live API at runtime (requires internet + user API key).
 
 ## Environments
 
@@ -29,14 +29,15 @@ Native Windows 10 (build 17763 / 1809+) desktop application distributed as a Win
 
 ## Required Services
 
-None — fully local. The app runs offline; no network endpoints are opened by the MVP.
+- **Google Gemini Live API** (`generativelanguage.googleapis.com`) — the only network dependency, used while captions run. The user supplies a free API key stored in Windows Credential Manager.
 
 ## Environment Variables
 
 | Variable | Purpose | Example |
 |---|---|---|
-| `UC_STT_MODEL_PATH` | Override Whisper model directory (Slice 2+) | `C:\models\ggml-base.bin` |
 | `UC_LOG_LEVEL` | Diagnostic verbosity | `Information` |
+
+No engine/model env vars exist (ADR-0011). The production App never reads `UC_GEMINI_API_KEY`.
 
 ## Build and Release
 
@@ -44,26 +45,25 @@ None — fully local. The app runs offline; no network endpoints are opened by t
 - Test: `dotnet test UniversalCaptions.slnx`
 - App (overlay + control window): `dotnet run --project src/UniversalCaptions.App`
 - Diagnostics: `dotnet run --project src/UniversalCaptions.Diagnostics`
-- Package: `dotnet publish src/UniversalCaptions.App -c Release -r win-x64 --self-contained true`
 
-### Installer Strategy (Active as of v0.5.31)
+### Installer Strategy (Active)
 
-Starting with v0.5.31, the release ships **two artifacts** built from the **same staged closure** (single `Stage` tree → both outputs):
+The release ships **two artifacts** built from the **same staged closure** (single `Stage` tree → both outputs):
 
 | Artifact | Audience | How it's built |
 | --- | --- | --- |
-| `UniversalCaptions-Setup-{Version}.exe` | **Recommended** — end users | Inno Setup, per-user, offline install to `%LocalAppData%\UniversalCaptions` |
-| `UniversalCaptions-{Version}-win-x64-full.zip` | Portable / advanced users | Extract anywhere, run `launcher.cmd` |
+| `UniversalCaptions-Setup-{Version}.exe` | **Recommended** — end users | Inno Setup, per-user install to `%LocalAppData%\UniversalCaptions` |
+| `UniversalCaptions-{Version}-win-x64.zip` | Portable / advanced users | Extract anywhere, run `UniversalCaptions.App.exe` |
 
-Both ship the same self-contained win-x64 .NET 8 app, the relocatable Python runtime, the bundled faster-whisper `small` model, the pruned Argos `en→tl` packages, and the launcher. The Setup.exe adds a Start Menu shortcut, optional Desktop shortcut, and a clean uninstall entry; the portable ZIP adds no install steps.
+Both ship the same self-contained win-x64 .NET 8 app (~145 MB trimmed publish, measured 2026-08-21). There is no Python runtime, no model files, and no launcher script (ADR-0011). The Setup.exe adds a Start Menu shortcut, optional Desktop shortcut, and a clean uninstall entry; the portable ZIP adds no install steps.
 
 Build with one command:
 
 ```powershell
-pwsh packaging/build-package.ps1 -Version 0.5.31
+pwsh packaging/build-package.ps1 -Version 0.5.43
 ```
 
-This runs the seven reproducible stages (publish → trim → python runtime → stage models/Argos → manifest → portable ZIP → Inno Setup). See `docs/DEVELOPER_SETUP.md` for switch flags (`-SkipZip`, `-SkipSetup`, `-SkipPublish`). Signing is deferred (D4 in INSTALLER_DISCOVERY: SmartScreen warning for unsigned installers).
+Stages: publish → trim → manifest → portable ZIP → Inno Setup. See `docs/DEVELOPER_SETUP.md` for switch flags (`-SkipZip`, `-SkipSetup`, `-SkipPublish`). Verify layout with `packaging/inspect-package.ps1`. Signing is deferred (D4 in INSTALLER_DISCOVERY: SmartScreen warning for unsigned installers).
 
 ## Database Migrations
 
@@ -81,5 +81,5 @@ Local desktop app: rollback = restore the previous published output or source re
 
 - [ ] No secrets in the repository or published output
 - [ ] Dependency scan clean (`dotnet list package --vulnerable`)
-- [ ] Privacy model verified: no persistence, no network in MVP
-- [ ] Published output contains only approved binaries and models
+- [ ] Privacy model verified: no persistence; single network destination (Gemini endpoint); disclosure present
+- [ ] Published output contains only approved binaries

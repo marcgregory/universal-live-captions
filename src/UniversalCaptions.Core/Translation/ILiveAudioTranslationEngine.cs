@@ -1,13 +1,14 @@
 using UniversalCaptions.Core.Audio;
+using UniversalCaptions.Core.Speech;
 
 namespace UniversalCaptions.Core.Translation;
 
 /// <summary>
-/// Translates a continuous stream of captured audio into target-language text events. Designed for
-/// engines that ingest raw PCM directly (for example, Gemini Live Translate's audio-only input) and
-/// surface their output via server-side transcription. Parallel in shape to
-/// <see cref="UniversalCaptions.Core.Speech.ISpeechToTextEngine"/>; engines that produce text from
-/// text (Argos, Gemini text API, etc.) are not <see cref="ILiveAudioTranslationEngine"/> implementations.
+/// Transcribes and translates a continuous stream of captured audio. Designed for engines that
+/// ingest raw PCM directly (for example, Gemini Live's audio-only input) and surface both a
+/// source-language transcript (input transcription) and a target-language translation (output
+/// transcription) via server-side transcription. This is the pipeline's single speech engine: it
+/// plays both the former local-STT role (source captions) and the translation role.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,6 +26,16 @@ namespace UniversalCaptions.Core.Translation;
 /// </remarks>
 public interface ILiveAudioTranslationEngine : IDisposable
 {
+    /// <summary>
+    /// Raised as the source-language transcription progresses. The text of a partial is provisional
+    /// and may be revised by later partials or replaced by a <see cref="FinalTranscript"/> for the
+    /// same utterance. These events feed the source-caption path.
+    /// </summary>
+    event EventHandler<PartialTranscript>? PartialTranscriptionAvailable;
+
+    /// <summary>Raised when a stable source-language transcription is available for a completed utterance.</summary>
+    event EventHandler<FinalTranscript>? FinalTranscriptionAvailable;
+
     /// <summary>
     /// Raised as translation progresses. The text of a partial is provisional and may be revised by
     /// later partials or a <see cref="FinalTranslation"/> for the same utterance.
@@ -54,6 +65,6 @@ public interface ILiveAudioTranslationEngine : IDisposable
     /// network I/O. MUST NOT throw. Chunks fed before <see cref="StartAsync"/> or after
     /// <see cref="StopAsync"/> are ignored. The chunk must not be mutated after the call returns.
     /// </summary>
-    /// <param name="chunk">The captured audio to translate. Expected format matches the rest of the pipeline (16 kHz, 1 channel, 32-bit float).</param>
+    /// <param name="chunk">The captured audio to transcribe and translate. Expected format matches the rest of the pipeline (16 kHz, 1 channel, 32-bit float).</param>
     void PushAudio(AudioChunk chunk);
 }

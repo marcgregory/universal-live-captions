@@ -11,17 +11,14 @@ using UniversalCaptions.Core.Audio;
 using UniversalCaptions.Core.Captions;
 using UniversalCaptions.Core.Capture;
 using UniversalCaptions.Core.Processing;
-using UniversalCaptions.Core.Speech;
 using UniversalCaptions.Core.Translation;
-using UniversalCaptions.Translation;
-using UniversalCaptions.Translation.Argos;
 
 namespace UniversalCaptions.App;
 #pragma warning disable CA1416
 
 /// <summary>
 /// The application bootstrap and DI composition root (TD-003): constructs the real pipeline once
-/// (loopback capture, audio processor, local Whisper engine, optional local Argos translation,
+/// (loopback capture, audio processor, Gemini Live speech engine — transcription + translation,
 /// caption service) and shows the control window and the caption overlay. WPF code here stays thin;
 /// all wiring lives behind the Core contracts.
 /// </summary>
@@ -56,28 +53,11 @@ public partial class App : Application
 
     private static void RegisterServices(IServiceCollection services)
     {
-        var argosOptions = new ArgosTranslationEngineOptions
-        {
-            // Resolution chain (env var → bundled install sibling → legacy %TEMP%\argosv
-            // venv → system python) is shared with the faster-whisper resolver in
-            // SpeechEngineFactory, so the installed bundle and the portable ZIP work
-            // identically. See InstallPathResolver for details.
-            PythonExecutablePath = InstallPathResolver.ResolveArgosPython(),
-        };
-
-        // Single shared Argos engine instance: the concrete type is registered so the control
-        // window can trigger the background pre-warm, and the interface key resolves to it so the
-        // caption service and the concrete engine share one process/initialization.
-        var argosEngine = new ArgosTranslationEngine(argosOptions);
-        services.AddSingleton(argosEngine);
-        services.AddSingleton<ITranslationEngine>(argosEngine);
-
         var captionOptions = new CaptionServiceOptions(sourceLanguage: "en", targetLanguage: "en", historyCapacity: 50);
         services.AddSingleton(captionOptions);
 
-        services.AddSingleton<ICaptionService>(sp => new CaptionService(
-            captionOptions,
-            sp.GetRequiredService<ITranslationEngine>()));
+        // ADR-0011: the caption service is a pure relay — Gemini owns transcription AND translation.
+        services.AddSingleton<ICaptionService>(_ => new CaptionService(captionOptions));
 
         services.AddSingleton<IAudioProcessor>(_ => new AudioProcessor(new AudioFormat(16_000, 1, 32)));
 
@@ -86,38 +66,20 @@ public partial class App : Application
                 ? WasapiLoopbackCaptureSource.CreateDefault()
                 : WasapiLoopbackCaptureSource.CreateForDevice(deviceId));
 
-        services.AddSingleton<Func<string?, ISpeechToTextEngine>>(_ => language =>
-        {
-            // Entry 14 promotion: the production default is the faster-whisper native streaming
-            // engine with Chrome-style live partials (SpeechEngineFactory); UC_STT_ENGINE=ggml-base
-            // selects the original local-Whisper engine as the explicit fallback. See
-            // SpeechEngineFactory for the full selection table.
-            return SpeechEngineFactory.Create(language);
-        });
-
-        // Live-audio translation engine (A4 + ADR-0009): the App-side factory produces an optional
-        // ILiveAudioTranslationEngine for a (source, target) language pair. Default = null (no
-        // provider configured — the offline-only path); future providers (Gemini Live Translate)
-        // plug in here. The Func type matches the CaptionPipeline constructor parameter so the
-        // pipeline can recreate the engine per session without knowing about environment variables.
-        //
-        // ADR-0009: the Gemini API key now comes from the Windows Credential Manager via
-        // ICredentialStore, not from the UC_GEMINI_API_KEY env var. The credential store is
-        // registered as a singleton above the factory so the factory closure can resolve it; the
-        // factory reads the key once when a Gemini session starts and the engine drops it from
-        // memory on Dispose (see ADR-0009 for the lifecycle).
+        // The session's single speech engine factory (ADR-0009 + ADR-0011): the Gemini API key comes
+        // from the Windows Credential Manager via ICredentialStore; the credential store is
+        // registered below so the factory closure can resolve it. The factory reads the key once
+        // when a session starts and the engine drops it from memory on Dispose.
         services.AddSingleton<ICredentialStore>(_ => new WindowsCredentialStore());
-        services.AddSingleton<Func<(TranslationProvider? Provider, string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
+        services.AddSingleton<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(
             sp => pair => LiveTranslationEngineFactory.Create(
                 sp.GetRequiredService<ICredentialStore>(),
                 pair.SourceLanguage,
-                pair.TargetLanguage,
-                pair.Provider));
+                pair.TargetLanguage));
 
-        // Gemini availability (provider dropdown gating + actionable errors): the evaluator reads the
-        // stored key, applies the fast local syntax gate, and runs an authoritative live validation
-        // via the REST key validator. Registered alongside the credential store so the control window
-        // can disable Gemini in the dropdown and fall back to Argos when the key is unusable.
+        // Gemini availability (actionable errors): the evaluator reads the stored key, applies the
+        // fast local syntax gate, and runs an authoritative live validation via the REST key
+        // validator so the control window can surface a precise message when the stored key is bad.
         services.AddSingleton<IGeminiApiKeyValidator>(_ => new GeminiRestApiKeyValidator());
         services.AddSingleton<GeminiAvailabilityEvaluator>();
 
@@ -128,8 +90,8 @@ public partial class App : Application
         // TD-005 settings persistence: the persisted user settings are loaded BEFORE any window is
         // constructed so the control window and overlay start with the user's last session (audio
         // source, language, translation, overlay appearance/placement/view state). Only UI preferences
-        // are persisted; engine/environment knobs (UC_STT_*, Argos/Python, model selection) stay
-        // env-var-driven and never appear in the settings file.
+        // are persisted; engine/environment knobs (UC_GEMINI_*) stay env-var-driven and never appear
+        // in the settings file.
         var settingsStore = new SettingsStore();
         UserSettings userSettings = settingsStore.Load();
         services.AddSingleton<ISettingsStore>(settingsStore);
@@ -138,10 +100,9 @@ public partial class App : Application
         services.AddSingleton<CaptionPipeline>(sp => new CaptionPipeline(
                     sp.GetRequiredService<Func<string?, IAudioCapture>>(),
                     sp.GetRequiredService<IAudioProcessor>(),
-                    sp.GetRequiredService<Func<string?, ISpeechToTextEngine>>(),
                     sp.GetRequiredService<ICaptionService>(),
+                    sp.GetRequiredService<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
                     sp.GetRequiredService<IDeviceChangeMonitor>(),
-                    sp.GetRequiredService<Func<(TranslationProvider? Provider, string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
                     captionOptions.SourceLanguage,
                     captionOptions.TargetLanguage));
         services.AddSingleton<CaptionOverlayWindow>();

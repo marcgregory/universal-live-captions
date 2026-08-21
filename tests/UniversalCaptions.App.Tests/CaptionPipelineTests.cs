@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using System.Linq;
 using UniversalCaptions.App.Pipeline;
-using UniversalCaptions.App.Settings;
 using UniversalCaptions.Audio.Processing;
 using UniversalCaptions.Captions;
 using UniversalCaptions.Core.Audio;
@@ -14,8 +12,9 @@ using UniversalCaptions.Core.Translation;
 namespace UniversalCaptions.App.Tests;
 
 /// <summary>
-/// Verifies the app-side wiring (capture → processor → speech-to-text → caption service) and the
-/// start/stop/error lifecycle against deterministic fakes. WPF visuals are verified manually.
+/// Verifies the Gemini-only app wiring (capture → processor → live engine → caption service,
+/// ADR-0011) and the start/stop/error lifecycle against deterministic fakes. WPF visuals are
+/// verified manually.
 /// </summary>
 public class CaptionPipelineTests
 {
@@ -35,46 +34,111 @@ public class CaptionPipelineTests
         public void Fail(AudioCaptureError error) => CaptureFailed?.Invoke(this, error);
     }
 
-    private sealed class FakeSpeechToTextEngine : ISpeechToTextEngine
+#pragma warning disable CS0067
+    /// <summary>A live translation engine that counts lifecycle calls instead of performing I/O.</summary>
+    private sealed class FakeLiveEngine : ILiveAudioTranslationEngine
     {
-        public event EventHandler<PartialTranscript>? PartialTranscriptAvailable;
-        public event EventHandler<FinalTranscript>? FinalTranscriptAvailable;
-        public event EventHandler<SpeechRecognitionError>? RecognitionFailed;
-        public bool IsRecognizing { get; private set; }
-        public bool IsDisposed { get; private set; }
-        public bool ThrowOnProcess { get; set; }
-        public List<AudioChunk> Received { get; } = [];
+        public event EventHandler<PartialTranscript>? PartialTranscriptionAvailable;
+        public event EventHandler<FinalTranscript>? FinalTranscriptionAvailable;
+        public event EventHandler<PartialTranslation>? PartialTranslationAvailable;
+        public event EventHandler<FinalTranslation>? FinalTranslationAvailable;
+        public event EventHandler<LiveTranslationError>? TranslationFailed;
 
-        public void Start() => IsRecognizing = true;
-        public void Stop() => IsRecognizing = false;
-        public void Dispose() => IsDisposed = true;
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
+        public int DisposeCount { get; private set; }
+        public int PushAudioCount { get; private set; }
+        public List<AudioChunk> ReceivedAudio { get; } = [];
+        public (string? Source, string? Target)? CreatedFor { get; set; }
 
-        public void Process(AudioChunk chunk)
+        public Task StartAsync(CancellationToken cancellationToken = default)
         {
-            if (ThrowOnProcess)
-            {
-                throw new InvalidOperationException("Speech engine rejected the chunk.");
-            }
-
-            Received.Add(chunk);
+            StartCount++;
+            return Task.CompletedTask;
         }
 
-        public void EmitPartial(string text, long sequence = 1, DateTime? captured = null, DateTime? emitted = null)
+        public Task StopAsync(CancellationToken cancellationToken = default)
         {
-            DateTime capturedAt = captured ?? DateTime.UtcNow;
-            PartialTranscriptAvailable?.Invoke(
-                this, new PartialTranscript(text, capturedAt, emitted ?? capturedAt, sequence));
+            StopCount++;
+            return Task.CompletedTask;
         }
 
-        public void EmitFinal(string text, long sequence = 1, TimeSpan? latency = null, DateTime? captured = null, DateTime? emitted = null)
+        public void PushAudio(AudioChunk chunk)
         {
-            DateTime capturedAt = captured ?? DateTime.UtcNow;
-            DateTime emittedAt = emitted ?? capturedAt + (latency ?? TimeSpan.FromMilliseconds(400));
-            FinalTranscriptAvailable?.Invoke(this, new FinalTranscript(text, capturedAt, emittedAt, sequence));
+            PushAudioCount++;
+            ReceivedAudio.Add(chunk);
         }
 
-        public void Fail(SpeechRecognitionError error) => RecognitionFailed?.Invoke(this, error);
+        public void Dispose() => DisposeCount++;
+
+        public void EmitPartialTranscription(string text, long sequence = 1)
+        {
+            DateTime captured = DateTime.UtcNow;
+            PartialTranscriptionAvailable?.Invoke(
+                this, new PartialTranscript(text, captured, captured, sequence));
+        }
+
+        public void EmitFinalTranscription(string text, long sequence = 1, TimeSpan? latency = null)
+        {
+            DateTime captured = DateTime.UtcNow;
+            DateTime emitted = captured + (latency ?? TimeSpan.FromMilliseconds(400));
+            FinalTranscriptionAvailable?.Invoke(
+                this, new FinalTranscript(text, captured, emitted, sequence));
+        }
+
+        public void EmitPartialTranslation(string translatedText, long sequence = 1)
+        {
+            DateTime now = DateTime.UtcNow;
+            PartialTranslationAvailable?.Invoke(
+                this,
+                new PartialTranslation(
+                    sourceText: null,
+                    translatedText: translatedText,
+                    sourceLanguage: "en",
+                    targetLanguage: "tl",
+                    capturedAtUtc: now,
+                    emittedAtUtc: now,
+                    sequence: sequence));
+        }
+
+        public void EmitFinalTranslation(string translatedText, long sequence = 1)
+        {
+            DateTime now = DateTime.UtcNow;
+            FinalTranslationAvailable?.Invoke(
+                this,
+                new FinalTranslation(
+                    sourceText: null,
+                    translatedText: translatedText,
+                    sourceLanguage: "en",
+                    targetLanguage: "tl",
+                    capturedAtUtc: now,
+                    emittedAtUtc: now,
+                    sequence: sequence,
+                    committedAtUtc: now));
+        }
+
+        public void Fail(LiveTranslationError error) => TranslationFailed?.Invoke(this, error);
     }
+
+    /// <summary>A live engine whose <see cref="StartAsync"/> throws synchronously, like a rejected handshake.</summary>
+    private sealed class ThrowingOnStartLiveEngine : ILiveAudioTranslationEngine
+    {
+        public event EventHandler<PartialTranscript>? PartialTranscriptionAvailable;
+        public event EventHandler<FinalTranscript>? FinalTranscriptionAvailable;
+        public event EventHandler<PartialTranslation>? PartialTranslationAvailable;
+        public event EventHandler<FinalTranslation>? FinalTranslationAvailable;
+        public event EventHandler<LiveTranslationError>? TranslationFailed;
+
+        public int DisposeCount { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default) =>
+            Task.FromException(new InvalidOperationException("handshake rejected"));
+
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void PushAudio(AudioChunk chunk) { }
+        public void Dispose() => DisposeCount++;
+    }
+#pragma warning restore CS0067
 
     private sealed class PassthroughProcessor : IAudioProcessor
     {
@@ -95,95 +159,8 @@ public class CaptionPipelineTests
             throw new InvalidOperationException("Audio processing exploded.");
     }
 
-    // CS0067: the interface declares the translation events and the pipeline subscribes to them, but
-    // this fake never raises them — it only verifies the engine lifecycle (create/start/stop).
+    /// <summary>A capture source that raises <see cref="IAudioCapture.CaptureFailed"/> synchronously from <see cref="IAudioCapture.Start"/>.</summary>
 #pragma warning disable CS0067
-    /// <summary>A live translation engine that counts lifecycle calls instead of performing I/O.</summary>
-    private sealed class FakeLiveAudioTranslationEngine : ILiveAudioTranslationEngine
-    {
-        public event EventHandler<PartialTranslation>? PartialTranslationAvailable;
-        public event EventHandler<FinalTranslation>? FinalTranslationAvailable;
-        public event EventHandler<LiveTranslationError>? TranslationFailed;
-
-        public int StartCount { get; private set; }
-        public int StopCount { get; private set; }
-        public int PushAudioCount { get; private set; }
-        public bool IsDisposed { get; private set; }
-
-        public Task StartAsync(CancellationToken cancellationToken = default)
-        {
-            StartCount++;
-            return Task.CompletedTask;
-        }
-
-        public Task StopAsync(CancellationToken cancellationToken = default)
-        {
-            StopCount++;
-            return Task.CompletedTask;
-        }
-
-        public void PushAudio(AudioChunk chunk) => PushAudioCount++;
-
-        public void Dispose() => IsDisposed = true;
-
-        public void EmitPartial(string translatedText, long sequence = 1)
-        {
-            PartialTranslationAvailable?.Invoke(
-                this,
-                new PartialTranslation(
-                    sourceText: null,
-                    translatedText: translatedText,
-                    sourceLanguage: "en",
-                    targetLanguage: "tl",
-                    capturedAtUtc: DateTime.UtcNow,
-                    emittedAtUtc: DateTime.UtcNow,
-                    sequence: sequence));
-        }
-
-        public void EmitFinal(
-            string translatedText,
-            long sequence = 1,
-            string sourceText = "good morning",
-            string sourceLanguage = "en",
-            string targetLanguage = "tl")
-        {
-            FinalTranslationAvailable?.Invoke(
-                this,
-                new FinalTranslation(
-                    sourceText: sourceText,
-                    translatedText: translatedText,
-                    sourceLanguage: sourceLanguage,
-                    targetLanguage: targetLanguage,
-                    capturedAtUtc: DateTime.UtcNow,
-                    emittedAtUtc: DateTime.UtcNow,
-                    sequence: sequence,
-                    committedAtUtc: DateTime.UtcNow));
-        }
-
-        public void Fail(LiveTranslationError error) => TranslationFailed?.Invoke(this, error);
-    }
-#pragma warning restore CS0067
-
-    // CS0067: the interface declares the transcript events and the pipeline subscribes to them, but
-    // this fake never raises them — it only exercises the start-failure path.
-#pragma warning disable CS0067
-    /// <summary>A speech engine that raises <see cref="RecognitionFailed"/> synchronously from <see cref="Start"/>.</summary>
-    private sealed class FailingOnStartSpeechToTextEngine : ISpeechToTextEngine
-    {
-        public event EventHandler<PartialTranscript>? PartialTranscriptAvailable;
-        public event EventHandler<FinalTranscript>? FinalTranscriptAvailable;
-        public event EventHandler<SpeechRecognitionError>? RecognitionFailed;
-        public bool IsRecognizing { get; private set; }
-        public bool IsDisposed { get; private set; }
-
-        public void Start() => RecognitionFailed?.Invoke(this, new SpeechRecognitionError(
-            SpeechRecognitionErrorKind.ModelLoadFailed, "Model could not be loaded during start."));
-        public void Stop() { }
-        public void Dispose() => IsDisposed = true;
-        public void Process(AudioChunk chunk) { }
-    }
-
-    /// <summary>A capture source that raises <see cref="CaptureFailed"/> synchronously from <see cref="Start"/>.</summary>
     private sealed class FailingOnStartAudioCapture : IAudioCapture
     {
         public event EventHandler<AudioChunk>? AudioAvailable;
@@ -197,64 +174,7 @@ public class CaptionPipelineTests
         public void Stop() { }
         public void Dispose() => IsDisposed = true;
     }
-
-    /// <summary>A speech engine whose <see cref="Stop"/> blocks until the test releases it, so the
-    /// caller-returns-early teardown behavior can be verified deterministically.</summary>
-    private sealed class BlockingStopSpeechToTextEngine : ISpeechToTextEngine
-    {
-        public event EventHandler<PartialTranscript>? PartialTranscriptAvailable;
-        public event EventHandler<FinalTranscript>? FinalTranscriptAvailable;
-        public event EventHandler<SpeechRecognitionError>? RecognitionFailed;
-        public bool IsRecognizing { get; private set; }
-        public bool IsDisposed { get; private set; }
-        public TaskCompletionSource<bool> AllowStop { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public void Start() => IsRecognizing = true;
-        public void Stop()
-        {
-            AllowStop.Task.Wait();
-            IsRecognizing = false;
-        }
-        public void Dispose() => IsDisposed = true;
-        public void Process(AudioChunk chunk) { }
-    }
 #pragma warning restore CS0067
-
-    /// <summary>A deterministic clock the test advances, so end-to-end latency samples are exact.</summary>
-    private sealed class MutableClock
-    {
-        public DateTime Now { get; set; } = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        public DateTime UtcNow() => Now;
-    }
-
-    /// <summary>A translation engine completed manually by the test, so end-to-end timing is deterministic.</summary>
-    private sealed class GatedTranslationEngine : ITranslationEngine
-    {
-        private readonly List<TaskCompletionSource<TranslationResult>> _completions = [];
-
-        public int RequestCount => _completions.Count;
-
-        public Task<TranslationResult> TranslateAsync(
-            string text, string? sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default)
-        {
-            var completion = new TaskCompletionSource<TranslationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _completions.Add(completion);
-            return completion.Task;
-        }
-
-        public void CompleteLatest(string translatedText, string targetLanguage) =>
-            _completions[^1].TrySetResult(new TranslationResult(translatedText, "en", targetLanguage, 0, DateTime.UtcNow, DateTime.UtcNow));
-    }
-
-    /// <summary>A translation engine that fails every request, like a missing Argos backend.</summary>
-    private sealed class FailingTranslationEngine : ITranslationEngine
-    {
-        public Task<TranslationResult> TranslateAsync(
-            string text, string? sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default) =>
-            Task.FromException<TranslationResult>(
-                new TranslationException(TranslationErrorKind.EngineUnavailable, "python missing"));
-    }
 
     /// <summary>A device-change source driven by the test, so recovery timing is deterministic.</summary>
     private sealed class FakeDeviceChangeMonitor : IDeviceChangeMonitor
@@ -272,14 +192,17 @@ public class CaptionPipelineTests
     private sealed class Harness : IDisposable
     {
         public FakeAudioCapture Capture { get; } = new();
-        public FakeSpeechToTextEngine SpeechToText { get; } = new();
+        public FakeLiveEngine Engine { get; } = new();
         public CaptionService Captions { get; } = new(new CaptionServiceOptions("en", historyCapacity: 20));
         public IAudioProcessor Processor { get; }
         public string? ReceivedDeviceId { get; private set; }
-        public string? ReceivedSttLanguage { get; private set; }
+        public List<(string? Source, string? Target)> FactoryCalls { get; } = [];
+        public Func<ILiveAudioTranslationEngine?> OnCreate { get; set; } = () => null;
         public CaptionPipeline Pipeline { get; }
         public List<PipelineStatus> Statuses { get; } = [];
         public List<TimeSpan> Latencies { get; } = [];
+        public List<EndToEndLatencySample> E2eSamples { get; } = [];
+        public List<LiveTranslationError> LiveErrors { get; } = [];
 
         public Harness(IAudioProcessor? processor = null)
         {
@@ -291,1088 +214,513 @@ public class CaptionPipelineTests
                     return Capture;
                 },
                 Processor,
-                language =>
+                Captions,
+                languages =>
                 {
-                    ReceivedSttLanguage = language;
-                    return SpeechToText;
-                },
-                Captions);
+                    FactoryCalls.Add(languages);
+                    return OnCreate();
+                });
             Pipeline.StatusChanged += (_, s) => Statuses.Add(s);
             Pipeline.LatencyUpdated += (_, l) => Latencies.Add(l);
+            Pipeline.EndToEndLatencyUpdated += (_, s) => E2eSamples.Add(s);
+            Pipeline.LiveTranslationErrorUpdated += (_, e) => LiveErrors.Add(e);
+        }
+
+        public Harness WithWorkingEngine()
+        {
+            var engine = Engine;
+            OnCreate = () =>
+            {
+                engine.CreatedFor = FactoryCalls[^1];
+                return engine;
+            };
+            return this;
         }
 
         public void Dispose() => Pipeline.Dispose();
     }
 
-    private static AudioChunk Chunk(AudioFormat format, long sequence = 1) =>
-        new(new float[format.Channels * 160], format, DateTime.UtcNow, sequence);
+    private static AudioChunk Chunk() => new(new float[160], new AudioFormat(16_000, 1, 32), DateTime.UtcNow, 1);
+
+    // ---------------------------------------------------------------------
+    // Start lifecycle
+    // ---------------------------------------------------------------------
 
     [Fact]
-    public void Start_wires_and_runs_the_pipeline()
+    public void Start_CreatesEngineWithSessionLanguages_AndStartsCapture()
     {
-        using var h = new Harness();
+        using var harness = new Harness().WithWorkingEngine();
 
-        h.Pipeline.Start(null, null);
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        Assert.True(h.Capture.IsCapturing);
-        Assert.True(h.SpeechToText.IsRecognizing);
-        Assert.True(h.Captions.IsRunning);
-        Assert.True(h.Pipeline.IsRunning);
-        Assert.Equal(PipelineStatusKind.Capturing, h.Statuses[^1].Kind);
+        Assert.True(harness.Pipeline.IsRunning);
+        Assert.Equal(1, harness.Engine.StartCount);
+        Assert.Null(harness.ReceivedDeviceId);
+        Assert.Equal(("en", "tl"), harness.FactoryCalls.Single());
+        Assert.True(harness.Capture.IsCapturing);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Capturing);
     }
 
     [Fact]
-    public void Start_is_idempotent_while_running()
+    public void Start_ForwardsExplicitDeviceIdToTheCaptureFactory()
     {
-        using var h = new Harness();
+        using var harness = new Harness().WithWorkingEngine();
 
-        h.Pipeline.Start(null, null);
-        h.Pipeline.Start(null, null);
+        harness.Pipeline.Start("{device-id}", "en", "tl", translationEnabled: false);
 
-        Assert.Single(h.Statuses, s => s.Kind == PipelineStatusKind.Capturing);
+        Assert.Equal("{device-id}", harness.ReceivedDeviceId);
     }
 
     [Fact]
-    public void Start_forwards_device_id_and_language_to_factories()
+    public void Start_WhenFactoryReturnsNull_RaisesMissingKeyError_AndNeverStartsCapture()
     {
-        using var h = new Harness();
+        using var harness = new Harness(); // OnCreate returns null → no API key stored.
 
-        h.Pipeline.Start("device-1", "en");
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        Assert.Equal("device-1", h.ReceivedDeviceId);
-        Assert.Equal("en", h.ReceivedSttLanguage);
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.False(harness.Capture.IsCapturing);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error);
+        LiveTranslationError error = Assert.Single(harness.LiveErrors);
+        Assert.Equal(LiveTranslationErrorKind.SessionRejected, error.Kind);
+        Assert.Contains("API key", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Start_normalizes_blank_device_and_language_to_null()
+    public void Start_WhenFactoryThrows_RaisesError_AndNeverStartsCapture()
     {
-        using var h = new Harness();
+        using var harness = new Harness();
+        harness.OnCreate = () => throw new InvalidOperationException("credential store locked");
 
-        h.Pipeline.Start("  ", " ");
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        Assert.Null(h.ReceivedDeviceId);
-        Assert.Null(h.ReceivedSttLanguage);
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error && s.Message.Contains("credential store locked"));
+        Assert.Empty(harness.LiveErrors);
     }
 
     [Fact]
-    public void Audio_chunks_flow_through_processor_to_speech_engine()
+    public async Task Start_WhenEngineStartAsyncThrows_DisposesEngine_AndRaisesClassifiedError()
     {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
+        var throwing = new ThrowingOnStartLiveEngine();
+        using var harness = new Harness();
+        harness.OnCreate = () => throwing;
 
-        h.Capture.Emit(Chunk(h.Capture.Format, 7));
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        Assert.Single(h.SpeechToText.Received);
-        Assert.Equal(7, h.SpeechToText.Received[0].Sequence);
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.False(harness.Capture.IsCapturing);
+        LiveTranslationError error = Assert.Single(harness.LiveErrors);
+        Assert.Equal(LiveTranslationErrorKind.ConnectionFailed, error.Kind);
+        Assert.Contains("handshake rejected", error.Message);
+
+        // The failed engine is disposed on a background task — poll for it.
+        for (int i = 0; i < 50 && throwing.DisposeCount == 0; i++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, throwing.DisposeCount);
     }
 
     [Fact]
-    public void Processor_output_format_is_fed_to_speech_engine()
+    public void Start_WhileAlreadyRunning_IsNoOp()
     {
-        using var h = new Harness(new AudioProcessor(new AudioFormat(16_000, 1, 32)));
-        h.Pipeline.Start(null, null);
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        h.Capture.Emit(Chunk(new AudioFormat(48_000, 2, 32), 3));
+        harness.Pipeline.Start(null, "en", "ja", translationEnabled: false);
 
-        AudioChunk fed = Assert.Single(h.SpeechToText.Received);
-        Assert.Equal(16_000, fed.Format.SampleRate);
-        Assert.Equal(1, fed.Format.Channels);
+        Assert.Equal(("en", "tl"), harness.FactoryCalls.Single());
+        Assert.True(harness.Pipeline.IsRunning);
     }
 
     [Fact]
-    public void Partial_transcripts_update_caption_state()
+    public void Start_WhenCaptureStartFails_StopsTheSession()
     {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        h.SpeechToText.EmitPartial("hel", 1);
-        h.SpeechToText.EmitPartial("hello", 2);
-
-        Assert.Equal("hello", h.Captions.State.ActiveLine!.Text);
-    }
-
-    [Fact]
-    public void Final_transcript_commits_and_reports_latency()
-    {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        h.SpeechToText.EmitFinal("done", 1, TimeSpan.FromMilliseconds(400));
-
-        CaptionLine committed = Assert.Single(h.Captions.State.History);
-        Assert.Equal("done", committed.Text);
-        Assert.Equal(TimeSpan.FromMilliseconds(400), h.Latencies[0]);
-    }
-
-    [Fact]
-    public async Task Recognition_failure_surfaces_error_and_stops()
-    {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        h.SpeechToText.Fail(new SpeechRecognitionError(
-            SpeechRecognitionErrorKind.ModelNotFound, "Whisper model file was not found."));
-        await h.Pipeline.StopAsync();
-
-        Assert.Equal(PipelineStatusKind.Error, h.Statuses[^1].Kind);
-        Assert.Contains("not found", h.Statuses[^1].Message);
-        Assert.False(h.Capture.IsCapturing);
-        Assert.False(h.SpeechToText.IsRecognizing);
-        Assert.False(h.Captions.IsRunning);
-    }
-
-    [Fact]
-    public void Capture_failure_surfaces_error_and_stops()
-    {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        h.Capture.Fail(new AudioCaptureError(AudioCaptureErrorKind.DeviceDisconnected, "The audio device disconnected."));
-
-        Assert.Equal(PipelineStatusKind.Error, h.Statuses[^1].Kind);
-        Assert.Contains("disconnected", h.Statuses[^1].Message);
-        Assert.False(h.Pipeline.IsRunning);
-    }
-
-    [Fact]
-    public void Capture_factory_failure_surfaces_error_without_starting()
-    {
-        using var h = new Harness();
-        using var failing = new CaptionPipeline(
-            _ => throw new AudioCaptureException(AudioCaptureErrorKind.NoOutputDevice, "No audio output device was found."),
-            new PassthroughProcessor(),
-            _ => h.SpeechToText,
-            h.Captions);
+        var capture = new FailingOnStartAudioCapture();
+        var engine = new FakeLiveEngine();
         var statuses = new List<PipelineStatus>();
-        failing.StatusChanged += (_, s) => statuses.Add(s);
-
-        failing.Start(null, null);
-
-        Assert.Equal(PipelineStatusKind.Error, statuses[^1].Kind);
-        Assert.Contains("output device", statuses[^1].Message);
-        Assert.False(failing.IsRunning);
-        Assert.False(h.Captions.IsRunning);
-    }
-
-    [Fact]
-    public async Task Stop_tears_down_the_session()
-    {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        await h.Pipeline.StopAsync();
-
-        Assert.False(h.Capture.IsCapturing);
-        Assert.False(h.SpeechToText.IsRecognizing);
-        Assert.False(h.Captions.IsRunning);
-        Assert.Equal(PipelineStatusKind.Stopped, h.Statuses[^1].Kind);
-    }
-
-    [Fact]
-    public async Task Stop_returns_before_component_teardown_completes()
-    {
-        var blockingStt = new BlockingStopSpeechToTextEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => new FakeAudioCapture(),
-            new PassthroughProcessor(),
-            _ => blockingStt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)));
-
-        pipeline.Start(null, null);
-
-        Task stop = Task.Run(() => pipeline.Stop());
-        Task completed = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
-
-        Assert.True(ReferenceEquals(stop, completed), "Stop() must not block the caller on component teardown.");
-
-        blockingStt.AllowStop.TrySetResult(true);
-        await stop;
-        await pipeline.StopAsync();
-
-        Assert.True(blockingStt.IsDisposed);
-    }
-
-    [Fact]
-    public async Task Dispose_waits_for_component_teardown()
-    {
-        var blockingStt = new BlockingStopSpeechToTextEngine();
-        var capture = new FakeAudioCapture();
-        using var pipeline = new CaptionPipeline(
-            _ => capture,
-            new PassthroughProcessor(),
-            _ => blockingStt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)));
-
-        pipeline.Start(null, null);
-
-        Task dispose = Task.Run(() => pipeline.Dispose());
-        Task completedEarly = await Task.WhenAny(dispose, Task.Delay(TimeSpan.FromMilliseconds(200)));
-
-        Assert.False(ReferenceEquals(dispose, completedEarly), "Dispose() must wait for component teardown to complete.");
-
-        blockingStt.AllowStop.TrySetResult(true);
-        Task completed = await Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(2)));
-        Assert.True(ReferenceEquals(dispose, completed), "Dispose() should complete once teardown finishes.");
-        Assert.True(blockingStt.IsDisposed);
-        Assert.True(capture.IsDisposed);
-    }
-
-    [Fact]
-    public void Dispose_stops_and_disposes_components()
-    {
-        var h = new Harness();
-        h.Pipeline.Start(null, null);
-
-        h.Pipeline.Dispose();
-
-        Assert.False(h.Capture.IsCapturing);
-        Assert.True(h.Capture.IsDisposed);
-        Assert.True(h.SpeechToText.IsDisposed);
-        Assert.False(h.Captions.IsRunning);
-    }
-
-    [Fact]
-    public async Task Speech_engine_failure_during_start_surfaces_error_and_tears_down()
-    {
-        var failingStt = new FailingOnStartSpeechToTextEngine();
-        var capture = new FakeAudioCapture();
-        using var pipeline = new CaptionPipeline(
-            _ => capture,
-            new PassthroughProcessor(),
-            _ => failingStt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)));
-        var statuses = new List<PipelineStatus>();
-        pipeline.StatusChanged += (_, s) => statuses.Add(s);
-
-        pipeline.Start(null, null);
-
-        Assert.Equal(PipelineStatusKind.Error, statuses[^1].Kind);
-        Assert.Contains("start", statuses[^1].Message);
-        Assert.False(pipeline.IsRunning);
-        Assert.False(capture.IsCapturing);
-        await pipeline.StopAsync();
-        Assert.True(failingStt.IsDisposed);
-        Assert.True(capture.IsDisposed);
-    }
-
-    [Fact]
-    public async Task Capture_failure_during_start_surfaces_error_and_tears_down()
-    {
-        var failingCapture = new FailingOnStartAudioCapture();
-        var stt = new FakeSpeechToTextEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => failingCapture,
-            new PassthroughProcessor(),
-            _ => stt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)));
-        var statuses = new List<PipelineStatus>();
-        pipeline.StatusChanged += (_, s) => statuses.Add(s);
-
-        pipeline.Start(null, null);
-
-        Assert.Equal(PipelineStatusKind.Error, statuses[^1].Kind);
-        Assert.False(pipeline.IsRunning);
-        await pipeline.StopAsync();
-        Assert.False(stt.IsRecognizing);
-        Assert.True(failingCapture.IsDisposed);
-        Assert.True(stt.IsDisposed);
-    }
-
-    [Fact]
-    public async Task Audio_processing_exception_surfaces_error_and_stops()
-    {
-        using var h = new Harness(new ThrowingProcessor());
-        h.Pipeline.Start(null, null);
-
-        h.Capture.Emit(Chunk(h.Capture.Format, 1));
-
-        Assert.Equal(PipelineStatusKind.Error, h.Statuses[^1].Kind);
-        Assert.Contains("processing", h.Statuses[^1].Message);
-        await h.Pipeline.StopAsync();
-        Assert.False(h.Capture.IsCapturing);
-        Assert.False(h.SpeechToText.IsRecognizing);
-        Assert.False(h.Captions.IsRunning);
-    }
-
-    [Fact]
-    public async Task Speech_engine_processing_exception_surfaces_error_and_stops()
-    {
-        using var h = new Harness();
-        h.SpeechToText.ThrowOnProcess = true;
-        h.Pipeline.Start(null, null);
-
-        h.Capture.Emit(Chunk(h.Capture.Format, 1));
-
-        Assert.Equal(PipelineStatusKind.Error, h.Statuses[^1].Kind);
-        Assert.Contains("processing", h.Statuses[^1].Message);
-        await h.Pipeline.StopAsync();
-        Assert.False(h.Pipeline.IsRunning);
-        Assert.False(h.SpeechToText.IsRecognizing);
-    }
-
-    [Fact]
-    public void Chunks_after_stop_are_ignored()
-    {
-        using var h = new Harness();
-        h.Pipeline.Start(null, null);
-        h.Pipeline.Stop();
-
-        h.Capture.Emit(Chunk(h.Capture.Format, 5));
-
-        Assert.Empty(h.SpeechToText.Received);
-    }
-
-    [Fact]
-    public async Task Translated_partial_raises_partial_end_to_end_latency_sample()
-    {
-        var clock = new MutableClock();
-        var engine = new GatedTranslationEngine();
-        var stt = new FakeSpeechToTextEngine();
-        var captions = new CaptionService(new CaptionServiceOptions("en", "tl", 20), engine, clock.UtcNow);
-        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
-        var samples = new List<EndToEndLatencySample>();
-        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
-
-        pipeline.Start(null, null);
-        captions.SetTranslationEnabled(true, "tl");
-
-        DateTime captured = clock.Now;
-        stt.EmitPartial("hel", 1, captured, captured);
-
-        clock.Now = clock.Now.AddMilliseconds(500);
-        engine.CompleteLatest("kumusta", "tl");
-        await captions.FlushAsync();
-
-        var sample = Assert.Single(samples);
-        Assert.Equal(EndToEndLatencyKind.Partial, sample.Kind);
-        Assert.Equal(TimeSpan.FromMilliseconds(500), sample.EndToEndLatency);
-        Assert.Equal(TimeSpan.FromMilliseconds(500), sample.TranslationLatency);
-    }
-
-    [Fact]
-    public async Task Translated_final_raises_final_end_to_end_latency_sample()
-    {
-        var clock = new MutableClock();
-        var engine = new GatedTranslationEngine();
-        var stt = new FakeSpeechToTextEngine();
-        var captions = new CaptionService(new CaptionServiceOptions("en", "tl", 20), engine, clock.UtcNow);
-        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
-        var samples = new List<EndToEndLatencySample>();
-        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
-
-        pipeline.Start(null, null);
-        captions.SetTranslationEnabled(true, "tl");
-
-        DateTime captured = clock.Now;
-        stt.EmitFinal("hello world", 1, captured: captured, emitted: captured.AddMilliseconds(400));
-
-        clock.Now = clock.Now.AddSeconds(1);
-        engine.CompleteLatest("magandang mundo", "tl");
-        await captions.FlushAsync();
-
-        var sample = Assert.Single(samples);
-        Assert.Equal(EndToEndLatencyKind.Final, sample.Kind);
-        Assert.Equal(TimeSpan.FromSeconds(1), sample.EndToEndLatency);
-        Assert.Equal(TimeSpan.FromSeconds(1), sample.TranslationLatency);
-    }
-
-    [Fact]
-    public async Task Untranslated_or_failed_lines_do_not_raise_end_to_end_samples()
-    {
-        var stt = new FakeSpeechToTextEngine();
-        var captions = new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20));
-        using var pipeline = new CaptionPipeline(_ => new FakeAudioCapture(), new PassthroughProcessor(), _ => stt, captions);
-        var samples = new List<EndToEndLatencySample>();
-        pipeline.EndToEndLatencyUpdated += (_, s) => samples.Add(s);
-
-        pipeline.Start(null, null);
-        stt.EmitPartial("hello", 1);
-        stt.EmitFinal("hello world", 2);
-        await captions.FlushAsync();
-
-        Assert.Empty(samples);
-
-        var failingCaptions = new CaptionService(
-            new CaptionServiceOptions("en", "tl", 20), new FailingTranslationEngine());
-        var failingStt = new FakeSpeechToTextEngine();
-        using var failingPipeline = new CaptionPipeline(
-            _ => new FakeAudioCapture(), new PassthroughProcessor(), _ => failingStt, failingCaptions);
-        var failingSamples = new List<EndToEndLatencySample>();
-        failingPipeline.EndToEndLatencyUpdated += (_, s) => failingSamples.Add(s);
-
-        failingPipeline.Start(null, null);
-        failingCaptions.SetTranslationEnabled(true, "tl");
-        failingStt.EmitFinal("hello world", 3);
-        await failingCaptions.FlushAsync();
-
-        Assert.Empty(failingSamples);
-    }
-
-    [Fact]
-    public async Task Default_device_changed_recreates_capture_and_keeps_speech_engine()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
-        var stt = new FakeSpeechToTextEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
-            new PassthroughProcessor(),
-            _ => stt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-
-        pipeline.Start(null, null);
-
-        Assert.True(monitor.Started);
-        Assert.Single(captures);
-        var original = captures[0];
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
-        Assert.True(
-            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
-            "Recovery should recreate and start a capture on the new default device.");
-
-        Assert.NotSame(original, captures[1]);
-        Assert.True(original.IsDisposed, "The stale capture must be disposed on recovery.");
-        Assert.True(captures[1].IsCapturing);
-        Assert.True(stt.IsRecognizing, "Recovery must keep the existing speech engine.");
-        Assert.True(pipeline.IsRunning);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task Device_removed_while_on_default_device_triggers_recovery()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
-        using var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
-            new PassthroughProcessor(),
-            _ => new FakeSpeechToTextEngine(),
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-
-        pipeline.Start(null, null);
-        var original = captures[0];
-
-        monitor.Raise(DeviceChangeNotification.Removed("gone-device"));
-        Assert.True(
-            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
-            "A removed device should trigger recovery on the default device.");
-
-        Assert.True(original.IsDisposed);
-        Assert.True(captures[1].IsCapturing);
-        Assert.True(pipeline.IsRunning);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public void Device_changed_while_on_explicit_device_does_not_recover()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
-        using var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
-            new PassthroughProcessor(),
-            _ => new FakeSpeechToTextEngine(),
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-
-        pipeline.Start("device-1", null);
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
-
-        Assert.False(monitor.Started, "Monitoring is only needed while on the default device.");
-        var capture = Assert.Single(captures);
-        Assert.False(capture.IsDisposed, "An explicitly chosen device must never auto-recover.");
-        Assert.True(capture.IsCapturing);
-        Assert.True(pipeline.IsRunning);
-    }
-
-    [Fact]
-    public async Task Burst_of_notifications_does_not_create_duplicate_sessions()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
-        using var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
-            new PassthroughProcessor(),
-            _ => new FakeSpeechToTextEngine(),
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-
-        pipeline.Start(null, null);
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("a"));
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("b"));
-        monitor.Raise(DeviceChangeNotification.StateChangedOf("device", DeviceState.Unplugged));
-        Assert.True(
-            SpinWait.SpinUntil(() => captures.Count >= 2 && captures[1].IsCapturing, TimeSpan.FromSeconds(2)),
-            "Recovery should complete for the coalesced notification window.");
-
-        // Original session + exactly one recovered session: the burst coalesced into one restart.
-        Assert.Equal(2, captures.Count);
-        Assert.True(captures[0].IsDisposed);
-        Assert.True(captures[1].IsCapturing);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task Device_changed_after_stop_does_not_recover()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
-        using var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
-            new PassthroughProcessor(),
-            _ => new FakeSpeechToTextEngine(),
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-
-        pipeline.Start(null, null);
-        await pipeline.StopAsync();
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
-
-        Assert.False(monitor.Started);
-        Assert.Single(captures);
-        Assert.False(pipeline.IsRunning);
-    }
-
-    [Fact]
-    public void Device_changed_after_dispose_does_not_recover()
-    {
-        using var monitor = new FakeDeviceChangeMonitor();
-        var captures = new List<FakeAudioCapture>();
         var pipeline = new CaptionPipeline(
-            _ => { var c = new FakeAudioCapture(); captures.Add(c); return c; },
+            _ => capture,
             new PassthroughProcessor(),
-            _ => new FakeSpeechToTextEngine(),
             new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
+            _ => engine);
+        pipeline.StatusChanged += (_, s) => statuses.Add(s);
+        try
+        {
+            pipeline.Start(null, "en", "tl", translationEnabled: true);
 
-        pipeline.Start(null, null);
+            Assert.False(pipeline.IsRunning);
+            Assert.False(capture.IsCapturing);
+            Assert.Contains(statuses, s => s.Kind == PipelineStatusKind.Error);
+        }
+        finally
+        {
+            pipeline.Dispose();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Audio + transcription flow
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void AudioChunks_AreProcessedAndPushedToTheLiveEngine()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Capture.Emit(Chunk());
+
+        Assert.Equal(1, harness.Engine.PushAudioCount);
+        Assert.Single(harness.Engine.ReceivedAudio);
+    }
+
+    [Fact]
+    public void PartialTranscription_BecomesTheActiveCaptionLine()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Engine.EmitPartialTranscription("Magandang");
+
+        Assert.Equal("Magandang", harness.Captions.State.ActiveLine?.Text);
+    }
+
+    [Fact]
+    public void FinalTranscription_CommitsHistory_AndRaisesLatency()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Engine.EmitFinalTranscription("Magandang umaga.", latency: TimeSpan.FromMilliseconds(250));
+
+        CaptionLine line = Assert.Single(harness.Captions.State.History);
+        Assert.Equal("Magandang umaga.", line.Text);
+        Assert.Equal(LineOrigin.SourceStt, line.Origin);
+        TimeSpan latency = Assert.Single(harness.Latencies);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), latency);
+    }
+
+    [Fact]
+    public void TranscriptionAfterStop_DoesNotReachTheCaptionService()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+        harness.Pipeline.Stop();
+
+        harness.Engine.EmitPartialTranscription("late");
+        harness.Engine.EmitFinalTranscription("late final.");
+
+        Assert.Null(harness.Captions.State.ActiveLine);
+        Assert.Empty(harness.Captions.State.History);
+    }
+
+    // ---------------------------------------------------------------------
+    // Translation relay + gating
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void TranslationEvents_WhenEnabled_RelayIntoTheCaptionService()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Engine.EmitPartialTranslation("Magandang");
+        Assert.Equal("Magandang", harness.Captions.State.ActiveTranslationLine?.Text);
+
+        harness.Engine.EmitFinalTranslation("Magandang umaga.");
+
+        CaptionLine line = Assert.Single(harness.Captions.State.History, l => l.Origin == LineOrigin.Translation);
+        Assert.Equal("Magandang umaga.", line.Text);
+    }
+
+    [Fact]
+    public void TranslationEvents_WhenDisabled_AreGatedBeforeTheCaptionService()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: false);
+
+        harness.Engine.EmitPartialTranslation("Magandang");
+        harness.Engine.EmitFinalTranslation("Magandang umaga.");
+
+        Assert.Null(harness.Captions.State.ActiveTranslationLine);
+        Assert.DoesNotContain(harness.Captions.State.History, l => l.Origin == LineOrigin.Translation);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_TogglesWithoutRecreatingTheEngine()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: false);
+
+        harness.Pipeline.SetTranslationEnabled(true);
+        harness.Engine.EmitFinalTranslation("Salin.");
+
+        Assert.Contains(harness.Captions.State.History, l => l.Origin == LineOrigin.Translation);
+        Assert.Equal(1, harness.Engine.StartCount); // same session kept running
+        Assert.Equal(("en", "tl"), harness.FactoryCalls.Single());
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_Disable_ScrubsTranslatedContentFromTheOverlay()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+        harness.Engine.EmitFinalTranslation("Salin.");
+
+        harness.Pipeline.SetTranslationEnabled(false);
+
+        Assert.DoesNotContain(harness.Captions.State.History, l => l.Origin == LineOrigin.Translation);
+        Assert.Null(harness.Captions.State.ActiveTranslationLine);
+    }
+
+    [Fact]
+    public void SetTranslationEnabled_BeforeStart_IsNoOpAndDoesNotThrow()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+
+        harness.Pipeline.SetTranslationEnabled(true);
+
+        Assert.False(harness.Captions.State.TranslationEnabled);
+    }
+
+    [Fact]
+    public void TranslatedCaptionPublication_RaisesEndToEndLatencySample()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Engine.EmitFinalTranslation("Salin.");
+
+        EndToEndLatencySample sample = Assert.Single(harness.E2eSamples);
+        Assert.Equal(EndToEndLatencyKind.Final, sample.Kind);
+        Assert.True(sample.EndToEndLatency >= TimeSpan.Zero);
+        Assert.True(sample.TranslationLatency >= TimeSpan.Zero);
+    }
+
+    // ---------------------------------------------------------------------
+    // Target-language swap
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void SetTargetLanguage_RecyclesTheEngineWithTheNewTarget()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+        var oldEngine = harness.Engine;
+        var newEngine = new FakeLiveEngine();
+        harness.OnCreate = () => newEngine;
+
+        harness.Pipeline.SetTargetLanguage("ja");
+
+        Assert.Equal(1, oldEngine.StopCount);
+        Assert.Equal(1, newEngine.StartCount);
+        Assert.Equal(("en", "ja"), harness.FactoryCalls[^1]);
+        Assert.True(harness.Pipeline.IsRunning);
+    }
+
+    [Fact]
+    public void SetTargetLanguage_SameTarget_IsNoOp()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Pipeline.SetTargetLanguage("TL");
+
+        Assert.Equal(("en", "tl"), harness.FactoryCalls.Single());
+        Assert.Equal(0, harness.Engine.StopCount);
+    }
+
+    [Fact]
+    public void SetTargetLanguage_WhenSwapFails_StopsTheSession()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+        harness.OnCreate = () => null; // e.g. the key was cleared mid-session
+
+        harness.Pipeline.SetTargetLanguage("ja");
+
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error);
+    }
+
+    [Fact]
+    public void SetTargetLanguage_BeforeStart_IsNoOp()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+
+        harness.Pipeline.SetTargetLanguage("ja");
+
+        Assert.Empty(harness.FactoryCalls);
+    }
+
+    // ---------------------------------------------------------------------
+    // Failure paths
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task LiveEngineFailure_DetachesAndDisposesTheEngine_ButKeepsCaptureAlive()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+        harness.Engine.EmitPartialTranslation("aktibong salin");
+
+        harness.Engine.Fail(new LiveTranslationError(
+            LiveTranslationErrorKind.ConnectionFailed, "websocket closed", null));
+
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error);
+        LiveTranslationError reported = Assert.Single(harness.LiveErrors);
+        Assert.Equal(LiveTranslationErrorKind.ConnectionFailed, reported.Kind);
+        Assert.Null(harness.Captions.State.ActiveTranslationLine);
+        Assert.True(harness.Pipeline.IsRunning); // capture keeps running; not faulted
+
+        for (int i = 0; i < 50 && harness.Engine.DisposeCount == 0; i++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, harness.Engine.DisposeCount);
+    }
+
+    [Fact]
+    public void CaptureFailure_MarksFaulted_AndStopsTheSession()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Capture.Fail(new AudioCaptureError(
+            AudioCaptureErrorKind.DeviceDisconnected, "device gone"));
+
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error);
+    }
+
+    [Fact]
+    public void ThrowingProcessor_FaultsTheSession_AtRuntime()
+    {
+        using var harness = new Harness(new ThrowingProcessor()).WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Capture.Emit(Chunk());
+
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Error && s.Message.Contains("Audio processing failed"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Stop / dispose lifecycle
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task StopAsync_StopsCaptureAndEngine_AndRaisesStoppedStatus()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        await harness.Pipeline.StopAsync();
+
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.False(harness.Captions.IsRunning);
+        Assert.Contains(harness.Statuses, s => s.Kind == PipelineStatusKind.Stopped);
+        Assert.Equal(1, harness.Engine.StopCount);
+
+        for (int i = 0; i < 50 && harness.Engine.DisposeCount == 0; i++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, harness.Engine.DisposeCount);
+        Assert.True(harness.Capture.IsDisposed);
+    }
+
+    [Fact]
+    public void Stop_WhenNotRunning_IsNoOp()
+    {
+        using var harness = new Harness().WithWorkingEngine();
+
+        harness.Pipeline.Stop();
+
+        Assert.DoesNotContain(harness.Statuses, s => s.Kind == PipelineStatusKind.Stopped);
+    }
+
+    [Fact]
+    public void Dispose_TearsDownTheSession_AndRejectsFurtherUse()
+    {
+        var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start(null, "en", "tl", translationEnabled: true);
+
+        harness.Pipeline.Dispose();
+
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Throws<ObjectDisposedException>(() => harness.Pipeline.Start(null, "en", "tl", translationEnabled: true));
+        Assert.Throws<ObjectDisposedException>(() => harness.Pipeline.SetTranslationEnabled(true));
+        Assert.Throws<ObjectDisposedException>(() => harness.Pipeline.SetTargetLanguage("ja"));
+    }
+
+    [Fact]
+    public void Dispose_WhenNeverStarted_IsSafe()
+    {
+        using var harness = new Harness();
+
+        harness.Pipeline.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // TD-002 device-change recovery
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task RestartCaptureAsync_RecreatesCapture_PreservingTheEngine()
+    {
+        var monitor = new FakeDeviceChangeMonitor();
+        var firstCapture = new FakeAudioCapture();
+        var secondCapture = new FakeAudioCapture();
+        var captures = new Queue<FakeAudioCapture>([firstCapture, secondCapture]);
+        var engine = new FakeLiveEngine();
+        using var captions = new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20));
+        using var pipeline = new CaptionPipeline(
+            _ => captures.Dequeue(),
+            new PassthroughProcessor(),
+            captions,
+            _ => engine,
+            monitor);
+        pipeline.Start(null, "en", "tl", translationEnabled: true);
+        Assert.True(firstCapture.IsCapturing);
+
+        await pipeline.RestartCaptureAsync();
+
+        Assert.True(pipeline.IsRunning);
+        Assert.False(firstCapture.IsCapturing);
+        Assert.True(secondCapture.IsCapturing); // capture recreated
+        Assert.Equal(1, engine.StartCount); // engine preserved — no new session
+
+        await pipeline.StopAsync();
         pipeline.Dispose();
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
-
-        Assert.Single(captures);
     }
 
     [Fact]
-    public async Task Recovery_failure_surfaces_error_and_stops()
+    public async Task RestartCaptureAsync_OnExplicitDevice_IsNoOp()
     {
-        using var monitor = new FakeDeviceChangeMonitor();
-        int captureCalls = 0;
-        var captures = new List<FakeAudioCapture>();
-        var stt = new FakeSpeechToTextEngine();
-        // Thread-safe so the poll below never races with the StatusChanged handler firing on the
-        // pipeline's own thread while the test enumerates (pre-existing flaky race, hardened).
-        var statuses = new ConcurrentQueue<PipelineStatus>();
-        using var pipeline = new CaptionPipeline(
-            _ =>
-            {
-                captureCalls++;
-                if (captureCalls >= 2)
-                {
-                    throw new AudioCaptureException(
-                        AudioCaptureErrorKind.NoOutputDevice, "No audio output device was found.");
-                }
+        using var harness = new Harness().WithWorkingEngine();
+        harness.Pipeline.Start("{device-id}", "en", "tl", translationEnabled: true);
+        int startCountBefore = harness.Engine.StartCount;
 
-                var c = new FakeAudioCapture();
-                captures.Add(c);
-                return c;
-            },
-            new PassthroughProcessor(),
-            _ => stt,
-            new CaptionService(new CaptionServiceOptions("en", historyCapacity: 20)),
-            monitor);
-        pipeline.StatusChanged += (_, s) => statuses.Enqueue(s);
+        await harness.Pipeline.RestartCaptureAsync();
 
-        pipeline.Start(null, null);
-
-        monitor.Raise(DeviceChangeNotification.DefaultChanged("new-default"));
-        Assert.True(
-            SpinWait.SpinUntil(() => statuses.Any(s => s.Kind == PipelineStatusKind.Error), TimeSpan.FromSeconds(2)),
-            "A failed recovery should surface a controlled error status.");
-
-        Assert.Single(captures);
-        Assert.False(pipeline.IsRunning);
-        await pipeline.StopAsync();
-        Assert.False(stt.IsRecognizing);
-        Assert.True(stt.IsDisposed);
+        Assert.True(harness.Pipeline.IsRunning);
+        Assert.Equal(startCountBefore, harness.Engine.StartCount);
     }
 
     [Fact]
-    public async Task Start_with_gemini_provider_forwards_languages_and_starts_live_translation()
+    public async Task RestartCaptureAsync_WhenNotRunning_IsNoOp()
     {
-        // The UI provider/language wiring (the fix): the pipeline must hand the per-session provider,
-        // source, and target to the live-translation factory so the App's factory can construct the
-        // Gemini engine from the user's selections — and then fan the live stream out to it.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
-                return live;
-            });
+        using var harness = new Harness().WithWorkingEngine();
 
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
+        await harness.Pipeline.RestartCaptureAsync();
 
-        Assert.True(pipeline.IsRunning);
-        Assert.Single(capt);
-        Assert.Equal(TranslationProvider.Gemini, capt[0].Provider);
-        Assert.Equal("en", capt[0].Source);
-        Assert.Equal("tl", capt[0].Target);
-        Assert.Equal(1, live.StartCount);
-
-        // The captured stream fans out to the live engine (PCM fan-out is the Gemini path).
-        h.Capture.Emit(Chunk(h.Capture.Format));
-        Assert.Equal(1, live.PushAudioCount);
-
-        await pipeline.StopAsync();
-        Assert.Equal(1, live.StopCount);
-        Assert.True(live.IsDisposed);
-    }
-
-    [Fact]
-    public async Task Start_without_provider_does_not_invoke_live_translation_factory()
-    {
-        // Translation off (provider null) must never create a live engine — the offline pipeline.
-        using var h = new Harness();
-        int factoryCalls = 0;
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                factoryCalls++;
-                return new FakeLiveAudioTranslationEngine();
-            });
-
-        pipeline.Start(null, null, liveTranslationProvider: null, liveSourceLanguage: "en", liveTargetLanguage: "tl");
-
-        Assert.True(pipeline.IsRunning);
-        Assert.Equal(0, factoryCalls);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_toggle_on_while_capturing_starts_live_engine()
-    {
-        // Translation toggled ON mid-session (Gemini): the pipeline must create + start the live
-        // engine without restarting the capture session — Argos UI/UX parity for runtime toggles.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
-                return live;
-            });
-
-        pipeline.Start(null, null);
-        Assert.True(pipeline.IsRunning);
-        Assert.Empty(capt);
-
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
-
-        Assert.Single(capt);
-        Assert.Equal((TranslationProvider.Gemini, "en", "tl"), (capt[0].Provider, capt[0].Source, capt[0].Target));
-        Assert.Equal(1, live.StartCount);
-
-        // The captured stream fans out to the newly started engine.
-        h.Capture.Emit(Chunk(h.Capture.Format));
-        Assert.Equal(1, live.PushAudioCount);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_toggle_off_stops_live_engine_and_keeps_captions_running()
-    {
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        int factoryCalls = 0;
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                factoryCalls++;
-                return live;
-            });
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        Assert.True(pipeline.IsRunning);
-        Assert.Equal(1, factoryCalls);
-        Assert.Equal(1, live.StartCount);
-
-        pipeline.SetLiveTranslation(null, null, null);
-
-        // Engine stopped and disposed; no new engine was created; the session keeps capturing.
-        Assert.Equal(1, factoryCalls);
-        Assert.Equal(1, live.StopCount);
-        Assert.True(live.IsDisposed);
-        Assert.True(pipeline.IsRunning);
-        Assert.True(h.Capture.IsCapturing);
-        Assert.True(h.SpeechToText.IsRecognizing);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_syncs_the_caption_services_live_translation_session_flag()
-    {
-        // The overlay's live-translation display mode must be driven by the actual provider, not by
-        // history content: switching Gemini → Argos (same target) clears the flag so source-STT lines
-        // never flash English, and switching Argos → Gemini sets it so the display is target-language
-        // only from the first moment (no English flash while Gemini starts).
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        int factoryCalls = 0;
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                factoryCalls++;
-                return live;
-            });
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
-
-        // Gemini → Argos: the live engine is stopped, so the flag clears.
-        pipeline.SetLiveTranslation(null, null, null);
-        Assert.False(h.Captions.GetSnapshot().IsLiveTranslationSession);
-
-        // Argos → Gemini: the live engine is recreated, so the flag sets again.
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
-        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task Live_translation_failure_clears_the_live_session_flag_so_source_captions_show()
-    {
-        // When the live Gemini engine fails (e.g. a source language the API does not support),
-        // the overlay must leave target-only display mode and return to the source captions Whisper
-        // keeps producing. Without the flag re-sync the overlay renders nothing after a failure.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        var errors = new List<LiveTranslationError>();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => live);
-        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        Assert.True(h.Captions.GetSnapshot().IsLiveTranslationSession);
-
-        live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.ServerError,
-            "unsupported language",
-            null));
-
-        Assert.False(h.Captions.GetSnapshot().IsLiveTranslationSession);
-        Assert.Single(errors);
-        Assert.True(live.IsDisposed);
-        Assert.True(pipeline.IsRunning);
-        Assert.True(h.Capture.IsCapturing);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_target_change_swaps_the_live_engine()
-    {
-        using var h = new Harness();
-        var engines = new List<FakeLiveAudioTranslationEngine>();
-        var capt = new List<(TranslationProvider? Provider, string? Source, string? Target)>();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                capt.Add((pair.Provider, pair.SourceLanguage, pair.TargetLanguage));
-                var engine = new FakeLiveAudioTranslationEngine();
-                engines.Add(engine);
-                return engine;
-            });
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        FakeLiveAudioTranslationEngine first = Assert.Single(engines);
-        Assert.Equal(1, first.StartCount);
-
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "ja");
-
-        // Old engine stopped + disposed, new engine created with the new target and started.
-        Assert.Equal(1, first.StopCount);
-        Assert.True(first.IsDisposed);
-        Assert.Equal(2, engines.Count);
-        FakeLiveAudioTranslationEngine second = engines[1];
-        Assert.Equal(1, second.StartCount);
-        Assert.Equal((TranslationProvider.Gemini, "en", "ja"), (capt[1].Provider, capt[1].Source, capt[1].Target));
-
-        // The stream now fans out to the NEW engine, never the detached one.
-        h.Capture.Emit(Chunk(h.Capture.Format));
-        Assert.Equal(0, first.PushAudioCount);
-        Assert.Equal(1, second.PushAudioCount);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_same_configuration_is_a_noop()
-    {
-        using var h = new Harness();
-        int factoryCalls = 0;
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                factoryCalls++;
-                return new FakeLiveAudioTranslationEngine();
-            });
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        Assert.Equal(1, factoryCalls);
-
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
-
-        Assert.Equal(1, factoryCalls);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_before_start_is_a_noop()
-    {
-        using var h = new Harness();
-        int factoryCalls = 0;
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: pair =>
-            {
-                factoryCalls++;
-                return new FakeLiveAudioTranslationEngine();
-            });
-
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
-
-        Assert.Equal(0, factoryCalls);
-        Assert.False(pipeline.IsRunning);
-
-        // The toggle is honored by the next Start's own configuration, not by the no-op call.
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        Assert.Equal(1, factoryCalls);
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task Live_translation_failure_clears_active_translation_line_and_keeps_captions_running()
-    {
-        // Reproduces the Gemini pause/resume symptom: when the live engine raises TranslationFailed
-        // (which now happens for graceful goAway shutdowns too), the pipeline must clear the active
-        // translation line so the overlay returns to the source captions instead of freezing on
-        // whatever translated text it had. The Whisper pipeline keeps running so source captions
-        // resume immediately.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => live);
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        h.Captions.SetTranslationEnabled(true, "tl");
-
-        // Seed an active translation line and a committed history entry so the assertion proves the
-        // clear is scoped to the translation active slot (the committed history is preserved). The
-        // final clears the active line (engine's commit semantics), so a second partial arrives to
-        // re-populate the active slot — the failure path under test fires while the speaker is
-        // mid-utterance.
-        live.EmitPartial("Magandang umaga", sequence: 1);
-        live.EmitFinal("Magandang umaga lahat.", sequence: 2);
-        live.EmitPartial("Ipinakita", sequence: 3);
-        Assert.NotNull(h.Captions.State.ActiveTranslationLine);
-        Assert.Single(h.Captions.State.History);
-
-        // The live engine raises a graceful-session-end failure (Gemini goAway path).
-        var statuses = new ConcurrentQueue<PipelineStatus>();
-        pipeline.StatusChanged += (_, s) => statuses.Enqueue(s);
-        live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.SessionEnded,
-            "Gemini session ended. Toggle translation off/on or restart to resume.",
-            null));
-
-        // The pipeline clears the active translation line and surfaces an error status. The
-        // committed history is preserved so the overlay still has content to render.
-        Assert.Null(h.Captions.State.ActiveTranslationLine);
-        Assert.Single(h.Captions.State.History);
-        Assert.Equal("Magandang umaga lahat.", h.Captions.State.History[0].TranslatedText);
-        Assert.True(pipeline.IsRunning, "Whisper must keep capturing after a live-translation failure.");
-        Assert.True(h.Capture.IsCapturing);
-        Assert.True(h.SpeechToText.IsRecognizing);
-
-        var errorStatus = statuses.FirstOrDefault(s => s.Kind == PipelineStatusKind.Error);
-        Assert.NotNull(errorStatus);
-        Assert.Contains("restart to resume", errorStatus!.Message);
-
-        // The engine is detached but its disposal runs on a background task — wait for it before
-        // teardown so the test does not race a fire-and-forget Task.Run.
-        await pipeline.StopAsync();
-        Assert.True(live.IsDisposed);
-    }
-
-    [Fact]
-    public async Task Live_translation_failure_when_no_active_line_is_a_noop_clear()
-    {
-        // Clearing when there is nothing to clear must not raise StateChanged (the overlay would
-        // rerender for no reason) and must not affect the Whisper pipeline.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => live);
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        h.Captions.SetTranslationEnabled(true, "tl");
-
-        var stateChangedBefore = h.Captions.State;
-        var stateChanges = 0;
-        h.Captions.StateChanged += (_, _) => stateChanges++;
-
-        live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.ConnectionFailed,
-            "Live translation receive failed.",
-            null));
-
-        Assert.Null(h.Captions.State.ActiveTranslationLine);
-        Assert.True(pipeline.IsRunning);
-        Assert.True(h.Capture.IsCapturing);
-
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task Live_translation_failure_raises_classified_error_event()
-    {
-        // The classified failure must surface through LiveTranslationErrorUpdated so the UI can show
-        // an actionable message (invalid key vs quota vs network) and disable Gemini in the dropdown.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => live);
-
-        var errors = new List<LiveTranslationError>();
-        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.SessionRejected,
-            "API key not valid. Please pass a valid API key.",
-            null));
-
-        LiveTranslationError error = Assert.Single(errors);
-        Assert.Equal(LiveTranslationErrorKind.SessionRejected, error.Kind);
-        Assert.Contains("API key", error.Message);
-        Assert.True(pipeline.IsRunning, "A live-translation failure must never stop source captions.");
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_gemini_with_missing_key_raises_classified_error()
-    {
-        // A Gemini selection whose engine cannot be constructed (the App factory returns null when no
-        // API key is stored) must surface the classified "missing/invalid key" error so the UI can
-        // fall back to Argos instead of showing "Gemini selected, nothing happens".
-        using var h = new Harness();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => null);
-
-        var errors = new List<LiveTranslationError>();
-        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
-
-        pipeline.Start(null, null);
-        Assert.True(pipeline.IsRunning);
-
-        pipeline.SetLiveTranslation(TranslationProvider.Gemini, "en", "tl");
-
-        LiveTranslationError error = Assert.Single(errors);
-        Assert.Equal(LiveTranslationErrorKind.SessionRejected, error.Kind);
-        Assert.Contains("API key", error.Message);
-        Assert.True(pipeline.IsRunning, "A missing-key failure must not stop source captions.");
-        await pipeline.StopAsync();
-    }
-
-    [Fact]
-    public async Task SetLiveTranslation_quota_failure_keeps_captions_running()
-    {
-        // Quota classification flows through the event while the Whisper pipeline stays untouched.
-        using var h = new Harness();
-        var live = new FakeLiveAudioTranslationEngine();
-        using var pipeline = new CaptionPipeline(
-            _ => h.Capture,
-            h.Processor,
-            _ => h.SpeechToText,
-            h.Captions,
-            liveTranslationFactory: _ => live);
-
-        var errors = new List<LiveTranslationError>();
-        pipeline.LiveTranslationErrorUpdated += (_, e) => errors.Add(e);
-
-        pipeline.Start(null, null, TranslationProvider.Gemini, "en", "tl");
-        live.Fail(new LiveTranslationError(
-            LiveTranslationErrorKind.QuotaExceeded,
-            "Quota exceeded for the day.",
-            null));
-
-        Assert.Equal(LiveTranslationErrorKind.QuotaExceeded, Assert.Single(errors).Kind);
-        Assert.True(pipeline.IsRunning);
-        Assert.True(h.SpeechToText.IsRecognizing);
-        await pipeline.StopAsync();
+        Assert.False(harness.Pipeline.IsRunning);
+        Assert.Empty(harness.FactoryCalls);
     }
 }

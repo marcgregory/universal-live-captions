@@ -185,7 +185,6 @@ public static class GeminiDirectWireSpike
                 Model = GeminiLiveTranslateEngineOptions.DefaultModel,
                 TargetLanguage = report.TargetLanguage,
                 SourceLanguage = "en",
-                SystemInstruction = "Output short caption-style translations only. Translate spoken English into natural Tagalog.",
                 Endpoint = GeminiLiveTranslateEngineOptions.DefaultEndpoint,
             };
             Console.WriteLine($"endpoint: {options.Endpoint}");
@@ -423,6 +422,7 @@ public static class GeminiDirectWireSpike
             await using var _ = provenanceChannel; // also disposes inner channel via decorator
 
             var outputs = new List<(string Text, bool IsPartial, long Ms)>();
+            var inputOutputs = new List<(string Text, bool IsPartial, long Ms)>();
             var errors = new List<string>();
             bool setupCompleteObserved = false;
             bool turnCompleteObserved = false;
@@ -473,6 +473,11 @@ public static class GeminiDirectWireSpike
                                 long ms = stopwatch.ElapsedMilliseconds;
                                 outputs.Add((content.Text, content.IsPartial, ms));
                                 lastOutputText = content.Text;
+                            }
+
+                            if (!string.IsNullOrEmpty(content.InputText))
+                            {
+                                inputOutputs.Add((content.InputText, content.InputIsPartial, stopwatch.ElapsedMilliseconds));
                             }
 
                             if (content.TurnComplete)
@@ -559,6 +564,16 @@ public static class GeminiDirectWireSpike
                     Text = output.Text,
                     IsPartial = output.IsPartial,
                     Ms = output.Ms,
+                });
+            }
+
+            foreach ((string Text, bool IsPartial, long Ms) input in inputOutputs)
+            {
+                result.InputTranscriptions.Add(new AbOutputRecord
+                {
+                    Text = input.Text,
+                    IsPartial = input.IsPartial,
+                    Ms = input.Ms,
                 });
             }
 
@@ -1069,6 +1084,18 @@ public static class GeminiDirectWireSpike
         {
             Console.WriteLine($"       B setupComplete={u.VariantB.SetupCompleteObserved} B inputAudioTranscription field "
                 + $"sent={(u.VariantB.IncludeInputTranscription ? "yes" : "no")}");
+            Console.WriteLine($"       B inputTranscription frames={u.VariantB.InputTranscriptions.Count}");
+            if (u.VariantB.InputTranscriptions.Count > 0)
+            {
+                string firstInput = u.VariantB.InputTranscriptions[0].Text ?? string.Empty;
+                string preview = firstInput.Length > 60 ? firstInput[..60] + "…" : firstInput;
+                Console.WriteLine($"       B inputTranscription first: \"{preview}\"");
+            }
+
+            if (u.VariantA is not null)
+            {
+                Console.WriteLine($"       A inputTranscription frames={u.VariantA.InputTranscriptions.Count} (expected 0 — field not sent)");
+            }
         }
     }
 
@@ -1083,6 +1110,7 @@ public static class GeminiDirectWireSpike
         Console.WriteLine($"  both variants usable -> finals compared : {report.BothVariantsProven}");
         Console.WriteLine($"  output-sequence identical (A vs B)      : {report.AllSequencesMatch}");
         Console.WriteLine($"  final text identical (A vs B)           : {report.AllFinalTextsMatch}");
+        Console.WriteLine($"  inputTranscription streamed (variant B) : {report.InputTranscriptionObservedB}");
         Console.WriteLine($"  api-key leakage : {(report.ApiKeyLeakageDetected ? "LEAK DETECTED" : "none")}");
         Console.WriteLine($"  result JSON     : {jsonPath}");
     }
@@ -1111,6 +1139,9 @@ public sealed class AbReport
     public bool BothVariantsProven { get; set; }
     public bool AllSequencesMatch { get; set; }
     public bool AllFinalTextsMatch { get; set; }
+
+    /// <summary>Release-gate answer: did variant B receive any serverContent.inputTranscription text?</summary>
+    public bool InputTranscriptionObservedB { get; set; }
     public bool ApiKeyLeakageDetected { get; set; }
 
     public void Classify()
@@ -1121,9 +1152,10 @@ public sealed class AbReport
         AudioBytesSentB = Utterances.Sum(u => u.VariantB?.AudioBytesSent ?? 0);
         BothVariantsProven = Utterances.Count > 0
                              && Utterances.All(u => u.VariantA?.Provenance?.ProvenanceVerified == true
-                                                    && u.VariantB?.Provenance?.ProvenanceVerified == true);
+                                                     && u.VariantB?.Provenance?.ProvenanceVerified == true);
         AllSequencesMatch = Utterances.Count > 0 && Utterances.All(u => u.FinalSequenceEquals || !u.VariantAHasOutput);
         AllFinalTextsMatch = Utterances.Count > 0 && Utterances.All(u => u.FinalTextsMatch || !u.VariantAHasOutput);
+        InputTranscriptionObservedB = Utterances.Any(u => (u.VariantB?.InputTranscriptions.Count ?? 0) > 0);
     }
 }
 
@@ -1661,6 +1693,9 @@ public sealed class AbVariantResult
     public long? FinalOutputMs { get; set; }
     public string? FinalText { get; set; }
     public List<AbOutputRecord> Outputs { get; set; } = new();
+
+    /// <summary>Raw <c>serverContent.inputTranscription</c> updates observed on this variant (empty for A by design).</summary>
+    public List<AbOutputRecord> InputTranscriptions { get; set; } = new();
     public UtteranceProvenance? Provenance { get; set; }
     public List<string> Errors { get; set; } = new();
 }

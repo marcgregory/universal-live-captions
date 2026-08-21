@@ -176,9 +176,16 @@ System audio may contain sensitive information. The following rules are immutabl
 - The application must never silently capture audio
 - Raw audio must not be persisted by default
 - Microphone audio is never captured unless explicitly enabled by the user
-- Local speech recognition is preferred when practical
-- If cloud speech recognition is ever enabled, the application must explicitly communicate that audio leaves the machine
 - A clear stop-capture action must always be available
+
+Cloud processing (amended 2026-08-21 by [ADR-0011](adr/ADR-0011-gemini-only-pipeline.md), which
+supersedes the earlier "local-first" preference): speech recognition and translation run in a
+Gemini Live session, so audio IS streamed to Google's API while captions run. Therefore:
+
+- The application must explicitly communicate that audio leaves the machine while a caption session is active
+- Audio is streamed only to the configured Gemini endpoint — never to any other service
+- Audio and transcripts are never written to disk
+- The Gemini API key is stored only in Windows Credential Manager and never logged or persisted elsewhere
 
 ---
 

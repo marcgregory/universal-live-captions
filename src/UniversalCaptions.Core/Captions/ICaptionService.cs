@@ -5,14 +5,13 @@ namespace UniversalCaptions.Core.Captions;
 
 /// <summary>
 /// Turns speech transcripts into <see cref="CaptionState"/>: partials update the active line and
-/// finals commit lines to history. When translation is enabled and an engine is available, committed
-/// lines are translated in the background; a translation failure never destroys the source caption.
-/// Implementations are engine-neutral and carry no UI concepts.
+/// finals commit lines to history. The service is a relay, not a translator: source captions arrive
+/// from the speech pipeline and translated captions are relayed from the live audio translation
+/// engine. Implementations are engine-neutral and carry no UI concepts.
 /// </summary>
 /// <remarks>
-/// Transcripts are fed synchronously from speech engine event handlers via <see cref="ProcessPartial"/>
-/// and <see cref="ProcessFinal"/>. Translations run as background tasks; <see cref="FlushAsync"/> waits
-/// for in-flight translations and is the deterministic hook tests (and callers ending a session) use.
+/// Transcripts are fed synchronously from engine event handlers via <see cref="ProcessPartial"/>
+/// and <see cref="ProcessFinal"/>.
 /// </remarks>
 public interface ICaptionService : IDisposable
 {
@@ -22,7 +21,7 @@ public interface ICaptionService : IDisposable
     /// <summary>Raised when a final line is committed to history.</summary>
     event EventHandler<CaptionLine>? CaptionLineCommitted;
 
-    /// <summary>Raised when a committed line's translation completes or fails.</summary>
+    /// <summary>Raised whenever a caption line is published or updated (active-line updates and commits).</summary>
     event EventHandler<CaptionLine>? CaptionLineUpdated;
 
     /// <summary>Raised after any change to <see cref="State"/>.</summary>
@@ -50,20 +49,18 @@ public interface ICaptionService : IDisposable
     void Start();
 
     /// <summary>
-    /// Stops the session and discards the active line. New transcripts are no longer accepted, but
-    /// committed finals already being translated are drained asynchronously and applied (bounded) so
-    /// captions recognized just before the stop are not dropped. Returns immediately; the caller must
-    /// not cancel any translation token afterwards. Idempotent.
+    /// Stops the session and discards the active line. New transcripts are no longer accepted.
+    /// Returns immediately. Idempotent.
     /// </summary>
     void Stop();
 
-    /// <summary>Clears the session, history, and translation configuration, and cancels in-flight translations. Idempotent.</summary>
+    /// <summary>Clears the session, history, and translation configuration. Idempotent.</summary>
     void Reset();
 
     /// <summary>
-    /// Enables or disables translation for newly committed lines. When enabled, committed lines are
-    /// translated to <paramref name="targetLanguage"/> (or the configured default when null) as long
-    /// as a translation engine is available.
+    /// Enables or disables translation for the session (the common
+    /// <see cref="CaptionState.TranslationEnabled"/>/<see cref="CaptionState.TargetLanguage"/> state).
+    /// When disabled, translation-origin input is rejected and translated content is scrubbed.
     /// </summary>
     /// <remarks>
     /// Two history-scrubbing transitions are tied to this method:
@@ -81,25 +78,13 @@ public interface ICaptionService : IDisposable
     void SetTranslationEnabled(bool enabled, string? targetLanguage = null);
 
     /// <summary>
-    /// Enables or disables this service's own caption-line translation path — the local
-    /// <see cref="ITranslationEngine"/> applied to source lines. Set to false when a live audio
-    /// translation engine owns translation (for example a cloud provider): the service then only
-    /// relays translation-origin lines and never starts its own translations, so the two paths can
-    /// never both fill the overlay. Independent of the common
-    /// <see cref="CaptionState.TranslationEnabled"/>/<see cref="CaptionState.TargetLanguage"/> state,
-    /// which reflects the user's translation toggle for every provider.
-    /// </summary>
-    /// <param name="enabled">True when this service should translate source lines itself.</param>
-    void SetCaptionLineTranslation(bool enabled);
-
-    /// <summary>
-    /// Sets whether a live audio translation engine (a cloud provider such as Gemini) currently owns
+    /// Sets whether a live audio translation engine (Gemini) currently owns
     /// translation for the session. True when the live engine is the display (the overlay is
-    /// target-language-only and source STT finals are hidden), false when the caption-line
-    /// (local Argos) path owns translation or when translation is off. Drives the overlay's
-    /// live-translation display mode explicitly — the mode must reflect the actual provider, never be
-    /// inferred from stale history content (a provider change could otherwise flash the previous
-    /// provider's untranslated English source).
+    /// target-language-only and source transcription finals are hidden), false when translation is
+    /// off. Drives the overlay's
+    /// live-translation display mode explicitly — the mode must reflect the actual engine, never be
+    /// inferred from stale history content (an engine swap could otherwise flash the previous
+    /// session's untranslated source).
     /// </summary>
     /// <param name="active">True while a live audio translation engine is the translation mechanism.</param>
     void SetLiveTranslationSession(bool active);
@@ -120,16 +105,15 @@ public interface ICaptionService : IDisposable
     void ProcessPartial(PartialTranscript transcript);
 
     /// <summary>
-    /// Commits a caption built from a final transcript. When translation is enabled, the committed line
-    /// is marked pending and translated in the background. Ignored while not running.
+    /// Commits a caption built from a final transcript. Ignored while not running.
     /// </summary>
     /// <param name="transcript">The final transcript. Must not be null.</param>
     void ProcessFinal(FinalTranscript transcript);
 
     /// <summary>
     /// Replaces the active translation line with a caption built from a partial translation. The
-    /// translation lineage is independent from the STT lineage: a Whisper partial and a translation
-    /// partial arriving at the same moment do not overwrite one another. Ignored while not running.
+    /// translation lineage is independent from the transcription lineage: a transcription partial and a
+    /// translation partial arriving at the same moment do not overwrite one another. Ignored while not running.
     /// </summary>
     /// <param name="translation">The partial translation. Must not be null.</param>
     void ProcessPartialTranslation(PartialTranslation translation);
@@ -156,12 +140,10 @@ public interface ICaptionService : IDisposable
 
     /// <summary>
     /// Resets every <em>displayed</em> translation from the committed history and the active
-    /// translation line, so a runtime reconfiguration (target-language or provider change) starts
-    /// clean: both the translation-origin lines a live engine (Gemini) produces AND the completed
-    /// translations Argos attaches to source lines are dropped — the overlay must never mix one
-    /// target's or provider's output into the next. Source STT history that carries no translation
-    /// is untouched (unlike <see cref="ClearTranslationHistory"/>, which only handles the live-engine
-    /// path). The active translation line is cleared so a stopped provider's in-progress line cannot
+    /// translation line, so a runtime reconfiguration (target-language change or toggle cycle) starts
+    /// clean: the translation-origin lines the live engine (Gemini) produces are dropped — the
+    /// overlay must never mix one target's output into the next. Source transcription history is
+    /// untouched. The active translation line is cleared so a stopped engine's in-progress line cannot
     /// linger as the display. Raises <see cref="StateChanged"/> when something was cleared.
     /// </summary>
     void ResetTranslatedContent();
@@ -175,10 +157,4 @@ public interface ICaptionService : IDisposable
     /// translation active line is set, or the service is not running.
     /// </summary>
     void ClearLiveTranslationActiveLine();
-
-    /// <summary>
-    /// Waits until all in-flight translations have settled (completed, failed, or cancelled).
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the wait.</param>
-    Task FlushAsync(CancellationToken cancellationToken = default);
 }

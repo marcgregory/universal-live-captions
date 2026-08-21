@@ -7,7 +7,7 @@ namespace UniversalCaptions.Core.Captions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two active-line slots coexist — one per <see cref="LineOrigin"/> — so a Whisper partial and a
+/// Two active-line slots coexist — one per <see cref="LineOrigin"/> — so a transcription partial and a
 /// Gemini partial arriving at the same moment do not overwrite one another. Each slot accepts
 /// updates only when the replacement line matches the slot's origin AND the prior line's instance
 /// identity, so a stale translation cannot clobber a newer partial.
@@ -186,19 +186,16 @@ public sealed class CaptionState
     /// Translation-origin lines (Gemini) are removed entirely — they carry no separate source.
     /// </description></item>
     /// <item><description>
-    /// Source lines Argos started a translation for (<see cref="LineOrigin.SourceStt"/> with a
+    /// Source lines that carried a completed translation (<see cref="LineOrigin.SourceStt"/> with a
     /// <see cref="CaptionTranslationStatus"/> other than <see cref="CaptionTranslationStatus.NotRequested"/>)
-    /// are stripped via <see cref="CaptionLine.WithoutTranslation"/>, so their English ground truth
-    /// SURVIVES while the Japanese/French/etc. text is dropped. This is the fix for the reported
-    /// "Argos output mixes Japanese with English": on a target change or toggle-off the old target's
+    /// are stripped via <see cref="CaptionLine.WithoutTranslation"/>, so their source ground truth
+    /// SURVIVES while the translated text is dropped: on a target change or toggle-off the old target's
     /// translated text is gone, yet the source history is preserved (parity with the Gemini path,
     /// which leaves its untouched SourceStt lines in place).
     /// </description></item>
     /// </list>
-    /// The ACTIVE SOURCE line is stripped the same way: in the Argos caption-line path it carries the
-    /// in-progress utterance's completed translation, so without this a target change or toggle-off
-    /// would leave the previous target's text on screen as the live line (the runtime leak where
-    /// English source history was correctly reset but the old Japanese active line survived). The
+    /// The ACTIVE SOURCE line is stripped the same way, so a target change or toggle-off
+    /// cannot leave the previous target's text on screen as the live line. The
     /// active translation line is NOT touched — that is <see cref="ClearTranslationActiveLine"/>'s job.
     /// </summary>
     /// <returns>The number of history entries removed or stripped back to source.</returns>
@@ -372,9 +369,9 @@ public sealed class CaptionState
     /// <summary>
     /// Clears both active lines and the committed history while KEEPING the translation configuration
     /// (<see cref="TranslationEnabled"/>, <see cref="TargetLanguage"/>) and the session-active flag.
-    /// Used on a runtime provider change (e.g. Gemini → Argos) so the overlay never surfaces the
-    /// previous provider's source-only history: the same target-language session continues cleanly
-    /// under the new provider instead of flashing untranslated English source lines.
+    /// Used on a runtime engine swap (e.g. a target-language change recycling the Gemini session) so
+    /// the overlay never surfaces the previous session's source-only history: the same target-language
+    /// session continues cleanly instead of flashing stale source lines.
     /// </summary>
     public void ClearContent()
     {

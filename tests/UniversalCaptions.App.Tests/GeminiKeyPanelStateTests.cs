@@ -6,13 +6,15 @@ namespace UniversalCaptions.App.Tests;
 /// <summary>
 /// The Gemini key panel must ALWAYS stay reachable when the stored key needs attention (missing,
 /// malformed, or rejected). Otherwise a broken key permanently locks the user out of fixing it:
-/// Gemini is not selectable in the provider dropdown (so the panel would be disabled), the dropdown
-/// falls back to Argos, and the user can never reach Add/Update/Remove.
+/// captions cannot start without a usable key, so Add/Update/Remove must never be disabled.
+/// The <c>isGemini</c> parameter is retained by <see cref="ControlWindow.ComputeGeminiKeyPanelState"/>
+/// for compatibility; the App now always passes true, and these tests pin both branches of the
+/// pure function.
 /// </summary>
 public sealed class GeminiKeyPanelStateTests
 {
     [Fact]
-    public void Argos_selected_without_key_problem_panel_is_not_applicable()
+    public void Non_gemini_branch_without_key_problem_panel_is_not_applicable()
     {
         var state = ControlWindow.ComputeGeminiKeyPanelState(
             isGemini: false, hasKey: false, availability: GeminiAvailability.Unknown);
@@ -25,10 +27,10 @@ public sealed class GeminiKeyPanelStateTests
     }
 
     [Fact]
-    public void Argos_fallback_with_stored_malformed_key_panel_stays_reachable_to_update()
+    public void Stored_malformed_key_panel_stays_reachable_to_update()
     {
-        // THE dead-end regression: the stored key is malformed so Gemini is not selectable, the
-        // dropdown fell back to Argos, but the user must still be able to UPDATE the key.
+        // THE dead-end regression: the stored key is malformed, but the user must still be able to
+        // UPDATE the key.
         var state = ControlWindow.ComputeGeminiKeyPanelState(
             isGemini: false, hasKey: true, availability: GeminiAvailability.MalformedKey);
 
@@ -41,21 +43,21 @@ public sealed class GeminiKeyPanelStateTests
     }
 
     [Fact]
-    public void Argos_fallback_with_no_key_panel_stays_reachable_to_add()
+    public void Missing_key_panel_stays_reachable_to_add()
     {
         var state = ControlWindow.ComputeGeminiKeyPanelState(
             isGemini: false, hasKey: false, availability: GeminiAvailability.MissingKey);
 
         Assert.True(state.IsEnabled, "A missing key must never disable the key panel.");
         Assert.Equal("No key stored", state.StatusText);
-        Assert.True(state.ShowAdd, "The Add button must be reachable so Gemini can be re-enabled.");
+        Assert.True(state.ShowAdd, "The Add button must be reachable so a key can be added.");
         Assert.False(state.ShowUpdate);
         Assert.True(state.ShowRemove);
         Assert.False(state.RemoveEnabled);
     }
 
     [Fact]
-    public void Argos_fallback_with_rejected_key_panel_stays_reachable_to_update()
+    public void Rejected_key_panel_stays_reachable_to_update()
     {
         var state = ControlWindow.ComputeGeminiKeyPanelState(
             isGemini: false, hasKey: true, availability: GeminiAvailability.InvalidKey);

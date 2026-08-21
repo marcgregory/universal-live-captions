@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-14 (v0.5.40 segmentation matrix)
+Last updated: 2026-08-21 (v0.5.43 Gemini-only pipeline)
 
 ## Metadata
 
@@ -16,6 +16,47 @@ Last updated: 2026-08-14 (v0.5.40 segmentation matrix)
 ---
 
 ## Summary
+
+**v0.5.43 RELEASE GATE CLOSED — real-wire and real-app smoke verification PASS (2026-08-21).**
+`tools/GeminiDirectWireSpike --ab` ran against the live API (`models/gemini-3.5-live-translate-preview`,
+key from Credential Manager `UniversalCaptions:GeminiApiKey`, corpus `artifacts/spike-corpus`,
+3 WAVs × 10 s audio each, variants A/B differing only in the top-level `inputAudioTranscription`
+setup field). **Result: variant B received 7–8 `serverContent.inputTranscription` frames per
+utterance with real English source text** (e.g. `"But Birch canoe slid on the"`,
+`"Hello and welcome to the first"` → `" meeting of our"` → `" conversational"` → …), and — notably —
+**variant A (field NOT sent) also received them (6–8 frames)**, i.e. the API streams the input
+transcription surface by default for this model. Both variants proven (Gemini audio +
+outputAudioTranscription), setupComplete observed in all sessions, zero session errors on B,
+no API-key leakage. Evidence: `artifacts/spike-result/ab-result.json`. Known non-determinism:
+file 1's A-vs-B finals differed (`seq=False finalEqual=False`) — expected Gemini variance,
+not a defect. **RISK_REGISTER R-007 is answered: the transcription surface streams back;
+source captions do NOT need an alternative surface.**
+
+**v0.5.43 Gemini-only pipeline (2026-08-21): full suite 528/528 passing** (106 Audio + 69 Captions +
+174 Speech.Gemini + 179 App), Debug + Release builds 0 warnings / 0 errors,
+`dotnet format --verify-no-changes` clean. ADR-0011 removed `UniversalCaptions.Speech`,
+`UniversalCaptions.Translation`, `UniversalCaptions.Benchmarks`, and their test projects
+(Speech.Tests, Translation.Tests); the remaining suites were rewritten against the new contracts:
+`CaptionServiceTests` (69) as a pure relay/state-machine suite with a `MutableClock`;
+`CaptionPipelineTests` (~30) with a Harness driving the fake `ILiveAudioTranslationEngine`
+(Start signature `(deviceId, sourceLanguage, targetLanguage, translationEnabled)`, translation
+gating, engine recycle on target change, TD-002 recovery); `LiveTranslationEngineFactoryTests`
+(Credential-Manager-only key path, env-var regression guard, never-throws);
+`SettingsStoreTests` schema v3; protocol pins for the top-level `inputAudioTranscription: {}`
+setup frame + parse pins. **Release gate closed:** real-wire verification and the final installed Release-artifact smoke test both passed.
+### v0.5.43 installed Release-artifact smoke test — PASS (2026-08-21)
+
+Manual smoke test completed against the v0.5.43 installer/portable artifact:
+
+1. App starts from the extracted ZIP/installed bundle.
+2. Gemini API key is accepted and capture starts with a WASAPI loopback device.
+3. English audio produces source captions and translation captions.
+4. Translate OFF scrubs translation lines while source captions continue.
+5. Translate ON resumes translation.
+6. Changing the target language recycles the session correctly.
+7. Stop exits cleanly and history is retained.
+
+Artifacts verified: `UniversalCaptions-Setup-0.5.43.exe` (48.8 MB) and `UniversalCaptions-0.5.43-win-x64-full.zip` (64.5 MB).
 
 **v0.5.40 segmentation-guard unit-test matrix (2026-08-14): full suite 700/700 passing** (106
 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 168 Speech.Gemini), Release build 0
@@ -40,7 +81,7 @@ accumulator and exited the receive loop **silently**, so the pipeline kept the e
 the overlay froze on the last translated sentence. Fix: the `GoAway` branch raises
 `TranslationFailed(ServerError, "Live translation session ended by server.")`; the pipeline clears
 the caption service's translation active line (new `ICaptionService.ClearLiveTranslationActiveLine()`)
-before detaching the engine and raising the error status. **3 new tests** — 
+before detaching the engine and raising the error status. **3 new tests** —
 `GeminiLiveTranslateEngineTests.GoAwayFrame_RaisesTranslationFailed_SoPipelineCanDetachAndClearActiveLine`
 (server-close goAway with an in-flight partial → tail-flush final + ServerError raised);
 `CaptionPipelineTests.Live_translation_failure_clears_active_translation_line_and_keeps_captions_running`

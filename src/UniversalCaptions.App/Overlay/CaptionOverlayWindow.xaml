@@ -178,9 +178,9 @@
                           HorizontalScrollBarVisibility="Disabled"
                           HorizontalContentAlignment="Stretch"
                           ClipToBounds="True"
-                          Height="160"
-                          Margin="16,4,16,4"
-                          Padding="0,4,0,4"
+                          Height="200"
+                          Margin="16,8,16,8"
+                          Padding="0,10,0,16"
                           Focusable="False">
                 <ScrollViewer.OpacityMask>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -191,7 +191,7 @@
                 </ScrollViewer.OpacityMask>
                 <Grid>
                     <StackPanel x:Name="CaptionPanel"
-                                Margin="0,0,4,0"
+                                Margin="0,0,4,10"
                                 Visibility="Collapsed" />
                     <TextBlock x:Name="HintText"
                                Text="Listening…"

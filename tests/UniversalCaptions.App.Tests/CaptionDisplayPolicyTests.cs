@@ -379,7 +379,7 @@ public class CaptionDisplayPolicyTests
     public void Live_translation_session_hides_source_stt_history_lines()
     {
         // Once a live-translation session produces any translation content, the overlay is
-        // Tagalog-only: Whisper source-STT finals are hidden, Gemini translation-origin finals show.
+        // Target-language-only: source transcription finals are hidden, Gemini translation-origin finals show.
         CaptionLine englishFinal = Final("Going now.", 1);
         CaptionLine tagalogFinal = new("Pupunta na.", "tl", 2, DateTime.UtcNow, CaptionLineState.Final, DateTime.UtcNow,
             targetLanguage: "tl", translatedText: "Pupunta na.", origin: LineOrigin.Translation);
@@ -408,7 +408,7 @@ public class CaptionDisplayPolicyTests
         // Toggling translation off during a Gemini session (the live engine is stopped) must return
         // the overlay to the source captions immediately: the badge clears and the source STT active
         // line is the display, even though translation-origin history from before the toggle remains
-        // (the same as Argos, where already-translated history lines stay visible after toggle-off).
+        // (already-translated history lines stay visible after toggle-off).
         CaptionLine source = Active("going now", sequence: 3);
         CaptionLine englishFinal = Final("Hello.", 1);
         CaptionLine tagalogFinal = new("Kamusta.", "tl", 2, DateTime.UtcNow, CaptionLineState.Final, DateTime.UtcNow,
@@ -480,7 +480,7 @@ public class CaptionDisplayPolicyTests
     public void Live_translation_session_exposes_language_badge_from_common_state()
     {
         // The badge comes from the common translation state (TranslationEnabled + TargetLanguage),
-        // which reflects the user's toggle for Gemini exactly as for Argos — never inferred from
+        // which reflects the user's toggle — never inferred from
         // line origins.
         CaptionLine tagalogActive = new("pupunta na", "tl", 3, DateTime.UtcNow, CaptionLineState.Active,
             targetLanguage: "tl", translatedText: "pupunta na", origin: LineOrigin.Translation);
@@ -536,18 +536,16 @@ public class CaptionDisplayPolicyTests
     }
 
     [Fact]
-    public void Provider_switch_to_caption_line_mode_shows_completed_argos_translations()
+    public void Source_line_with_completed_translation_shows_translated_text_when_live_session_off()
     {
-        // Gemini → Argos (same target tl): after the switch the display mode is the Argos caption-line
-        // path (IsLiveTranslationSession false). A new source-STT final whose Argos translation
-        // completed must render as Tagalog — the target-language session continues under Argos exactly
-        // as it did under Gemini, never as English.
-        CaptionLine argosFinal = Final("Good morning.", 2, "Magandang umaga.", CaptionTranslationStatus.Completed);
+        // With the live session flag off, a source final whose translation completed renders its
+        // translated text with the target badge.
+        CaptionLine translatedFinal = Final("Good morning.", 2, "Magandang umaga.", CaptionTranslationStatus.Completed);
 
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
             new CaptionSnapshot(
                 null,
-                [argosFinal],
+                [translatedFinal],
                 IsSessionActive: true,
                 TranslationEnabled: true,
                 TargetLanguage: "tl",
@@ -560,11 +558,11 @@ public class CaptionDisplayPolicyTests
     }
 
     [Fact]
-    public void Provider_switch_to_live_mode_hides_source_stt_even_without_translation_content()
+    public void Live_mode_hides_source_stt_even_without_translation_content()
     {
-        // Argos → Gemini (same target tl): the moment the live engine takes over the display becomes
+        // The moment the live engine takes over, the display becomes
         // target-language-only (IsLiveTranslationSession true). Even BEFORE the first Gemini content
-        // arrives, the previous provider's English source-STT finals must be hidden — no English flash
+        // arrives, the source transcription finals must be hidden — no source-language flash
         // during the handoff. This is the case content-inference could not express (no translation
         // content present, yet the mode must be live).
         CaptionLine englishFinal1 = Final("Hello.", 1);
@@ -585,10 +583,9 @@ public class CaptionDisplayPolicyTests
     }
 
     [Fact]
-    public void Provider_switch_keeps_target_language_badge_in_caption_line_mode()
+    public void Translation_on_with_target_keeps_badge_when_live_session_off()
     {
-        // A provider change must only change the provider: the selected target language (and its
-        // badge) survives the switch to the Argos caption-line path.
+        // The selected target language (and its badge) survives with the live-session flag off.
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
             new CaptionSnapshot(
                 null,
@@ -603,12 +600,11 @@ public class CaptionDisplayPolicyTests
     }
 
     [Fact]
-    public void Provider_switch_keeps_english_source_history_after_revert()
+    public void Source_history_stays_visible_after_revert()
     {
-        // The provider switch resets ONLY the translated content (ResetTranslatedContent): the English
-        // source history is persistent ground truth and must remain visible in the Argos caption-line
-        // path — the overlay must not go empty, must not show stale translated text, and the target
-        // badge survives.
+        // A translated-content reset leaves the source history as persistent ground truth: it must
+        // remain visible — the overlay must not go empty, must not show stale translated text, and
+        // the target badge survives.
         CaptionLine englishFinal1 = Final("Storage, backups are stored at a remote location.", 1);
         CaptionLine englishFinal2 = Final("Off-site storage provides protection.", 2);
 
@@ -633,7 +629,7 @@ public class CaptionDisplayPolicyTests
     public void Live_translation_badge_shows_before_any_content_when_translation_enabled()
     {
         // With the common state on, the badge is immediate even before the live session produces any
-        // translation content (same as Argos, where the badge shows as soon as the toggle is on).
+        // translation content.
         CaptionDisplayModel model = CaptionDisplayPolicy.ToDisplayModel(
             new CaptionSnapshot(
                 Active("the quick brown"),

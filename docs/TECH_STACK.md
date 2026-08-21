@@ -1,6 +1,6 @@
 # Universal Live Captions Technology Stack
 
-Last updated: 2026-08-01
+Last updated: 2026-08-21
 
 ## Metadata
 
@@ -11,13 +11,13 @@ Last updated: 2026-08-01
 | Audience | Engineering, Architecture review |
 | Owner | Engineering |
 | Status | Active |
-| Related Documents | [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY_PLAN.md](SECURITY_PLAN.md), [DEPLOYMENT.md](DEPLOYMENT.md) |
+| Related Documents | [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY_PLAN.md](SECURITY_PLAN.md), [DEPLOYMENT.md](DEPLOYMENT.md), [ADR-0011](adr/ADR-0011-gemini-only-pipeline.md) |
 
 ---
 
 ## Summary
 
-Native Windows 10 desktop application in C# / .NET 8 with WPF for UI, NAudio for WASAPI loopback audio capture, a local Whisper engine behind a streaming speech-to-text abstraction, and Argos Translate behind a local translation abstraction for offline live translation. Approved by the user on 2026-07-31.
+Native Windows 10 desktop application in C# / .NET 8 with WPF for UI, NAudio for WASAPI loopback audio capture, and a single Gemini Live session (`ILiveAudioTranslationEngine`) for both speech-to-text and live translation. Approved by the user on 2026-07-31; Gemini-only pipeline approved by ADR-0011 (2026-08-21).
 
 ## Technology Decision Summary
 
@@ -26,8 +26,7 @@ Native Windows 10 desktop application in C# / .NET 8 with WPF for UI, NAudio for
 - **Language/Runtime**: C# / .NET 8 (LTS)
 - **UI**: WPF
 - **Audio capture**: NAudio 2.2.1 (WASAPI loopback)
-- **Speech-to-text**: `ISpeechToTextEngine` abstraction; first engine local Whisper (whisper.cpp binding)
-- **Translation**: `ITranslationEngine` abstraction; first engine Argos Translate (offline/local, isolated behind a local process, CPU/CUDA)
+- **Speech-to-text + translation**: `ILiveAudioTranslationEngine` abstraction; single engine `GeminiLiveTranslateEngine` (Gemini Live websocket API)
 - **DI**: Microsoft.Extensions.DependencyInjection
 - **Testing**: xUnit
 - **Solution**: .NET solution with per-layer projects (`src/`, `tests/`)
@@ -38,7 +37,7 @@ Approved as recommended.
 
 ### Approval Status
 
-Approved by user on 2026-07-31 (.NET 8 + WPF + NAudio + local Whisper behind `ISpeechToTextEngine` + Argos Translate behind `ITranslationEngine`; Whisper model size and Argos model/pair selection deferred pending latency/quality benchmarking).
+Originally approved by user on 2026-07-31 (.NET 8 + WPF + NAudio + local Whisper + Argos). Amended by ADR-0011 (2026-08-21): local Whisper and Argos removed; Gemini Live is the single STT + translation engine.
 
 ### Alternatives Considered
 
@@ -47,18 +46,17 @@ Approved by user on 2026-07-31 (.NET 8 + WPF + NAudio + local Whisper behind `IS
 | Rust + windows-rs | Not installed; more manual WASAPI/Win32 interop | Rejected (ADR-0001) |
 | WebView2 + React/TypeScript | Extra runtime dependency, no benefit for overlay | Rejected (ADR-0001) |
 | VB-CABLE virtual cable | Works but violates product requirement | Rejected (ADR-0002) |
-| Cloud streaming STT (Azure/OpenAI) | Audio leaves the machine | Rejected for MVP (ADR-0003) |
+| Local Whisper STT | Model download/support burden; Tagalog accuracy gap; steady-state latency regressions measured in Slices 6–9 | Removed (ADR-0011) |
+| Argos Translate local translation | Python runtime isolation, MAX_PATH packaging pain, `tl`-as-source unsupported, latency | Removed (ADR-0011) |
 | Windows.Media.SpeechRecognition | Limited languages; no clean loopback feed | Rejected (ADR-0003) |
-| Cloud translation (Azure Translator) | Transcripts leave the machine; API key/account needed | Rejected for MVP (ADR-0006) |
-| Raw Marian NMT for translation | More model/runtime integration work than Argos | Rejected (ADR-0006) |
+| Cloud translation (Azure Translator) | Separate service/key; no streaming integration with recognition | Superseded by Gemini Live single-session design (ADR-0011) |
 | WinForms | Weaker per-monitor DPI and transparency/click-through support | Rejected (ADR-0004) |
 
 ### Tradeoffs
 
 - **.NET 8 over Rust**: less raw performance, far faster delivery and testability on the installed toolchain.
 - **NAudio over raw WASAPI COM**: less control over edge cases, but battle-tested loopback support on Windows 10.
-- **Local Whisper over cloud**: no upload/privacy concerns, but model size drives accuracy/latency tradeoff that must be benchmarked.
-- **Argos over cloud translation**: genuinely offline/local and supports pivoting through an intermediate language, but is Python-based, so it is isolated behind a local process to keep the C# app Python-free; translation latency and per-pair model installs must be benchmarked.
+- **Gemini Live over local engines**: state-of-the-art quality for both transcription and translation in one pass, zero model downloads (~145 MB app vs multi-GB stacks), but requires internet + a free API key, and audio streams to Google while captions run (disclosed per SECURITY_PLAN).
 - **WPF over WebView2**: native transparency/always-on-top primitives vs. web flexibility that is not needed.
 
 ## Application
@@ -69,23 +67,23 @@ Approved by user on 2026-07-31 (.NET 8 + WPF + NAudio + local Whisper behind `IS
 | Overlay | Borderless WPF window, per-monitor DPI, layered/click-through (`WS_EX_TRANSPARENT`) |
 | State/DI | Microsoft.Extensions.DependencyInjection |
 
-`UniversalCaptions.App` (added Slice 5, 2026-08-01) is the DI composition root: it resolves the real pipeline once (Argos → `CaptionService` → `AudioProcessor` → capture/STT factories → `CaptionPipeline` → overlay + control windows) and wires events; `IOverlayService` owns overlay state (visibility/position/opacity/font size/click-through per ADR-0004). `Microsoft.Extensions.DependencyInjection` 8.0.0 is pinned in `UniversalCaptions.App`. WPF windows render `CaptionState` only; UI code never calls engine internals.
+`UniversalCaptions.App` is the DI composition root: it resolves the real pipeline once (factory → `CaptionService` → `AudioProcessor` → capture/live-engine factories → `CaptionPipeline` → overlay + control windows) and wires events; `IOverlayService` owns overlay state (visibility/position/opacity/font size/click-through per ADR-0004). `Microsoft.Extensions.DependencyInjection` 8.0.0 is pinned in `UniversalCaptions.App`. WPF windows render `CaptionState` only; UI code never calls engine internals.
 
 ## Backend
 
-Not applicable — local desktop application, no backend.
+Not applicable — local desktop application. The only external service consumed is Google's Gemini Live websocket API.
 
 ## Database and Storage
 
-None in the MVP. No database, no persistent storage.
+No database. The only persisted data is UI preferences at `%LocalAppData%\UniversalCaptions\settings.json` (schema v3) and the Gemini API key in Windows Credential Manager.
 
 ## Authentication and Authorization
 
-Not applicable.
+Not applicable locally. The Gemini session authenticates via the user's API key.
 
 ## Realtime and Background Jobs
 
-In-process streaming events; one background audio pump per session.
+In-process streaming events; one background audio pump plus one Gemini receive loop per session.
 
 ## Testing
 
@@ -94,6 +92,7 @@ In-process streaming events; one background audio pump per session.
 | Framework | xUnit 2.x |
 | Runner | `dotnet test` |
 | Hardware boundaries | Fake implementations of `IWaveIn`-style boundaries in `UniversalCaptions.Audio.Tests` |
+| Engine boundary | Fake `ILiveAudioTranslationEngine` implementations in App/Captions tests; protocol pins in Speech.Gemini tests |
 
 ## Development Tools
 
@@ -104,8 +103,8 @@ In-process streaming events; one background audio pump per session.
 
 ## Deployment and Operations
 
-- `dotnet publish` self-contained, single-file where practical (see [DEPLOYMENT.md](DEPLOYMENT.md))
-- Installer/packaging strategy defined in [DEPLOYMENT.md](DEPLOYMENT.md)
+- `dotnet publish` self-contained win-x64, trimmed (~145 MB); see [DEPLOYMENT.md](DEPLOYMENT.md)
+- Packaging via `packaging/build-package.ps1` (portable ZIP + Inno Setup installer)
 
 ## Package Recommendations
 
@@ -117,10 +116,8 @@ In-process streaming events; one background audio pump per session.
 | Microsoft.NET.Test.Sdk | latest stable | tests/ | Test runner |
 | xunit.runner.visualstudio | latest stable | tests/ | VS test adapter |
 
-Whisper model binaries and Argos Translate language-model packages are runtime data, not NuGet packages; they are downloaded/installed under `artifacts/models/` (Whisper) and `artifacts/argos/` (Argos venv + packages), both git-ignored. The Argos Python runtime is installed separately (a dedicated `python -m venv` created in Slice 3) and launched as a local process by `ArgosTranslationEngine`; it is not embedded in the .NET process.
-
-**Argos runtime (dev, Slice 3, verified 2026-08-01):** Argos Translate 1.11.0 on Python 3.11 in a dedicated venv (`artifacts/argos/venv`; on the dev machine created under the temp dir with the short 8.3 path to avoid Windows MAX_PATH limits during the torch install). Four direct language packages installed from the Argos index: `en→tl`, `tl→en`, `ja→en`, `en→ja`. Pivoting works for pairs without a direct model (verified `ja→tl` via `en`). **Known limitation:** Argos sentence-boundary detection does not support `tl` as a source language; the MVP pairs use `tl` only as a target. The line-protocol server script is bundled in the Translation project (`Server/argos_translate_server.py`) and copied to output. Translation model/package selection is now resolved per ADR-0006; no Argos package is a NuGet dependency.
+There are no model binaries or Python runtimes anywhere in the stack (ADR-0011). The Gemini engine uses only BCL types (`System.Net.WebSockets`, `System.Text.Json`).
 
 ## Rejected Options
 
-Recorded above in "Alternatives Considered" and in ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0006.
+Recorded above in "Alternatives Considered" and in ADR-0001–0006, ADR-0011.

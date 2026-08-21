@@ -19,6 +19,9 @@ public interface IOverlayService
     bool ClickThrough { get; set; }
 
     /// <summary>Shows the overlay, positioning it at its configured (or default) location.</summary>
+    /// <summary>Updates the source-language badge for the current caption session.</summary>
+    void SetSourceLanguage(string? sourceLanguage);
+
     void Show();
 
     /// <summary>Hides the overlay.</summary>

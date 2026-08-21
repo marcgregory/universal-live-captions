@@ -1,6 +1,6 @@
 # Universal Live Captions Repository Standards
 
-Last updated: 2026-08-01
+Last updated: 2026-08-21
 
 ## Metadata
 
@@ -47,19 +47,16 @@ No other top-level directories may be created unless explicitly approved by the 
 src/
   UniversalCaptions.Core/          # Pure interfaces, models, events (no NAudio/WPF dependencies)
   UniversalCaptions.Audio/         # WASAPI loopback capture, buffering, resampling, VAD, meters
-  UniversalCaptions.Speech/        # Speech engines (WhisperSpeechToTextEngine); contracts live in Core
-  UniversalCaptions.Translation/   # Translation engines (ArgosTranslationEngine); contracts live in Core
-  UniversalCaptions.Captions/      # Caption state and service (created in Slice 4)
-  UniversalCaptions.App/           # WPF control window + caption overlay (created in Slice 5)
+  UniversalCaptions.Speech.Gemini/ # Gemini Live engine (ILiveAudioTranslationEngine); contracts live in Core
+  UniversalCaptions.Captions/      # Caption state and service
+  UniversalCaptions.App/           # WPF control window + caption overlay + pipeline composition
   UniversalCaptions.Diagnostics/   # Diagnostic console apps (audio meter, etc.)
-  UniversalCaptions.Benchmarks/    # Whisper + Argos benchmark harness (Slices 2 and 3 deliverables)
 
 tests/
   UniversalCaptions.Audio.Tests/   # xUnit tests for the Audio project
-  UniversalCaptions.Speech.Tests/  # xUnit tests for the Speech project (Slice 2)
-  UniversalCaptions.Translation.Tests/ # xUnit tests for the Translation project (Slice 3)
-  UniversalCaptions.Captions.Tests/ # xUnit tests for the Captions project (Slice 4)
-  UniversalCaptions.App.Tests/     # xUnit tests for the App project (Slice 5)
+  UniversalCaptions.Speech.Gemini.Tests/ # xUnit tests for the Speech.Gemini project
+  UniversalCaptions.Captions.Tests/ # xUnit tests for the Captions project
+  UniversalCaptions.App.Tests/     # xUnit tests for the App project
 ```
 
 ### Project Dependency Rules
@@ -67,17 +64,12 @@ tests/
 | Project | May Reference | Must NOT Reference |
 |---|---|---|
 | `UniversalCaptions.Core` | Nothing in the repo | Everything else |
-| `UniversalCaptions.Audio` | Core | Speech, Translation, Captions, App |
-| `UniversalCaptions.Speech` | Core | Audio, Translation, Captions, App |
-| `UniversalCaptions.Translation` | Core | Audio, Speech, Captions, App |
-| `UniversalCaptions.Captions` | Core | Audio, Speech, Translation, App |
-| `UniversalCaptions.App` | Core, Audio, Speech, Translation, Captions | — |
+| `UniversalCaptions.Audio` | Core | Speech.Gemini, Captions, App |
+| `UniversalCaptions.Speech.Gemini` | Core | Audio, Captions, App |
+| `UniversalCaptions.Captions` | Core | Audio, Speech.Gemini, App |
+| `UniversalCaptions.App` | Core, Audio, Speech.Gemini, Captions | — |
 | `UniversalCaptions.Diagnostics` | Core, Audio | App |
-| `UniversalCaptions.Benchmarks` | Core, Speech, Translation | Audio, Captions, App |
 | `tests/*` | Their target project (+ Core) | Projects they do not test |
-
-- `UniversalCaptions.Benchmarks` additionally consumes `UniversalCaptions.Audio`'s canonical
-  boundary (`CanonicalAudioBoundary`, ADR-0010); see the ADR-0010 exception below.
 
 **Documented architectural test-dependency exception:** a test project may additionally reference
 a non-target production project when it must exercise an explicitly documented architectural
@@ -125,8 +117,8 @@ listed here. Current exceptions:
 ## 5. Dependency Boundaries
 
 - `UniversalCaptions.Core` must not reference NAudio, WPF, or any third-party package
-- `UniversalCaptions.Audio` must not reference `UniversalCaptions.Speech`, `UniversalCaptions.Translation`, or `UniversalCaptions.App`
-- No audio/STT/translation vendor API may appear in Core interfaces (see ADR-0003 and ADR-0006)
+- `UniversalCaptions.Audio` must not reference `UniversalCaptions.Speech.Gemini` or `UniversalCaptions.App`
+- No Gemini/vendor API may appear in Core interfaces (see ADR-0003, ADR-0006, ADR-0011)
 - Third-party packages are only added with a `TECH_STACK.md` entry and, when consequential, an ADR
 
 ---
@@ -139,8 +131,6 @@ listed here. Current exceptions:
 | Test results | `TestResults/` |
 | Coverage reports | `coverage/` |
 | IDE configuration | `.vscode/`, `.idea/` |
-| Whisper model binaries (dev) | `artifacts/models/` (git-ignored) |
-| Argos venv + translation packages (dev) | `artifacts/argos/` (git-ignored) |
 
 Generated files are ignored via `.gitignore` and must never be committed.
 

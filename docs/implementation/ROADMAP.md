@@ -80,8 +80,12 @@ Last updated: 2026-08-14
 
 ## In Progress
 
-- None currently. (The segmentation-guard unit-test matrix and the corpus-driven phrase-guard
-  validation both CLOSED 2026-08-14 — see Completed.)
+- **Gemini-only pipeline (ADR-0011, v0.5.43) — implementation COMPLETE, real-wire gate CLOSED
+  (PASS 2026-08-21).** Local Whisper + Argos + Benchmarks removed; single Gemini Live session for
+  STT + translation; packaging stripped (~145 MB flat publish); docs updated. `inputTranscription`
+  verification PASS (variant B: 7–8 frames/utterance with real English source text; variant A also
+  received them — surface streams by default; evidence `artifacts/spike-result/ab-result.json`).
+  **Remaining:** real-app smoke on the Release artifact, then tag cut + GitHub release.
 
 ## Completed (core done)
 
@@ -98,9 +102,12 @@ Last updated: 2026-08-14
 
 ## Sprint Queue
 
-- None currently. The segmentation-guard unit-test matrix and the corpus-driven phrase-guard validation
-  are both **CLOSED 2026-08-14** — decisions recorded, production gate unchanged, phrase guard NOT
-  shipped (see Completed).
+- **v0.5.43 release:** (1) ~~real-wire `inputTranscription` verification~~ **DONE 2026-08-21, PASS**;
+  (2) real-app smoke (loopback → captions → translation toggle → goAway recovery) on the Release
+  artifact; (3) cut tag + GitHub release with the new packaging.
+- The segmentation-guard unit-test matrix and the corpus-driven phrase-guard validation are both
+  **CLOSED 2026-08-14** — decisions recorded, production gate unchanged, phrase guard NOT shipped
+  (see Completed).
 
 ---
 

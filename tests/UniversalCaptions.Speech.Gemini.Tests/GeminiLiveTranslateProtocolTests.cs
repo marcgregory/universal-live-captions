@@ -77,18 +77,24 @@ public sealed class GeminiLiveTranslateProtocolTests
     }
 
     [Fact]
-    public void SetupFrame_DoesNotIncludeInputAudioTranscription()
+    public void SetupFrame_EnablesInputAudioTranscription_AtTopLevel()
     {
-        // The Google docs example shows `inputAudioTranscription` in `generationConfig`, but the
-        // real server rejects that path. Even at the top level, the App pipeline doesn't need
-        // the input transcript (Whisper STT owns the source), so we omit it. If a future product
-        // change re-introduces it, this test should fail and force a fresh validation pass
-        // against the live server.
+        // ADR-0011: Gemini is the single STT + translation engine, so the setup frame asks for
+        // the INPUT transcript side-channel too. The real server accepted the top-level
+        // `inputAudioTranscription` sibling of model + generationConfig in the 2026-08-09
+        // spike A/B run (same placement rule as outputAudioTranscription; the nested
+        // generationConfig path is rejected).
         string json = GeminiLiveTranslateProtocol.BuildSetupFrame(Model, TargetCode);
         using var document = JsonDocument.Parse(json);
 
         JsonElement setup = document.RootElement.GetProperty("setup");
-        Assert.False(setup.TryGetProperty("inputAudioTranscription", out _));
+        Assert.True(setup.TryGetProperty("inputAudioTranscription", out JsonElement inputAudioTranscription));
+        Assert.Equal(JsonValueKind.Object, inputAudioTranscription.ValueKind);
+
+        // The field must NOT also appear inside generationConfig — that nested path is the
+        // malformed version the server rejects.
+        JsonElement generationConfig = setup.GetProperty("generationConfig");
+        Assert.False(generationConfig.TryGetProperty("inputAudioTranscription", out _));
     }
 
     [Fact]
@@ -445,6 +451,85 @@ public sealed class GeminiLiveTranslateProtocolTests
         Assert.Null(content.Text);
         Assert.False(content.IsPartial);
         Assert.False(content.TurnComplete);
+    }
+
+    [Fact]
+    public void InputTranscription_IsExtractedAsInputText()
+    {
+        // ADR-0011: the source-language transcript arrives on `inputTranscription` while the
+        // translation arrives on `outputTranscription`. The two surfaces must stay separate.
+        const string json = """
+            {
+              "serverContent": {
+                "inputTranscription": { "text": "Good morning" }
+              }
+            }
+            """;
+
+        GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        var content = Assert.IsType<GeminiServerMessage.ServerContent>(message);
+        Assert.Equal("Good morning", content.InputText);
+        Assert.Null(content.Text);
+    }
+
+    [Fact]
+    public void InputTranscription_PartialFlag_MarksInputIsPartial()
+    {
+        const string json = """
+            {
+              "serverContent": {
+                "partial": true,
+                "inputTranscription": { "text": "Good m" }
+              }
+            }
+            """;
+
+        GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        var content = Assert.IsType<GeminiServerMessage.ServerContent>(message);
+        Assert.Equal("Good m", content.InputText);
+        Assert.True(content.InputIsPartial);
+    }
+
+    [Fact]
+    public void InputAndOutputTranscription_BothSurfacesCarriedIndependently()
+    {
+        const string json = """
+            {
+              "serverContent": {
+                "partial": true,
+                "inputTranscription": { "text": "Good morning" },
+                "outputTranscription": { "text": "Magandang umaga" }
+              }
+            }
+            """;
+
+        GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        var content = Assert.IsType<GeminiServerMessage.ServerContent>(message);
+        Assert.Equal("Good morning", content.InputText);
+        Assert.True(content.InputIsPartial);
+        Assert.Equal("Magandang umaga", content.Text);
+        Assert.True(content.IsPartial);
+    }
+
+    [Fact]
+    public void InputTranscriptionWithoutText_InputTextIsNull()
+    {
+        const string json = """
+            {
+              "serverContent": {
+                "inputTranscription": {}
+              }
+            }
+            """;
+
+        GeminiLiveTranslateProtocol.TryParseServerFrame(json, out var message, out _);
+
+        var content = Assert.IsType<GeminiServerMessage.ServerContent>(message);
+        Assert.Null(content.InputText);
+        Assert.False(content.InputIsPartial);
     }
 
     // ----- Server frame parsing: goAway -----

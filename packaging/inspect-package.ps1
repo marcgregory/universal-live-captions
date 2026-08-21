@@ -1,12 +1,11 @@
-# v0.5.31 artifact inspection — runs after build-package.ps1 completes.
+# v0.5.43 artifact inspection — runs after build-package.ps1 completes.
 # Verifies: both artifacts exist, sizes, SHA-256, ZIP closure structure,
-# no source/.git/credentials/raw WAV/intermediate junk; parity between
-# the ZIP and the Setup staging tree; flat-layout invariants on the ZIP
-# (UniversalCaptions.App.exe + py/python.exe + launcher.cmd at root, no
-# UniversalCaptions\ subdir). Fails the build if any invariant is violated.
+# no source/.git/credentials/raw WAV/intermediate junk; flat-layout invariants
+# on the ZIP (UniversalCaptions.App.exe at root); and the ADR-0011 closure rule
+# (no legacy Python/model/argos trees). Fails the build if any invariant is violated.
 
 $ErrorActionPreference = 'Stop'
-$version = '0.5.31'
+$version = '0.5.43'
 $outDir = Join-Path $PSScriptRoot 'output'
 $stage = "$env:TEMP\opencode\uc_pkg\Stage"
 $scratch = "$env:TEMP\opencode\uc_pkg\Inspect-$version"
@@ -49,25 +48,20 @@ New-Item -ItemType Directory -Force -Path $scratch | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $scratch)
 
-# ZIP layout invariants: App.exe + py/python.exe + launcher.cmd + manifest.txt at root,
-# no nested UniversalCaptions\ subdir carrying App.exe.
-$expectedAtRoot = @(
-    @{ Name = 'UniversalCaptions.App.exe'; Path = "$scratch\UniversalCaptions.App.exe" },
-    @{ Name = 'py\python.exe';            Path = "$scratch\py\python.exe" },
-    @{ Name = 'launcher.cmd';             Path = "$scratch\launcher.cmd" },
-    @{ Name = 'manifest.txt';             Path = "$scratch\manifest.txt" },
-    @{ Name = 'models\faster-whisper-small'; Path = "$scratch\models\faster-whisper-small" },
-    @{ Name = 'models\ggml-base.bin';     Path = "$scratch\models\ggml-base.bin" },
-    @{ Name = 'argos-packages\translate-en_tl-1_9'; Path = "$scratch\argos-packages\translate-en_tl-1_9" }
-)
-foreach ($e in $expectedAtRoot) {
-    if (Test-Path $e.Path) {
-        Write-Host ("  [OK] ZIP root contains: {0}" -f $e.Name)
-    } else {
-        $msg = "ZIP root missing: $($e.Name)"
-        Write-Host ("  [FAIL] {0}" -f $msg)
-        $failed += $msg
-    }
+# ZIP layout invariants: App.exe + manifest.txt at root; no nested UniversalCaptions\ subdir
+# carrying App.exe; and NO legacy Python/model/argos trees (ADR-0011 Gemini-only closure).
+$appExeAtRoot = Test-Path "$scratch\UniversalCaptions.App.exe"
+if ($appExeAtRoot) {
+    Write-Host "  [OK] ZIP root contains: UniversalCaptions.App.exe"
+} else {
+    $msg = "ZIP root missing: UniversalCaptions.App.exe"
+    Write-Host ("  [FAIL] {0}" -f $msg)
+    $failed += $msg
+}
+if (-not (Test-Path "$scratch\manifest.txt")) {
+    $msg = "ZIP root missing: manifest.txt"
+    Write-Host ("  [FAIL] {0}" -f $msg)
+    $failed += $msg
 }
 
 $nestedAppExe = "$scratch\UniversalCaptions\UniversalCaptions.App.exe"
@@ -79,27 +73,19 @@ if (Test-Path $nestedAppExe) {
     Write-Host "  [OK] ZIP does not nest App.exe under UniversalCaptions\ subdir"
 }
 
-# launcher.cmd references the App.exe at root (no UniversalCaptions\ prefix)
-$launcherText = Get-Content -LiteralPath "$scratch\launcher.cmd" -Raw
-if ($launcherText -match 'start\s+(?:"")?\s*"%~dp0UniversalCaptions\\UniversalCaptions\.App\.exe"') {
-    $msg = "launcher.cmd references UniversalCaptions\UniversalCaptions.App.exe (wrong path)"
-    Write-Host ("  [FAIL] {0}" -f $msg)
-    $failed += $msg
-} elseif ($launcherText -match 'start\s+(?:"")?\s*"%~dp0UniversalCaptions\.App\.exe"') {
-    Write-Host "  [OK] launcher.cmd references root\UniversalCaptions.App.exe"
-} else {
-    $msg = "launcher.cmd does not reference root\UniversalCaptions.App.exe (unexpected form)"
-    Write-Host ("  [FAIL] {0}" -f $msg)
-    $failed += $msg
+foreach ($legacy in @('py','models','argos-packages')) {
+    if (Test-Path "$scratch\$legacy") {
+        $msg = "ZIP contains legacy '$legacy' tree (ADR-0011 violation: Gemini-only closure)"
+        Write-Host ("  [FAIL] {0}" -f $msg)
+        $failed += $msg
+    } else {
+        Write-Host "  [OK] no legacy '$legacy' tree"
+    }
 }
 
-# 5. No junk (source/.git/credentials/raw WAV/intermediate).
-# Allowlist: files inside py\Lib\site-packages\<pkg>\tests\ are python package tests (certifi,
-# colorama, fsspec, mpmath, etc.) that come with the bundled runtime — not a concern for the
-# shipped artifact. Same for py\Lib\__pycache__\ and py\Lib\site-packages\torch\bin\protoc.exe
-# (protobuf compiler that ships with torch).
+# 5. No junk (source/.git/credentials/raw media/intermediate).
 Write-Host ""
-Write-Host "=== Junk scan (should be empty after allowlisting Python site-packages tests) ==="
+Write-Host "=== Junk scan ==="
 $junkPatterns = @(
     '.git', '.vs', '\bin\', '\obj\', 'node_modules',
     '*.user', '*.suo', '*.sln.docstates', '*.wav', '*.mp3', '*.mp4',
@@ -113,35 +99,10 @@ Write-Host ("ZIP total uncompressed size: {0} MB" -f [Math]::Round($zipBytes/1MB
 Write-Host ("ZIP file count: {0}" -f $zipFiles.Count)
 
 $junk = @()
-$launcherFullPath = (Get-Item -LiteralPath (Join-Path $scratch 'launcher.cmd') -ErrorAction SilentlyContinue).FullName
 foreach ($pat in $junkPatterns) {
     $matched = $zipFiles | Where-Object { $_.FullName -like "*\$pat" -or $_.FullName -like "*\$pat\*" }
-    if ($matched) {
-        # Exclude launcher.cmd at ZIP root (it's an explicit artifact, not junk). Use the
-        # filesystem-resolved FullName (long form) so the comparison is robust against
-        # short-path / long-path normalization quirks in PowerShell's Join-Path output.
-        $filtered = $matched | Where-Object { -not ($_.FullName -eq $launcherFullPath) }
-        if ($filtered) { $junk += $filtered }
-    }
+    if ($matched) { $junk += $matched }
 }
-# Strip out anything inside py\Lib\site-packages\ and py\Lib\__pycache__\ -- those are
-# Python package internals. Also strip known harmless Python stdlib dev-utility scripts
-# (venv activation, IDLE launcher, Mach-O helper, tcl/tk unix config) that ship with the
-# Python distribution but are unused at runtime. ~10 KB total, kept inside the runtime
-# because the offline build is constrained to the same venv contents.
-$junkBefore = $junk.Count
-$junk = $junk | Where-Object {
-    $isSitePackages = $_.FullName -like '*\py\Lib\site-packages\*'
-    $isPycache     = $_.FullName -like '*\py\Lib\__pycache__\*'
-    $isDevUtil     = $_.FullName -like '*\py\Lib\venv\scripts\*' -or
-                     $_.FullName -like '*\py\Lib\idlelib\idle.bat' -or
-                     $_.FullName -like '*\py\Lib\ctypes\macholib\*'
-    $isTclUnixCfg  = $_.FullName -like '*\py\tcl\tclConfig.sh' -or
-                     $_.FullName -like '*\py\tcl\tclooConfig.sh'
-    -not ($isSitePackages -or $isPycache -or $isDevUtil -or $isTclUnixCfg)
-}
-$stripped = $junkBefore - $junk.Count
-if ($stripped -gt 0) { Write-Host ("  (stripped {0} Python stdlib / dev-utility entries -- legit runtime internals)" -f $stripped) }
 
 if ($junk.Count -gt 0) {
     Write-Host ("JUNK FOUND ({0} files):" -f $junk.Count)
@@ -152,10 +113,7 @@ if ($junk.Count -gt 0) {
     Write-Host "  No junk detected."
 }
 
-# 6. Stage layout (informational). The Stage dir is the build's intermediate tree; if it
-# looks incomplete (e.g., models/ or argos-packages/ missing), the build may have been
-# interrupted before step 4. This is a warning, not a failure -- the artifact-level checks above
-# already prove the released ZIP + Setup.exe contain the right contents.
+# 6. Stage layout (informational).
 Write-Host ""
 Write-Host "=== Setup staging closure (informational) ==="
 if (Test-Path $stage) {
@@ -167,10 +125,10 @@ if (Test-Path $stage) {
         Write-Host ("  {0,-40} {1}" -f $name, $size)
     }
     $stageNames = $stageTop | Select-Object -ExpandProperty Name | Sort-Object
-    $expectedStage = @('UniversalCaptions','py','models','argos-packages','launcher.cmd','manifest.txt') | Sort-Object
+    $expectedStage = @('UniversalCaptions','manifest.txt') | Sort-Object
     $stageDiff = Compare-Object $stageNames $expectedStage
     if ($stageDiff) {
-        Write-Host "  WARNING: Stage layout differs from expected (build may have been interrupted):"
+        Write-Host "  WARNING: Stage layout differs from expected:"
         $stageDiff | ForEach-Object { Write-Host ("    {0} {1}" -f $_.SideIndicator, $_.InputObject) }
         Write-Host "  (informational only; artifact-level checks above are authoritative)"
     } else {
@@ -180,17 +138,12 @@ if (Test-Path $stage) {
     Write-Host ("  Stage dir not present at {0} (build has not been run, or was cleaned up)" -f $stage)
 }
 
-# 7. Spot-check: launcher.cmd, py/python.exe, a model file in the ZIP
+# 7. Spot-check key files in the ZIP
 Write-Host ""
 Write-Host "=== Spot-check key files ==="
 $check = @(
-    @{ Path = "$scratch\launcher.cmd";                         ShouldBe = 'file' },
-    @{ Path = "$scratch\py\python.exe";                        ShouldBe = 'file' },
-    @{ Path = "$scratch\models\faster-whisper-small\model.bin"; ShouldBe = 'file' },
-    @{ Path = "$scratch\models\ggml-base.bin";                 ShouldBe = 'file' },
-    @{ Path = "$scratch\argos-packages\translate-en_tl-1_9";   ShouldBe = 'dir'  },
-    @{ Path = "$scratch\manifest.txt";                         ShouldBe = 'file' },
-    @{ Path = "$scratch\UniversalCaptions.App.exe";            ShouldBe = 'file' }
+    @{ Path = "$scratch\manifest.txt";              ShouldBe = 'file' },
+    @{ Path = "$scratch\UniversalCaptions.App.exe"; ShouldBe = 'file' }
 )
 foreach ($c in $check) {
     if (-not (Test-Path $c.Path)) { Write-Host ("  [MISSING] {0}" -f $c.Path); $failed += "Missing: $($c.Path)"; continue }

@@ -6,7 +6,7 @@ namespace UniversalCaptions.App.Overlay;
 /// Renders the live in-progress (partial) caption line with a stable/unstable word split
 /// (v0.5.38 candidate): words that were already recognized identically in the immediately-previous
 /// partial of the same utterance are "stable" and painted normal; the newly-appeared tail is
-/// "unstable" and painted a subtle green to signal "Whisper is still working on these words". When a
+/// "unstable" and painted a subtle green to signal "the engine is still working on these words". When a
 /// FINAL arrives the line freezes into history as a plain white block and the green disappears.
 /// Pure string logic so it can be unit-tested without WPF.
 /// </summary>
