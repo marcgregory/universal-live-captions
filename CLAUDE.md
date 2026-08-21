@@ -64,7 +64,7 @@ dotnet test UniversalCaptions.slnx
 dotnet run --project src/UniversalCaptions.Diagnostics
 dotnet format --verify-no-changes
 dotnet list UniversalCaptions.slnx package --vulnerable
-pwsh packaging/build-package.ps1 -Version 0.5.44   # portable ZIP + Inno Setup installer
+pwsh packaging/build-package.ps1 -Version 0.5.46   # portable ZIP + Inno Setup installer
 ```
 
 ## Governance
@@ -163,14 +163,18 @@ historical record. Active: TD-002 (hotplug acceptance test, frozen/Open), TD-018
 
 ## Next Priority
 
-**v0.5.44 release, in order:**
+**v0.5.46 release (540k auto-reconnect overlay refresh), in order:**
 1. ~~Real-wire `inputTranscription` verification~~ — **DONE 2026-08-21, PASS** (gate closed; see
    Current Sprint and `artifacts/spike-result/ab-result.json`).
-2. **Real-app smoke** on the Release artifact: loopback → captions appear → translation toggle ON/OFF
+2. ~~540k bug auto-reconnect overlay refresh~~ — **DONE 2026-08-22, PASS** (real-app evidence
+   `%TEMP%\uc_540k_trace.log` shows `SessionResumed` → `ClearCaptionContent` + `Refresh` → first new
+   partial repaints immediately; see CHANGELOG v0.5.46).
+3. **Real-app smoke** on the Release artifact: loopback → captions appear → translation toggle ON/OFF
    mid-session → target-language switch recycles the session → goAway recovery (status surfaces,
-   toggle restarts session).
-3. **Cut tag + GitHub release** with the new packaging (`packaging/build-package.ps1 -Version 0.5.44`,
-   verify with `packaging/inspect-package.ps1`); landing page links already point at v0.5.44.
+   toggle restarts session) → 540k auto-reconnect: overlay repaints without manual "Show Captions".
+4. **Cut tag + GitHub release** with the new packaging (`packaging/build-package.ps1 -Version 0.5.46`,
+   verify with `packaging/inspect-package.ps1`); landing page download URLs stay at v0.5.44 (latest
+   published) until the v0.5.46 release is cut.
 
 Remaining work beyond the gate is feature-level/product-level: Phase 2 real-app validation stays
 deferred per user; TD-002 stays frozen until a second device exists.

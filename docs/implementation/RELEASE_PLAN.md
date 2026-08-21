@@ -1,6 +1,6 @@
-# Universal Live Captions Release Plan — v0.5.44
+# Universal Live Captions Release Plan — v0.5.46
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 > **This document is the authoritative release-readiness checklist.** Per
 > [`docs/ARTIFACT_REGISTRY.md`](../ARTIFACT_REGISTRY.md), the *Release decision* concern is
@@ -12,25 +12,30 @@ Last updated: 2026-08-21
 
 | Attribute | Value |
 |---|---|
-| Purpose | Define the v0.5.39 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
-| Scope | Everything that must be true before v0.5.39 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
+| Purpose | Define the v0.5.46 release artifact, the readiness checklist, the unblockers, and the final go/no-go decision |
+| Scope | Everything that must be true before v0.5.46 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | **Released — v0.5.44 smoke test PASS 2026-08-21; GitHub release published** |
+| Status | **Released — v0.5.44 smoke test PASS 2026-08-21; GitHub release published. v0.5.46 fix committed 2026-08-22 (auto-reconnect overlay refresh / 540k regression); Release packaging pending release-gate smoke on the Release artifact.** |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: RELEASE GATE CLOSED — v0.5.44 (Gemini session recovery) implemented 2026-08-21; build, regression tests, package inspection, and smoke test PASS.**
+**Decision: v0.5.46 (auto-reconnect overlay refresh / 540k regression) committed 2026-08-22 — Debug build verified PASS (trace-driven). Release packaging pending real-app smoke on the Release artifact.**
 
-The v0.5.44 release continues the Gemini-only architecture and adds automatic Gemini session recovery and makes Gemini Live the single STT +
-translation engine (~145 MB install). **Gate 1 (blocking) PASSED 2026-08-21:** real-wire
-verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
-`serverContent.inputTranscription` frames per utterance with real English source text; variant A
-(field not sent) also received them (surface streams by default). Evidence:
-`artifacts/spike-result/ab-result.json`, TEST_REPORT. The final installed Release-artifact smoke test also passed: loopback capture, source + translation captions, translation toggle, target-language session recycle, clean Stop, and history retention.
+The v0.5.46 release continues the Gemini-only architecture and adds an auto-reconnect overlay refresh
+that fixes the 540k regression: after a Gemini session ends (goAway, server-side session cap, or
+network blip), the overlay now clears the previous session's stale active line + history and renders
+the new session's first partial without any manual "Show Captions" click. Pre-existing v0.5.44
+release (Gemini session recovery) is the latest published release on GitHub. v0.5.44 was closed
+2026-08-21 — real-wire verification PASS via `tools/GeminiDirectWireSpike --ab` (variant B received
+7–8 `serverContent.inputTranscription` frames per utterance with real English source text; variant A
+also received them — surface streams by default). Evidence: `artifacts/spike-result/ab-result.json`,
+TEST_REPORT. The final installed Release-artifact smoke test for v0.5.44 also passed: loopback
+capture, source + translation captions, translation toggle, target-language session recycle, clean
+Stop, and history retention.
 
 | Release | Tag | GitHub Release | Artifacts |
 |---|---|---|---|
@@ -38,8 +43,8 @@ verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
 | **v0.5.34** — Gemini API-key onboarding link | `v0.5.34` (commit `b50cc2a`) | [releases/tag/v0.5.34](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.34) | `UniversalCaptions-Setup-0.5.34.exe` + `UniversalCaptions-0.5.34-win-x64-full.zip` |
 | **v0.5.37** — Mixed-language history scrub on Translate OFF + target change | `v0.5.37` (commit `8b5dd53`) | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
 | **v0.5.38** — Stable/unstable partial rendering | `v0.5.38` (commit `95f5049`) | [releases/tag/v0.5.38](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.38) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
-| **v0.5.39** — Gemini goAway session-lifecycle fix (**Latest**) | `v0.5.39` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.39.exe` + `UniversalCaptions-0.5.39-win-x64-full.zip` |
 | **v0.5.44** — Gemini session recovery | [`v0.5.44`](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.44) | Published | `UniversalCaptions-Setup-0.5.44.exe` + `UniversalCaptions-0.5.44-win-x64-full.zip` |
+| **v0.5.46** — Auto-reconnect overlay refresh (540k regression) (**Latest**) | `v0.5.46` (pending tag cut + Release-artifact smoke) | (pending) | `UniversalCaptions-Setup-0.5.46.exe` + `UniversalCaptions-0.5.46-win-x64-full.zip` |
 
 - **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33.
 - **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix spike worktree (proved the fix; not published — the validated production fix ships as v0.5.39).
@@ -51,11 +56,11 @@ verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.44** (see §1) |
-| Release date | **2026-08-21 (release gate closed)** |
-| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.44 - 2026-08-21` |
+| Version | **v0.5.46** (see §1) |
+| Release date | **2026-08-22 (committed; Release smoke pending)** |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.46 - 2026-08-22` |
 | Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6, per-user, no admin, no UAC) |
-| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.44.exe` |
+| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.46.exe` |
 | Launcher | **none** — the app is a flat publish; installer/portable both point at `UniversalCaptions.App.exe` directly (`launcher.cmd` deleted by ADR-0011) |
 | Install location | `%LocalAppData%\UniversalCaptions\` (per-user, `asInvoker` manifest preserved from v0.5.26) |
 | Installed size (target) | ~145 MB trimmed self-contained publish (ADR-0011; measured 2026-08-21: 145.2 MiB / 261 files; down from ~1,634 MB) |
