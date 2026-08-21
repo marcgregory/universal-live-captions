@@ -217,10 +217,10 @@ The two discriminating observables that prove the fix:
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
 | Positioning (updated 2026-08-21 for ADR-0011) | (1) Gemini Live speech recognition + translation as THE engine (trust strip + #gemini) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Privacy honesty: no microphone, key in Credential Manager, audio only to Google while captions run (#why, FAQ). All offline/local claims removed. |
-| Version tag | [`v0.5.44`](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.44) (published) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-Setup-0.5.44.exe` — see §5 |
+| Version tag | [`v0.5.46`](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.46) (published) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.46/UniversalCaptions-Setup-0.5.46.exe` — see §5 |
 
-The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.44 download links are active on the published GitHub release.
+The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.46 download links are active on the published GitHub release.
 
 ---
 
@@ -228,12 +228,12 @@ The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.4
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-Setup-0.5.44.exe` |
-| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-0.5.44-win-x64-full.zip` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.46/UniversalCaptions-Setup-0.5.46.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.46/UniversalCaptions-0.5.46-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.44 release tag**, not at the
+The primary CTA points at the **specific v0.5.46 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
 match the artifact that ships.
 
