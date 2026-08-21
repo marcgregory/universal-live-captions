@@ -1,6 +1,6 @@
 # Universal Live Captions Changelog
 
-Last updated: 2026-08-21 (v0.5.43)
+Last updated: 2026-08-21 (v0.5.44)
 
 ## Metadata
 

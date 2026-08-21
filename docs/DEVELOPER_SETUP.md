@@ -63,13 +63,13 @@ All former engine knobs (`UC_STT_ENGINE`, `UC_FW_*`, `UC_NATIVE_*`, `UC_ARGOS_*`
 See [docs/DEPLOYMENT.md](../DEPLOYMENT.md) for the distribution model. The reproducible build is one command:
 
 ```powershell
-pwsh packaging/build-package.ps1 -Version 0.5.43
+pwsh packaging/build-package.ps1 -Version 0.5.44
 ```
 
 This produces two artifacts from a single staged closure:
 
-- `packaging/output/UniversalCaptions-Setup-0.5.43.exe` — Inno Setup, per-user install.
-- `packaging/output/UniversalCaptions-0.5.43-win-x64.zip` — portable ZIP with the same staged contents (~64 MB ZIP; ~145 MB unpacked).
+- `packaging/output/UniversalCaptions-Setup-0.5.44.exe` — Inno Setup, per-user install.
+- `packaging/output/UniversalCaptions-0.5.44-win-x64.zip` — portable ZIP with the same staged contents (~64 MB ZIP; ~145 MB unpacked).
 
 Switches:
 

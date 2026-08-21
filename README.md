@@ -14,7 +14,7 @@ That's it. The installer bundles the .NET runtime — no Python, no models, no .
 
 ## Portable (no installer)
 
-Prefer no installer? Download `UniversalCaptions-*-win-x64.zip`, extract it anywhere, and run `UniversalCaptions.App.exe`. The portable and installed versions contain the same app (~90 MB).
+Prefer no installer? Download `UniversalCaptions-*-win-x64.zip`, extract it anywhere, and run `UniversalCaptions.App.exe`. The portable and installed versions contain the same app (~145 MB installed).
 
 ## Privacy
 

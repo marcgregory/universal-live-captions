@@ -1,6 +1,6 @@
 # Universal Live Captions Test Report
 
-Last updated: 2026-08-21 (v0.5.43 Gemini-only pipeline)
+Last updated: 2026-08-21 (v0.5.44 Gemini session recovery)
 
 ## Metadata
 
@@ -17,7 +17,7 @@ Last updated: 2026-08-21 (v0.5.43 Gemini-only pipeline)
 
 ## Summary
 
-**v0.5.43 RELEASE GATE CLOSED — real-wire and real-app smoke verification PASS (2026-08-21).**
+**v0.5.44 RELEASE GATE CLOSED — real-wire and real-app smoke verification PASS (2026-08-21).**
 `tools/GeminiDirectWireSpike --ab` ran against the live API (`models/gemini-3.5-live-translate-preview`,
 key from Credential Manager `UniversalCaptions:GeminiApiKey`, corpus `artifacts/spike-corpus`,
 3 WAVs × 10 s audio each, variants A/B differing only in the top-level `inputAudioTranscription`
@@ -32,7 +32,7 @@ file 1's A-vs-B finals differed (`seq=False finalEqual=False`) — expected Gemi
 not a defect. **RISK_REGISTER R-007 is answered: the transcription surface streams back;
 source captions do NOT need an alternative surface.**
 
-**v0.5.43 Gemini-only pipeline (2026-08-21): full suite 528/528 passing** (106 Audio + 69 Captions +
+**v0.5.44 Gemini-only pipeline + session recovery (2026-08-21): full suite 528/528 passing** (106 Audio + 69 Captions +
 174 Speech.Gemini + 179 App), Debug + Release builds 0 warnings / 0 errors,
 `dotnet format --verify-no-changes` clean. ADR-0011 removed `UniversalCaptions.Speech`,
 `UniversalCaptions.Translation`, `UniversalCaptions.Benchmarks`, and their test projects
@@ -44,9 +44,9 @@ gating, engine recycle on target change, TD-002 recovery); `LiveTranslationEngin
 (Credential-Manager-only key path, env-var regression guard, never-throws);
 `SettingsStoreTests` schema v3; protocol pins for the top-level `inputAudioTranscription: {}`
 setup frame + parse pins. **Release gate closed:** real-wire verification and the final installed Release-artifact smoke test both passed.
-### v0.5.43 installed Release-artifact smoke test — PASS (2026-08-21)
+### v0.5.44 installed Release-artifact smoke test — PASS (2026-08-21)
 
-Manual smoke test completed against the v0.5.43 installer/portable artifact:
+Manual smoke test completed against the v0.5.44 installer/portable artifact:
 
 1. App starts from the extracted ZIP/installed bundle.
 2. Gemini API key is accepted and capture starts with a WASAPI loopback device.
@@ -56,7 +56,7 @@ Manual smoke test completed against the v0.5.43 installer/portable artifact:
 6. Changing the target language recycles the session correctly.
 7. Stop exits cleanly and history is retained.
 
-Artifacts verified: `UniversalCaptions-Setup-0.5.43.exe` (48.8 MB) and `UniversalCaptions-0.5.43-win-x64-full.zip` (64.5 MB).
+Artifacts verified: `UniversalCaptions-Setup-0.5.44.exe` (48.8 MB) and `UniversalCaptions-0.5.44-win-x64-full.zip` (64.5 MB).
 
 **v0.5.40 segmentation-guard unit-test matrix (2026-08-14): full suite 700/700 passing** (106
 Audio + 89 Captions + 111 Speech + 42 Translation + 184 App + 168 Speech.Gemini), Release build 0

@@ -1,4 +1,4 @@
-# Universal Live Captions Release Plan — v0.5.43
+# Universal Live Captions Release Plan — v0.5.44
 
 Last updated: 2026-08-21
 
@@ -16,16 +16,16 @@ Last updated: 2026-08-21
 | Scope | Everything that must be true before v0.5.39 ships: code freeze, installer, landing page, documentation, evidence, and clean-machine verification |
 | Audience | Engineering, release engineering, and the operator cutting the GitHub tag |
 | Owner | Engineering |
-| Status | **Release-ready — v0.5.43 smoke test PASS 2026-08-21; tag and GitHub release close-out** |
+| Status | **Released — v0.5.44 smoke test PASS 2026-08-21; GitHub release published** |
 | Related Documents | [CHANGELOG.md](CHANGELOG.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), [BUILD_PLAN.md](BUILD_PLAN.md), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [TEST_REPORT.md](../reports/TEST_REPORT.md), [INSTALLER_DISCOVERY.md](../reports/INSTALLER_DISCOVERY.md), [BENCHMARK_REPORT.md](../reports/BENCHMARK_REPORT.md) |
 
 ---
 
 ## 1. Release Decision
 
-**Decision: RELEASE GATE CLOSED — v0.5.43 (Gemini-only pipeline, ADR-0011) implemented 2026-08-21; real-wire verification and final real-app smoke PASS.**
+**Decision: RELEASE GATE CLOSED — v0.5.44 (Gemini session recovery) implemented 2026-08-21; build, regression tests, package inspection, and smoke test PASS.**
 
-The v0.5.43 closure removes local Whisper + Argos and makes Gemini Live the single STT +
+The v0.5.44 release continues the Gemini-only architecture and adds automatic Gemini session recovery and makes Gemini Live the single STT +
 translation engine (~145 MB install). **Gate 1 (blocking) PASSED 2026-08-21:** real-wire
 verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
 `serverContent.inputTranscription` frames per utterance with real English source text; variant A
@@ -39,7 +39,7 @@ verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
 | **v0.5.37** — Mixed-language history scrub on Translate OFF + target change | `v0.5.37` (commit `8b5dd53`) | [releases/tag/v0.5.37](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.37) | `UniversalCaptions-Setup-0.5.37.exe` + `UniversalCaptions-0.5.37-win-x64-full.zip` |
 | **v0.5.38** — Stable/unstable partial rendering | `v0.5.38` (commit `95f5049`) | [releases/tag/v0.5.38](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.38) | `UniversalCaptions-Setup-0.5.38.exe` + `UniversalCaptions-0.5.38-win-x64-full.zip` |
 | **v0.5.39** — Gemini goAway session-lifecycle fix (**Latest**) | `v0.5.39` (pending tag cut) | (pending) | `UniversalCaptions-Setup-0.5.39.exe` + `UniversalCaptions-0.5.39-win-x64-full.zip` |
-| **v0.5.43** — Gemini-only pipeline (ADR-0011) | `v0.5.43` (tag/release close-out) | (to be created) | `UniversalCaptions-Setup-0.5.43.exe` + `UniversalCaptions-0.5.43-win-x64-full.zip` |
+| **v0.5.44** — Gemini session recovery | [`v0.5.44`](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.44) | Published | `UniversalCaptions-Setup-0.5.44.exe` + `UniversalCaptions-0.5.44-win-x64-full.zip` |
 
 - **v0.5.32 was intentionally not published.** It was an internal build milestone (built artifacts existed, no tag, no GitHub release) whose design was corrected by v0.5.33.
 - **v0.5.35 and v0.5.36 are internal/measurement-only releases** (no tag, no GitHub release): v0.5.35 = runtime Gemini-toggle latency verification PASS (measurement only), v0.5.36 = Gemini `goAway` fix spike worktree (proved the fix; not published — the validated production fix ships as v0.5.39).
@@ -51,11 +51,11 @@ verification via `tools/GeminiDirectWireSpike --ab` — variant B received 7–8
 
 | Attribute | Value |
 |---|---|
-| Version | **v0.5.43** (see §1) |
+| Version | **v0.5.44** (see §1) |
 | Release date | **2026-08-21 (release gate closed)** |
-| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.43 - 2026-08-21` |
+| Changelog entries | [CHANGELOG.md](CHANGELOG.md) `## v0.5.44 - 2026-08-21` |
 | Installer source | `packaging/UniversalCaptions.iss` (Inno Setup 6, per-user, no admin, no UAC) |
-| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.43.exe` |
+| Installer builder | `packaging/build-package.ps1` → `packaging/output/UniversalCaptions-Setup-0.5.44.exe` |
 | Launcher | **none** — the app is a flat publish; installer/portable both point at `UniversalCaptions.App.exe` directly (`launcher.cmd` deleted by ADR-0011) |
 | Install location | `%LocalAppData%\UniversalCaptions\` (per-user, `asInvoker` manifest preserved from v0.5.26) |
 | Installed size (target) | ~145 MB trimmed self-contained publish (ADR-0011; measured 2026-08-21: 145.2 MiB / 261 files; down from ~1,634 MB) |
@@ -212,11 +212,10 @@ The two discriminating observables that prove the fix:
 | Path | `landing/` (governed top-level; see [PROJECT_CONSTITUTION.md](../PROJECT_CONSTITUTION.md) §1 + [ARTIFACT_REGISTRY.md](../ARTIFACT_REGISTRY.md)) |
 | Files | `landing/index.html`, `landing/styles.css`, `landing/script.js`, `landing/assets/capture-demo.webm`, `landing/assets/capture-poster.jpg`, `landing/assets/capture/frame_000..023.jpg` |
 | Positioning (updated 2026-08-21 for ADR-0011) | (1) Gemini Live speech recognition + translation as THE engine (trust strip + #gemini) · (2) Live captions for any Windows app (hero + #how-it-works) · (3) English → Tagalog translation (step 3 + trust strip) · (4) Privacy honesty: no microphone, key in Credential Manager, audio only to Google while captions run (#why, FAQ). All offline/local claims removed. |
-| Version tag | `v0.5.43` (download links point at the v0.5.43 release; links activate once the tag is cut) |
-| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-Setup-0.5.43.exe` — see §5 |
+| Version tag | [`v0.5.44`](https://github.com/marcgregory/universal-live-captions/releases/tag/v0.5.44) (published) |
+| CTA target | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-Setup-0.5.44.exe` — see §5 |
 
-The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.43
-download link becomes active once the v0.5.43 GitHub release is created.
+The page is **live** on GitHub Pages (legacy build from `main` root); the v0.5.44 download links are active on the published GitHub release.
 
 ---
 
@@ -224,12 +223,12 @@ download link becomes active once the v0.5.43 GitHub release is created.
 
 | Attribute | Value |
 |---|---|
-| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-Setup-0.5.43.exe` |
-| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.43/UniversalCaptions-0.5.43-win-x64-full.zip` |
+| Primary CTA (hero, sticky nav, download section) | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-Setup-0.5.44.exe` |
+| Portable ZIP link | `https://github.com/marcgregory/universal-live-captions/releases/download/v0.5.44/UniversalCaptions-0.5.44-win-x64-full.zip` |
 | Fallback (footer "Release notes") | `https://github.com/marcgregory/universal-live-captions/releases` (always resolves to the latest tag) |
 | GitHub repo | `https://github.com/marcgregory/universal-live-captions` |
 
-The primary CTA points at the **specific v0.5.43 release tag**, not at the
+The primary CTA points at the **specific v0.5.44 release tag**, not at the
 `/releases` index. This is deliberate: it makes the user-visible release version
 match the artifact that ships.
 
@@ -237,7 +236,7 @@ match the artifact that ships.
 
 ## 6. Gemini Engine Status
 
-**Status: THE engine (ADR-0011, v0.5.43) — no longer optional.**
+**Status: THE Gemini engine (ADR-0011, v0.5.44) — released and required.**
 
 There is one pipeline: `WASAPI loopback → Gemini Live session (inputAudioTranscription +
 outputAudioTranscription in a single pass) → Caption overlay`. The former offline default

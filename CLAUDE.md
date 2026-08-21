@@ -10,7 +10,7 @@ Chrome-Live-Caption-like live captions for any Windows application. Captures sys
 
 ## Current Sprint
 
-**Gemini-only pipeline — IMPLEMENTED 2026-08-21 (ADR-0011; v0.5.43; release gate CLOSED — real-wire
+**Gemini-only pipeline — IMPLEMENTED 2026-08-21 (ADR-0011; v0.5.44; release gate CLOSED — real-wire
 `inputTranscription` verification PASS).** Local
 Whisper (`UniversalCaptions.Speech`), Argos Translate (`UniversalCaptions.Translation`),
 `UniversalCaptions.Benchmarks`, and their test projects are **removed from the solution**, along with
@@ -64,7 +64,7 @@ dotnet test UniversalCaptions.slnx
 dotnet run --project src/UniversalCaptions.Diagnostics
 dotnet format --verify-no-changes
 dotnet list UniversalCaptions.slnx package --vulnerable
-pwsh packaging/build-package.ps1 -Version 0.5.43   # portable ZIP + Inno Setup installer
+pwsh packaging/build-package.ps1 -Version 0.5.44   # portable ZIP + Inno Setup installer
 ```
 
 ## Governance
@@ -144,7 +144,7 @@ Follow `docs/AI_ENGINEERING_GUIDELINES.md`. Do not hallucinate APIs, invent busi
 
 ### Release Rules
 
-Do not mark a release Ready unless release criteria, quality gates, and blocking issues are reviewed in `docs/implementation/RELEASE_PLAN.md`. The v0.5.43 blocking gate is the real-wire `inputTranscription` verification.
+Do not mark a release Ready unless release criteria, quality gates, and blocking issues are reviewed in `docs/implementation/RELEASE_PLAN.md`. The v0.5.44 blocking gate is the real-wire `inputTranscription` verification.
 
 ## Known Gaps
 
@@ -163,14 +163,14 @@ historical record. Active: TD-002 (hotplug acceptance test, frozen/Open), TD-018
 
 ## Next Priority
 
-**v0.5.43 release, in order:**
+**v0.5.44 release, in order:**
 1. ~~Real-wire `inputTranscription` verification~~ — **DONE 2026-08-21, PASS** (gate closed; see
    Current Sprint and `artifacts/spike-result/ab-result.json`).
 2. **Real-app smoke** on the Release artifact: loopback → captions appear → translation toggle ON/OFF
    mid-session → target-language switch recycles the session → goAway recovery (status surfaces,
    toggle restarts session).
-3. **Cut tag + GitHub release** with the new packaging (`packaging/build-package.ps1 -Version 0.5.43`,
-   verify with `packaging/inspect-package.ps1`); landing page links already point at v0.5.43.
+3. **Cut tag + GitHub release** with the new packaging (`packaging/build-package.ps1 -Version 0.5.44`,
+   verify with `packaging/inspect-package.ps1`); landing page links already point at v0.5.44.
 
 Remaining work beyond the gate is feature-level/product-level: Phase 2 real-app validation stays
 deferred per user; TD-002 stays frozen until a second device exists.

@@ -60,7 +60,7 @@ Both ship the same self-contained win-x64 .NET 8 app (~145 MB trimmed publish, m
 Build with one command:
 
 ```powershell
-pwsh packaging/build-package.ps1 -Version 0.5.43
+pwsh packaging/build-package.ps1 -Version 0.5.44
 ```
 
 Stages: publish → trim → manifest → portable ZIP → Inno Setup. See `docs/DEVELOPER_SETUP.md` for switch flags (`-SkipZip`, `-SkipSetup`, `-SkipPublish`). Verify layout with `packaging/inspect-package.ps1`. Signing is deferred (D4 in INSTALLER_DISCOVERY: SmartScreen warning for unsigned installers).

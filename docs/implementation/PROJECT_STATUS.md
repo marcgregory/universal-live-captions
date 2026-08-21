@@ -19,7 +19,7 @@ This document is a snapshot. It is not a changelog.
 
 ## Current Sprint
 
-**Gemini-only pipeline â€” IMPLEMENTED 2026-08-21 (ADR-0011; v0.5.43).** Local Whisper
+**Gemini-only pipeline â€” IMPLEMENTED 2026-08-21 (ADR-0011; v0.5.44).** Local Whisper
 (`UniversalCaptions.Speech`) and Argos Translate (`UniversalCaptions.Translation`) are **removed**
 from the solution along with `UniversalCaptions.Benchmarks`, their test projects, all bundled
 models/Python runtime/Argos packages, and `launcher.cmd`. One Gemini Live session per capture now
@@ -39,7 +39,7 @@ against the live API: variant B (setup + top-level `inputAudioTranscription`) re
 Release artifact (loopback ? captions ? translation toggle ? goAway recovery). Docs updated to the
 new direction: constitution §10 amended, SECURITY_PLAN, ARCHITECTURE, TECH_STACK,
 REPOSITORY_STANDARDS, DEVELOPER_SETUP, DEPLOYMENT, PRD, PROJECT_SCOPE, RISK_REGISTER, CHANGELOG
-v0.5.43.
+v0.5.44.
 
 **Corpus-driven phrase-guard validation â€” CLOSED 2026-08-14 (decision: INSUFFICIENT EVIDENCE â€” do not
 ship; no production change; v0.5.40 gate untouched; no v0.5.41).** Second, corpus-driven validation
@@ -351,11 +351,11 @@ Windows 10 target (build 17763+). Development environment: Windows with .NET SDK
 
 ## Next Milestone
 
-**Gemini-only pipeline release (v0.5.43):** the real-wire `inputTranscription` gate is **CLOSED
+**Gemini-only pipeline release (v0.5.44):** the real-wire `inputTranscription` gate is **CLOSED
 (PASS, 2026-08-21)** — see Current Sprint and TEST_REPORT. Remaining before tag cut: a real-app
 smoke on the Release artifact (loopback ? captions appear ? translation toggle ON/OFF mid-session ?
 target-language switch recycles the session ? goAway recovery), then `packaging/build-package.ps1
--Version 0.5.43` + `inspect-package.ps1` verification and the GitHub release.
+-Version 0.5.44` + `inspect-package.ps1` verification and the GitHub release.
 
 Prior milestone for the record â€” **corpus-driven phrase-guard validation â€” CLOSED 2026-08-14
 (decision: INSUFFICIENT EVIDENCE â€” do not ship).** See Current Sprint for the measured
@@ -431,6 +431,6 @@ hotplug acceptance test can be run.
 
 ## Last Build
 
-2026-08-21 — `dotnet build UniversalCaptions.slnx` succeeded (Debug + Release), 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **528/528** (106 Audio + 69 Captions + 174 Speech.Gemini + 179 App), `dotnet format --verify-no-changes` clean. **Gemini-only pipeline (ADR-0011) implemented:** local Whisper + Argos + Benchmarks projects removed; `ILiveAudioTranslationEngine` single-session STT+translation; packaging stripped to a ~145 MB flat publish; docs updated. See CHANGELOG v0.5.43.
+2026-08-21 — `dotnet build UniversalCaptions.slnx` succeeded (Debug + Release), 0 warnings, 0 errors. `dotnet test UniversalCaptions.slnx` passed **528/528** (106 Audio + 69 Captions + 174 Speech.Gemini + 179 App), `dotnet format --verify-no-changes` clean. **Gemini-only pipeline (ADR-0011) implemented:** local Whisper + Argos + Benchmarks projects removed; `ILiveAudioTranslationEngine` single-session STT+translation; packaging stripped to a ~145 MB flat publish; docs updated. See CHANGELOG v0.5.44.
 
 Prior (2026-08-14): 651/651 on the pre-ADR-0011 suite (incl. since-removed Speech/Translation projects); v0.5.40 segmentation investigation COMPLETE — root cause identified, no production change. Prior (2026-08-13): v0.5.39 goAway fix 645/645 + real-app regression PASS; v0.5.38 two-tone partial rendering smoke PASS; v0.5.37 mixed-language history scrub smoke PASS. Prior (2026-08-12): runtime Gemini-toggle latency verification (measurement only); v0.5.33 translation parity 22/22. Details: CHANGELOG.md entries v0.5.33–v0.5.40.
