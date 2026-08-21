@@ -17,6 +17,14 @@ Last updated: 2026-08-21 (v0.5.44)
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.45 - 2026-08-21
+
+### Auto source/target guard and status layout
+
+- Fixed Auto (detect) → English being incorrectly rejected as English → English; the guard now validates the actual selected source language.
+- Status messages now wrap inside the control window instead of being clipped.
+- Validation: UniversalCaptions.App.Tests 180/180; Release build 0 warnings / 0 errors.
+
 ## v0.5.44 - 2026-08-21
 
 ### Gemini session recovery
