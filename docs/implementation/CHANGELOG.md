@@ -17,14 +17,6 @@ Last updated: 2026-08-21 (v0.5.44)
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
-## v0.5.46 - 2026-08-21
-
-### Auto Hindi same-language fallback
-
-- Auto source detection now switches to a caption-only fallback when Devanagari Hindi audio matches the Hindi target.
-- Source captions continue instead of the Gemini same-language translation session stopping.
-- Normal translation targets keep the existing path without added latency.
-
 ## v0.5.45 - 2026-08-21
 
 ### Auto source/target guard and status layout
