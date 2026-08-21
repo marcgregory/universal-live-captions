@@ -24,7 +24,6 @@ public partial class ControlWindow : Window
     private readonly CaptionPipeline _pipeline;
     private readonly IOverlayService _overlay;
     private readonly ICaptionService _captions;
-    private readonly string _captionSourceLanguage;
     private readonly ISettingsStore _settingsStore;
     private readonly UserSettings _settings;
     private readonly ICredentialStore _credentialStore;
@@ -241,7 +240,7 @@ public partial class ControlWindow : Window
         _pipeline = pipeline;
         _overlay = overlay;
         _captions = captions;
-        _captionSourceLanguage = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions))).SourceLanguage;
+        _ = (captionOptions ?? throw new ArgumentNullException(nameof(captionOptions)));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
@@ -558,7 +557,8 @@ public partial class ControlWindow : Window
 
         if (enabled)
         {
-            string? error = TranslationGuard.Validate(_captionSourceLanguage, target);
+            string? source = (LanguageCombo.SelectedItem as LanguageOption)?.Code;
+            string? error = TranslationGuard.Validate(source, target);
             if (error is not null)
             {
                 // Keep the toggle on and the target combo enabled so the user can choose a valid

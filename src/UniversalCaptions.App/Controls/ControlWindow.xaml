@@ -119,21 +119,26 @@
             </TextBlock>
         </StackPanel>
 
-        <StackPanel Grid.Row="6"
-                    Grid.ColumnSpan="2"
-                    Orientation="Horizontal"
-                    Margin="0,8,0,0">
-            <TextBlock x:Name="CaptureIndicator"
-                       Text="●"
-                       FontSize="13"
-                       Foreground="#888888"
-                       VerticalAlignment="Center" />
-            <TextBlock x:Name="StatusText"
-                       Margin="8,0,0,0"
-                       Text="Ready"
-                       TextWrapping="Wrap"
-                       VerticalAlignment="Center" />
-        </StackPanel>
+        <Grid Grid.Row="6"
+        Grid.ColumnSpan="2"
+        Margin="0,8,0,0">
+        <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="CaptureIndicator"
+        Grid.Column="0"
+        Text="●"
+        FontSize="13"
+        Foreground="#888888"
+        VerticalAlignment="Top" />
+        <TextBlock x:Name="StatusText"
+        Grid.Column="1"
+        Margin="8,0,0,0"
+        Text="Ready"
+        TextWrapping="Wrap"
+        VerticalAlignment="Top" />
+        </Grid>
 
         <TextBlock Grid.Row="7"
                    Grid.Column="0"

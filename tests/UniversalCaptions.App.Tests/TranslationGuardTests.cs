@@ -32,6 +32,12 @@ public class TranslationGuardTests
     }
 
     [Fact]
+    public void Validate_auto_source_allows_any_target()
+    {
+        Assert.Null(TranslationGuard.Validate(null, "en"));
+    }
+
+    [Fact]
     public void Validate_null_target_returns_error()
     {
         Assert.NotNull(TranslationGuard.Validate("en", null));
