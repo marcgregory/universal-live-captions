@@ -598,7 +598,10 @@ public sealed class CaptionPipeline : IDisposable
         {
             // Graceful stop off the capture callback (we are on the UI thread, not inside the
             // engine's receive loop), so the tail-flush finals are dropped by the detached events.
+            if (oldEngine is not null)
+        {
             StopLiveTranslationEngine(oldEngine);
+        }
         }
 
         ILiveAudioTranslationEngine? engine = CreateAndStartLiveTranslation(_liveSourceLanguage, normTarget);
@@ -939,7 +942,7 @@ public sealed class CaptionPipeline : IDisposable
         ILiveAudioTranslationEngine? oldEngine;
         lock (_gate)
         {
-            if (_capture?.IsCapturing != true || _liveTranslation is null || _sourceOnlyMode)
+            if (_capture?.IsCapturing != true || _sourceOnlyMode)
             {
                 return;
             }
@@ -948,7 +951,10 @@ public sealed class CaptionPipeline : IDisposable
             UnsubscribeLiveEvents(oldEngine, out _, out _, out _, out _, out _);
         }
 
-        StopLiveTranslationEngine(oldEngine);
+        if (oldEngine is not null)
+        {
+            StopLiveTranslationEngine(oldEngine);
+        }
         ILiveAudioTranslationEngine? fallback = null;
         try
         {
@@ -1038,6 +1044,13 @@ public sealed class CaptionPipeline : IDisposable
         if (error.Kind == LiveTranslationErrorKind.SessionEnded)
         {
             _ = RestartLiveTranslationAsync();
+        }
+        else if (_sourceOnlyFactory is not null && _liveSourceLanguage is null
+            && string.Equals(_liveTargetLanguage, "hi", StringComparison.OrdinalIgnoreCase)
+            && !_sourceOnlyMode)
+        {
+            _sourceOnlyFallbackStarted = true;
+            _ = SwitchToSourceOnlyAsync();
         }
     }
 

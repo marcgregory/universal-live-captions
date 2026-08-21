@@ -17,6 +17,12 @@ Last updated: 2026-08-21 (v0.5.44)
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.47 - 2026-08-21
+
+### Hindi same-language fallback hardening
+
+- Auto Hindi target now falls back to captions-only when Gemini rejects the same-language translation session, including setup-time rejection.
+
 ## v0.5.46 - 2026-08-21
 
 ### Auto Hindi same-language fallback
