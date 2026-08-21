@@ -153,6 +153,89 @@ public sealed class CaptionPipeline : IDisposable
 
     /// <summary>True while a capture session is running.</summary>
     public bool IsRunning => _capture?.IsCapturing == true;
+    /// <summary>True when a Gemini Live session is attached to the running capture.</summary>
+    public bool HasLiveTranslationSession
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _capture?.IsCapturing == true && _liveTranslation is not null;
+            }
+        }
+    }
+
+    /// <summary>Reconnects Gemini without stopping WASAPI capture after a recoverable server session end.</summary>
+    public async Task RestartLiveTranslationAsync()
+    {
+        IAudioCapture? capture;
+        string? sourceLanguage;
+        string? targetLanguage;
+
+        lock (_gate)
+        {
+            if (_disposed || _faulted || _restarting || _capture?.IsCapturing != true || _liveTranslation is not null)
+            {
+                return;
+            }
+
+            _restarting = true;
+            capture = _capture;
+            sourceLanguage = _liveSourceLanguage;
+            targetLanguage = _liveTargetLanguage;
+        }
+
+        RaiseStatus(new PipelineStatus(PipelineStatusKind.Error, "Gemini session ended. Reconnecting…"));
+
+        ILiveAudioTranslationEngine? candidate = null;
+        try
+        {
+            candidate = await Task.Run(() => CreateAndStartLiveTranslation(sourceLanguage, targetLanguage)).ConfigureAwait(false);
+            if (candidate is null)
+            {
+                return;
+            }
+
+            bool attach;
+            lock (_gate)
+            {
+                attach = !_disposed
+                    && !_faulted
+                    && ReferenceEquals(_capture, capture)
+                    && capture?.IsCapturing == true
+                    && _liveTranslation is null;
+
+                if (attach)
+                {
+                    _liveTranslation = candidate;
+                }
+            }
+
+            if (!attach)
+            {
+                StopLiveTranslationEngine(candidate);
+                candidate = null;
+                return;
+            }
+
+            SubscribeLiveEvents(candidate);
+            SyncLiveTranslationSession();
+            RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Capturing system audio…"));
+            candidate = null;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _restarting = false;
+            }
+
+            if (candidate is not null)
+            {
+                StopLiveTranslationEngine(candidate);
+            }
+        }
+    }
 
     /// <summary>
     /// True while the live session is capturing the system default render device — the only state in
@@ -882,6 +965,13 @@ public sealed class CaptionPipeline : IDisposable
             PipelineStatusKind.Error,
             $"Speech engine unavailable: {error.Message}"));
         LiveTranslationErrorUpdated?.Invoke(this, error);
+
+        // A graceful Gemini goAway/session cap is recoverable: keep WASAPI capture alive and
+        // replace only the dead Live session. Manual Start uses the same path if this fails.
+        if (error.Kind == LiveTranslationErrorKind.SessionEnded)
+        {
+            _ = RestartLiveTranslationAsync();
+        }
     }
 
     /// <summary>

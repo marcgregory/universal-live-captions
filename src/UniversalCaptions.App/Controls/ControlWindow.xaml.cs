@@ -400,8 +400,39 @@ public partial class ControlWindow : Window
 
     private async void OnStartClicked(object sender, RoutedEventArgs e)
     {
-        if (_isStarting || _isStopping || _pipeline.IsRunning)
+        if (_isStarting || _isStopping)
         {
+            return;
+        }
+
+        if (_pipeline.IsRunning)
+        {
+            if (!_pipeline.HasLiveTranslationSession)
+            {
+                _isStarting = true;
+                StatusText.Text = "Reconnecting captions...";
+                StartButton.IsEnabled = true;
+                StartButton.IsHitTestVisible = false;
+                StartButtonText.Text = "Reconnecting captions...";
+                StartProgress.Visibility = Visibility.Visible;
+                try
+                {
+                    await _pipeline.RestartLiveTranslationAsync();
+                    if (_pipeline.HasLiveTranslationSession)
+                    {
+                        _overlay.Show();
+                    }
+                }
+                finally
+                {
+                    _isStarting = false;
+                    StartProgress.Visibility = Visibility.Collapsed;
+                    StartButtonText.Text = "Start Captions";
+                    StartButton.IsHitTestVisible = true;
+                    StartButton.IsEnabled = !_pipeline.IsRunning || !_pipeline.HasLiveTranslationSession;
+                }
+            }
+
             return;
         }
 
