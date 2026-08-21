@@ -1,6 +1,6 @@
 ﻿param(
     [string]$Stage = "$env:TEMP\opencode\uc_pkg\Stage",          # staging root (built fresh each run)
-    [string]$Version = "0.5.43",
+    [string]$Version = "0.5.44",
     [switch]$SkipPublish,                                        # reuse existing Stage\UniversalCaptions
     [switch]$SkipSetup,                                          # build staging only, skip ISCC
     [switch]$SkipZip                                             # build staging + (optionally) setup, skip the portable ZIP
@@ -95,5 +95,5 @@ if ($SkipZip) {
 }
 
 Write-Host "=== 5/5 compile Inno Setup ==="
-if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc — install Inno Setup (winget install JRSoftware.InnoSetup --scope user)" }
+if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc - install Inno Setup" }
 & $iscc "/DStageDir=$Stage" "/DAppVersion=$Version" "$PSScriptRoot\UniversalCaptions.iss"

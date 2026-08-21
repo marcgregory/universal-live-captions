@@ -1,5 +1,5 @@
 ; UniversalCaptions — Inno Setup installer script (per-user, offline, unsigned for this slice).
-; Build: ISCC.exe /DStageDir=<staging root> /DAppVersion=0.5.43 UniversalCaptions.iss
+; Build: ISCC.exe /DStageDir=<staging root> /DAppVersion=0.5.44 UniversalCaptions.iss
 ; Install root: %LocalAppData%\UniversalCaptions (no admin, asInvoker at runtime). Short install
 ; path keeps every installed path well under the 260-char MAX_PATH limit.
 ; ADR-0011: Gemini-only pipeline — the closure is a single self-contained .NET publish.
@@ -10,7 +10,7 @@
 
 #define MyAppName "Universal Captions"
 #ifndef AppVersion
-  #define AppVersion "0.5.43"
+  #define AppVersion "0.5.44"
 #endif
 #define MyAppPublisher "UniversalCaptions"
 #define MyAppExeName "UniversalCaptions.App.exe"

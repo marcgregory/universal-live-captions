@@ -17,6 +17,13 @@ Last updated: 2026-08-21 (v0.5.43)
 
 All notable project changes should be documented here. Keep this file versioned and historical; do not use it as a current status report.
 
+## v0.5.44 - 2026-08-21
+
+### Gemini session recovery
+
+- **Fix:** When Gemini ends a Live session with a graceful `goAway`, WASAPI capture remains active and the app automatically creates a replacement Gemini session.
+- **Manual retry:** If reconnect fails, `Start Captions` retries the Gemini session without requiring the user to stop capture first.
+- **Validation:** Release build 0 warnings / 0 errors; targeted App regression tests 35/35; package inspection PASS (145.2 MB unpacked, 262 files, 0 junk).
 ## v0.5.43 - 2026-08-21
 
 ### Gemini-only pipeline (ADR-0011): local Whisper and Argos Translate removed; Gemini Live is the single STT + translation engine
