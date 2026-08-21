@@ -104,11 +104,7 @@ public partial class App : Application
                     sp.GetRequiredService<Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>>(),
                     sp.GetRequiredService<IDeviceChangeMonitor>(),
                     captionOptions.SourceLanguage,
-                    captionOptions.TargetLanguage,
-                    pair => LiveTranslationEngineFactory.Create(
-                        sp.GetRequiredService<ICredentialStore>(),
-                        pair.SourceLanguage,
-                        "en")));
+                    captionOptions.TargetLanguage));
         services.AddSingleton<CaptionOverlayWindow>();
         services.AddSingleton<IOverlayService>(sp => sp.GetRequiredService<CaptionOverlayWindow>());
         services.AddSingleton<ControlWindow>();
