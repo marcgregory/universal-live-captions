@@ -54,6 +54,7 @@ public sealed class CaptionPipeline : IDisposable
     private readonly IDeviceChangeMonitor? _monitor;
     private readonly DefaultDeviceAutoRecovery? _recovery;
     private readonly Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?> _liveTranslationFactory;
+    private readonly Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>? _sourceOnlyFactory;
     private readonly string? _sourceLanguage;
     private readonly string? _targetLanguage;
 
@@ -68,6 +69,8 @@ public sealed class CaptionPipeline : IDisposable
     // from the Gemini session are dropped before they reach the caption service (the service would
     // reject them anyway; gating here avoids the state-changed churn).
     private bool _translationEnabled;
+    private bool _sourceOnlyMode;
+    private bool _sourceOnlyFallbackStarted;
     // Event delegates captured at subscription time so the failure path can detach the exact same
     // handlers without depending on a public remove API (events only expose -= from inside the
     // declaring type — these references are the standard solution when subscribing from outside).
@@ -107,12 +110,14 @@ public sealed class CaptionPipeline : IDisposable
         Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?> liveTranslationFactory,
         IDeviceChangeMonitor? monitor = null,
         string? sourceLanguage = null,
-        string? targetLanguage = null)
+        string? targetLanguage = null,
+        Func<(string? SourceLanguage, string? TargetLanguage), ILiveAudioTranslationEngine?>? sourceOnlyFactory = null)
     {
         _captureFactory = captureFactory ?? throw new ArgumentNullException(nameof(captureFactory));
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _captions = captions ?? throw new ArgumentNullException(nameof(captions));
         _liveTranslationFactory = liveTranslationFactory ?? throw new ArgumentNullException(nameof(liveTranslationFactory));
+        _sourceOnlyFactory = sourceOnlyFactory;
         _monitor = monitor;
         _sourceLanguage = NormalizeLanguage(sourceLanguage);
         _targetLanguage = NormalizeLanguage(targetLanguage);
@@ -277,6 +282,8 @@ public sealed class CaptionPipeline : IDisposable
         _liveSourceLanguage = NormalizeLanguage(sourceLanguage) ?? _sourceLanguage;
         _liveTargetLanguage = NormalizeLanguage(targetLanguage) ?? _targetLanguage;
         _translationEnabled = translationEnabled;
+        _sourceOnlyMode = false;
+        _sourceOnlyFallbackStarted = false;
 
         TempaudioLatencyProbe.RecordCaptureStarted();
 
@@ -845,7 +852,7 @@ public sealed class CaptionPipeline : IDisposable
         bool live;
         lock (_gate)
         {
-            live = _liveTranslation is not null;
+            live = _liveTranslation is not null && !_sourceOnlyMode;
         }
 
         _captions.SetLiveTranslationSession(live);
@@ -914,6 +921,66 @@ public sealed class CaptionPipeline : IDisposable
         TempaudioLatencyProbe.RecordPartial();
         UniversalCaptions.Core.Diagnostics.DiagnosticTracer.Record(3, "First Gemini partial transcription");
         _captions.ProcessPartial(transcript);
+    }
+
+    private bool ShouldUseHindiSourceOnly(string text)
+    {
+        if (_sourceOnlyFactory is null || _sourceOnlyFallbackStarted || _liveSourceLanguage is not null)
+        {
+            return false;
+        }
+
+        return string.Equals(_liveTargetLanguage, "hi", StringComparison.OrdinalIgnoreCase)
+            && text.Any(ch => ch is >= '\u0900' and <= '\u097F');
+    }
+
+    private async Task SwitchToSourceOnlyAsync()
+    {
+        ILiveAudioTranslationEngine? oldEngine;
+        lock (_gate)
+        {
+            if (_capture?.IsCapturing != true || _liveTranslation is null || _sourceOnlyMode)
+            {
+                return;
+            }
+            oldEngine = _liveTranslation;
+            _liveTranslation = null;
+            UnsubscribeLiveEvents(oldEngine, out _, out _, out _, out _, out _);
+        }
+
+        StopLiveTranslationEngine(oldEngine);
+        ILiveAudioTranslationEngine? fallback = null;
+        try
+        {
+            fallback = await Task.Run(() => _sourceOnlyFactory!((_liveSourceLanguage, "en"))).ConfigureAwait(false);
+            if (fallback is null)
+            {
+                return;
+            }
+            lock (_gate)
+            {
+                if (_disposed || _capture?.IsCapturing != true || _liveTranslation is not null)
+                {
+                    StopLiveTranslationEngine(fallback);
+                    return;
+                }
+                _liveTranslation = fallback;
+                _sourceOnlyMode = true;
+                _translationEnabled = false;
+            }
+            SubscribeLiveEvents(fallback);
+            _captions.SetTranslationEnabled(false, null);
+            SyncLiveTranslationSession();
+            RaiseStatus(new PipelineStatus(PipelineStatusKind.Capturing, "Captions active — translation skipped because the audio is already Hindi."));
+        }
+        catch (Exception ex)
+        {
+            if (fallback is not null)
+            {
+                StopLiveTranslationEngine(fallback);
+            }
+            RaiseStatus(new PipelineStatus(PipelineStatusKind.Error, $"Hindi source-only fallback failed: {ex.Message}"));
+        }
     }
 
     private void OnFinalTranscription(object? sender, FinalTranscript transcript)
