@@ -1,6 +1,6 @@
 param(
     [string]$Stage = "$env:TEMP\opencode\uc_pkg\Stage",          # staging root (built fresh each run)
-    [string]$Version = "0.5.47",
+    [string]$Version = "0.5.46",
     [switch]$SkipPublish,                                        # reuse existing Stage\UniversalCaptions
     [switch]$SkipSetup,                                          # build staging only, skip ISCC
     [switch]$SkipZip                                             # build staging + (optionally) setup, skip the portable ZIP
